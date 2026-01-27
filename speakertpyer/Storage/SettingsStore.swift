@@ -93,6 +93,20 @@ class SettingsStore: ObservableObject {
         didSet { UserDefaults.standard.set(micSensitivity, forKey: "micSensitivity") }
     }
 
+    // MARK: - Overlay Position
+
+    @Published var overlayPositionX: Double {
+        didSet { UserDefaults.standard.set(overlayPositionX, forKey: "overlayPositionX") }
+    }
+
+    @Published var overlayPositionY: Double {
+        didSet { UserDefaults.standard.set(overlayPositionY, forKey: "overlayPositionY") }
+    }
+
+    @Published var hasCustomOverlayPosition: Bool {
+        didSet { UserDefaults.standard.set(hasCustomOverlayPosition, forKey: "hasCustomOverlayPosition") }
+    }
+
     // MARK: - Init
 
     init() {
@@ -114,5 +128,8 @@ class SettingsStore: ObservableObject {
         self.silenceTimeout = defaults.object(forKey: "silenceTimeout") as? Double ?? 2.0
         self.enableAutoStop = defaults.object(forKey: "enableAutoStop") as? Bool ?? true
         self.micSensitivity = defaults.object(forKey: "micSensitivity") as? Double ?? 2.0
+        self.overlayPositionX = defaults.object(forKey: "overlayPositionX") as? Double ?? 0
+        self.overlayPositionY = defaults.object(forKey: "overlayPositionY") as? Double ?? 0
+        self.hasCustomOverlayPosition = defaults.bool(forKey: "hasCustomOverlayPosition")
     }
 }

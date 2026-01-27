@@ -8,12 +8,24 @@
 import AppKit
 import SwiftUI
 
-class OverlayWindowController {
+// MARK: - Custom Hosting View (right-click menu + hit-test passthrough)
+
+class OverlayHostingView<Content: View>: NSHostingView<Content> {}
+
+// MARK: - Overlay Window Controller
+
+class OverlayWindowController: NSObject {
     static let shared = OverlayWindowController()
 
     private var panel: NSPanel?
     private var session: TranscriptionSession?
-    private var settingsStore: SettingsStore?
+    private(set) var settingsStore: SettingsStore?
+    private var moveObserver: Any?
+    private var rightClickMonitor: Any?
+    private var settingsWindow: NSWindow?
+
+    private let panelWidth: CGFloat = 420
+    private let panelHeight: CGFloat = 80
 
     func configure(session: TranscriptionSession, settingsStore: SettingsStore) {
         self.session = session
@@ -32,19 +44,13 @@ class OverlayWindowController {
         panel?.orderOut(nil)
     }
 
-    private func setupPanel() {
-        guard let screen = NSScreen.main else { return }
-        let screenFrame = screen.visibleFrame
+    // MARK: - Panel Setup
 
-        // Panel is large enough for expanded content; transparent areas are see-through
-        let panelWidth: CGFloat = 360
-        let panelHeight: CGFloat = 420
-        let margin: CGFloat = 24
-        let x = screenFrame.maxX - panelWidth - margin
-        let y = screenFrame.minY + margin
+    private func setupPanel() {
+        let origin = initialPosition()
 
         let panel = NSPanel(
-            contentRect: NSRect(x: x, y: y, width: panelWidth, height: panelHeight),
+            contentRect: NSRect(x: origin.x, y: origin.y, width: panelWidth, height: panelHeight),
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false
@@ -57,48 +63,232 @@ class OverlayWindowController {
         panel.isMovableByWindowBackground = true
         panel.hidesOnDeactivate = false
 
-        let overlayView = BubbleView(
+        let capsuleView = CapsuleBarView(
             session: session ?? TranscriptionSession(),
             settingsStore: settingsStore ?? SettingsStore()
         )
-        let hostingView = NSHostingView(rootView: overlayView)
+        let hostingView = OverlayHostingView(rootView: capsuleView)
         hostingView.frame = NSRect(x: 0, y: 0, width: panelWidth, height: panelHeight)
         hostingView.autoresizingMask = [.width, .height]
-        // Prevent hosting view from shrinking to content size
         hostingView.setContentHuggingPriority(.defaultLow, for: .horizontal)
         hostingView.setContentHuggingPriority(.defaultLow, for: .vertical)
         hostingView.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         hostingView.setContentCompressionResistancePriority(.defaultLow, for: .vertical)
-        panel.contentView = hostingView
 
+        panel.contentView = hostingView
         self.panel = panel
+
+        // Right-click context menu via local event monitor
+        // (SwiftUI's internal views intercept rightMouseDown, so we monitor at app level)
+        rightClickMonitor = NSEvent.addLocalMonitorForEvents(matching: .rightMouseDown) { [weak self] event in
+            guard let self, event.window == self.panel else { return event }
+            let menu = self.buildContextMenu()
+            NSMenu.popUpContextMenu(menu, with: event, for: event.window!.contentView!)
+            return nil
+        }
+
+        // Observe drag to save position
+        moveObserver = NotificationCenter.default.addObserver(
+            forName: NSWindow.didMoveNotification,
+            object: panel,
+            queue: .main
+        ) { [weak self] _ in
+            self?.savePosition()
+        }
     }
 
     func rebuild() {
+        if let observer = moveObserver {
+            NotificationCenter.default.removeObserver(observer)
+            moveObserver = nil
+        }
+        if let monitor = rightClickMonitor {
+            NSEvent.removeMonitor(monitor)
+            rightClickMonitor = nil
+        }
         panel?.orderOut(nil)
         panel = nil
     }
 
-    /// Resize panel when bubble expands
-    func resizeForExpanded() {
-        guard let panel, let screen = NSScreen.main else { return }
+    // MARK: - Position Memory
+
+    private func initialPosition() -> NSPoint {
+        guard let screen = NSScreen.main else {
+            return NSPoint(x: 200, y: 200)
+        }
         let screenFrame = screen.visibleFrame
-        let margin: CGFloat = 24
-        let expandedWidth: CGFloat = 320
-        let expandedHeight: CGFloat = 300
-        let x = screenFrame.maxX - expandedWidth - margin
-        let y = screenFrame.minY + margin
-        panel.setFrame(NSRect(x: x, y: y, width: expandedWidth, height: expandedHeight), display: true)
+
+        if let store = settingsStore, store.hasCustomOverlayPosition {
+            let candidate = NSRect(
+                x: store.overlayPositionX,
+                y: store.overlayPositionY,
+                width: Double(panelWidth),
+                height: Double(panelHeight)
+            )
+            let clamped = clampToVisibleScreen(candidate)
+            return clamped.origin
+        }
+
+        // Default: top-center of screen
+        let x = screenFrame.midX - panelWidth / 2
+        let y = screenFrame.maxY - panelHeight - 12
+        return NSPoint(x: x, y: y)
     }
 
-    func resizeForCollapsed() {
-        guard let panel, let screen = NSScreen.main else { return }
+    private func savePosition() {
+        guard let panel, let store = settingsStore else { return }
+        store.overlayPositionX = Double(panel.frame.origin.x)
+        store.overlayPositionY = Double(panel.frame.origin.y)
+        store.hasCustomOverlayPosition = true
+    }
+
+    private func clampToVisibleScreen(_ rect: NSRect) -> NSRect {
+        guard let screen = NSScreen.screens.first(where: { $0.visibleFrame.intersects(rect) })
+                ?? NSScreen.main else { return rect }
+        let visible = screen.visibleFrame
+        var origin = rect.origin
+        origin.x = max(visible.minX, min(origin.x, visible.maxX - rect.width))
+        origin.y = max(visible.minY, min(origin.y, visible.maxY - rect.height))
+        return NSRect(origin: origin, size: rect.size)
+    }
+
+    // MARK: - Context Menu (NSMenu)
+
+    private func buildContextMenu() -> NSMenu {
+        let menu = NSMenu()
+
+        // Prompt Style submenu
+        let promptItem = NSMenuItem(title: "Prompt 風格", action: nil, keyEquivalent: "")
+        let promptSubmenu = NSMenu()
+        for style in PromptStyle.allCases {
+            let item = NSMenuItem(title: style.displayName, action: #selector(selectPromptStyle(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = style.rawValue
+            item.state = (settingsStore?.promptStyle == style) ? .on : .off
+            promptSubmenu.addItem(item)
+        }
+        promptItem.submenu = promptSubmenu
+        menu.addItem(promptItem)
+
+        // Tone submenu
+        let toneItem = NSMenuItem(title: "語調", action: nil, keyEquivalent: "")
+        let toneSubmenu = NSMenu()
+        for tone in ToneStyle.allCases {
+            let item = NSMenuItem(title: tone.displayName, action: #selector(selectToneStyle(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = tone.rawValue
+            item.state = (settingsStore?.toneStyle == tone) ? .on : .off
+            toneSubmenu.addItem(item)
+        }
+        toneItem.submenu = toneSubmenu
+        menu.addItem(toneItem)
+
+        menu.addItem(.separator())
+
+        // Whisper Mode toggle
+        let whisperItem = NSMenuItem(title: "Whisper Mode", action: #selector(toggleWhisperMode(_:)), keyEquivalent: "")
+        whisperItem.target = self
+        whisperItem.state = (settingsStore?.enableWhisperMode == true) ? .on : .off
+        menu.addItem(whisperItem)
+
+        // Context Awareness toggle
+        let contextItem = NSMenuItem(title: "Context Awareness", action: #selector(toggleContextAwareness(_:)), keyEquivalent: "")
+        contextItem.target = self
+        contextItem.state = (settingsStore?.enableContextAwareness == true) ? .on : .off
+        menu.addItem(contextItem)
+
+        // Sound Feedback toggle
+        let soundItem = NSMenuItem(title: "音效回饋", action: #selector(toggleSoundFeedback(_:)), keyEquivalent: "")
+        soundItem.target = self
+        soundItem.state = (settingsStore?.enableSoundFeedback == true) ? .on : .off
+        menu.addItem(soundItem)
+
+        menu.addItem(.separator())
+
+        // Reset position
+        let resetPosItem = NSMenuItem(title: "重置位置", action: #selector(resetPosition(_:)), keyEquivalent: "")
+        resetPosItem.target = self
+        menu.addItem(resetPosItem)
+
+        // Settings...
+        let settingsItem = NSMenuItem(title: "設定...", action: #selector(openSettings(_:)), keyEquivalent: ",")
+        settingsItem.target = self
+        menu.addItem(settingsItem)
+
+        menu.addItem(.separator())
+
+        // Quit
+        let quitItem = NSMenuItem(title: "結束 SpeakerTyper", action: #selector(quitApp(_:)), keyEquivalent: "q")
+        quitItem.target = self
+        menu.addItem(quitItem)
+
+        return menu
+    }
+
+    // MARK: - Menu Actions
+
+    @objc private func selectPromptStyle(_ sender: NSMenuItem) {
+        guard let rawValue = sender.representedObject as? String,
+              let style = PromptStyle(rawValue: rawValue) else { return }
+        settingsStore?.promptStyle = style
+    }
+
+    @objc private func selectToneStyle(_ sender: NSMenuItem) {
+        guard let rawValue = sender.representedObject as? String,
+              let tone = ToneStyle(rawValue: rawValue) else { return }
+        settingsStore?.toneStyle = tone
+    }
+
+    @objc private func toggleWhisperMode(_ sender: NSMenuItem) {
+        settingsStore?.enableWhisperMode.toggle()
+    }
+
+    @objc private func toggleContextAwareness(_ sender: NSMenuItem) {
+        settingsStore?.enableContextAwareness.toggle()
+    }
+
+    @objc private func toggleSoundFeedback(_ sender: NSMenuItem) {
+        settingsStore?.enableSoundFeedback.toggle()
+    }
+
+    @objc private func resetPosition(_ sender: NSMenuItem) {
+        guard let screen = NSScreen.main else { return }
         let screenFrame = screen.visibleFrame
-        let margin: CGFloat = 24
-        let w: CGFloat = 72
-        let h: CGFloat = 72
-        let x = screenFrame.maxX - w - margin
-        let y = screenFrame.minY + margin
-        panel.setFrame(NSRect(x: x, y: y, width: w, height: h), display: true)
+        let x = screenFrame.midX - panelWidth / 2
+        let y = screenFrame.maxY - panelHeight - 12
+        panel?.setFrame(NSRect(x: x, y: y, width: panelWidth, height: panelHeight), display: true, animate: true)
+        settingsStore?.hasCustomOverlayPosition = false
+    }
+
+    @objc private func openSettings(_ sender: NSMenuItem) {
+        if let existing = settingsWindow, existing.isVisible {
+            existing.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+            return
+        }
+
+        let settingsView = SettingsView()
+            .environment(\.managedObjectContext, PersistenceController.shared.container.viewContext)
+            .environmentObject(settingsStore ?? SettingsStore())
+
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 600, height: 500),
+            styleMask: [.titled, .closable, .resizable],
+            backing: .buffered,
+            defer: false
+        )
+        window.title = "SpeakerTyper 設定"
+        window.contentView = NSHostingView(rootView: settingsView)
+        window.center()
+
+        NSApp.setActivationPolicy(.regular)
+        window.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+
+        settingsWindow = window
+    }
+
+    @objc private func quitApp(_ sender: NSMenuItem) {
+        NSApp.terminate(nil)
     }
 }
