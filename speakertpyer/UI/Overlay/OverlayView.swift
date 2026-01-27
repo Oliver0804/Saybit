@@ -42,6 +42,8 @@ struct CapsuleBarView: View {
     @State private var pulseScale: CGFloat = 1.0
     @State private var breatheOpacity: Double = 1.0
 
+    private var scale: CGFloat { settingsStore.capsuleScale }
+
     var body: some View {
         HStack(spacing: 8) {
             stateIcon
@@ -49,12 +51,14 @@ struct CapsuleBarView: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 6)
-        .frame(minWidth: capsuleWidth, minHeight: capsuleHeight)
+        .scaleEffect(scale)
+        .frame(minWidth: capsuleWidth * scale, minHeight: capsuleHeight * scale)
         .fixedSize()
         .background(capsuleBackground)
         .clipShape(Capsule())
         .overlay(capsuleBorder)
         .shadow(color: confirmingShadowColor, radius: confirmingShadowRadius, y: 3)
+        .animation(.easeInOut(duration: 0.2), value: settingsStore.capsuleScale)
         .onChange(of: session.state) { _, newState in
             withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
                 updateDimensions(for: newState)

@@ -62,6 +62,27 @@ struct GeneralSettingsView: View {
                     }
                 }
 
+                // MARK: - 膠囊大小
+                GlassCard {
+                    VStack(alignment: .leading, spacing: 10) {
+                        GlassSectionHeader(title: "膠囊大小", icon: "arrow.up.left.and.arrow.down.right")
+
+                        VStack(alignment: .leading, spacing: 4) {
+                            HStack {
+                                Text("縮放比例")
+                                Spacer()
+                                Text(String(format: "%.0f%%", settingsStore.capsuleScale * 100))
+                                    .font(.system(.body, design: .monospaced))
+                                    .foregroundStyle(.secondary)
+                            }
+                            Slider(value: $settingsStore.capsuleScale, in: 0.5...2.0, step: 0.1)
+                            Text("調整浮動膠囊的顯示大小")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+
                 // MARK: - 麥克風靈敏度
                 GlassCard {
                     VStack(alignment: .leading, spacing: 10) {

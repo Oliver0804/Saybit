@@ -24,8 +24,8 @@ class OverlayWindowController: NSObject {
     private var rightClickMonitor: Any?
     private var settingsWindow: NSWindow?
 
-    private let panelWidth: CGFloat = 420
-    private let panelHeight: CGFloat = 80
+    private let panelWidth: CGFloat = 840
+    private let panelHeight: CGFloat = 160
 
     func configure(session: TranscriptionSession, settingsStore: SettingsStore) {
         self.session = session
