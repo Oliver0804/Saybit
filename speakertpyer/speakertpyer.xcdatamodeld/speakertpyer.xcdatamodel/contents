@@ -1,9 +1,27 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <model type="com.apple.IDECoreDataModeler.DataModel" documentVersion="1.0" lastSavedToolsVersion="1" systemVersion="11A491" minimumToolsVersion="Automatic" sourceLanguage="Swift" usedWithCloudKit="false" userDefinedModelVersionIdentifier="">
-    <entity name="Item" representedClassName="Item" syncable="YES" codeGenerationType="class">
+    <entity name="TranscriptionRecord" representedClassName="TranscriptionRecord" syncable="YES" codeGenerationType="class">
+        <attribute name="id" optional="YES" attributeType="UUID" usesScalarValueType="NO"/>
+        <attribute name="rawTranscript" optional="YES" attributeType="String"/>
+        <attribute name="processedText" optional="YES" attributeType="String"/>
+        <attribute name="appContext" optional="YES" attributeType="String"/>
+        <attribute name="mode" optional="YES" attributeType="String"/>
         <attribute name="timestamp" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="duration" optional="YES" attributeType="Double" defaultValueString="0.0" usesScalarValueType="YES"/>
+    </entity>
+    <entity name="PersonalDictionaryEntry" representedClassName="PersonalDictionaryEntry" syncable="YES" codeGenerationType="class">
+        <attribute name="id" optional="YES" attributeType="UUID" usesScalarValueType="NO"/>
+        <attribute name="term" optional="YES" attributeType="String"/>
+        <attribute name="preferred" optional="YES" attributeType="String"/>
+    </entity>
+    <entity name="SnippetEntry" representedClassName="SnippetEntry" syncable="YES" codeGenerationType="class">
+        <attribute name="id" optional="YES" attributeType="UUID" usesScalarValueType="NO"/>
+        <attribute name="trigger" optional="YES" attributeType="String"/>
+        <attribute name="content" optional="YES" attributeType="String"/>
     </entity>
     <elements>
-        <element name="Item" positionX="-63" positionY="-18" width="128" height="44"/>
+        <element name="TranscriptionRecord" positionX="-63" positionY="-18" width="128" height="148"/>
+        <element name="PersonalDictionaryEntry" positionX="160" positionY="-18" width="128" height="88"/>
+        <element name="SnippetEntry" positionX="160" positionY="120" width="128" height="88"/>
     </elements>
 </model>

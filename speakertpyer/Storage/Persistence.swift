@@ -1,0 +1,61 @@
+//
+//  Persistence.swift
+//  speakertpyer
+//
+//  Created by 顏國明 on 2026/1/27.
+//
+
+import CoreData
+
+struct PersistenceController {
+    static let shared = PersistenceController()
+
+    @MainActor
+    static let preview: PersistenceController = {
+        let result = PersistenceController(inMemory: true)
+        let viewContext = result.container.viewContext
+
+        // Sample data for previews
+        let record = TranscriptionRecord(context: viewContext)
+        record.id = UUID()
+        record.rawTranscript = "嗯那個跟你說一下我今天下午那個會議可能要延後"
+        record.processedText = "跟你說一下，今天下午的會議可能要延後。"
+        record.appContext = "Slack"
+        record.mode = "dictation"
+        record.timestamp = Date()
+        record.duration = 5.2
+
+        let dictEntry = PersonalDictionaryEntry(context: viewContext)
+        dictEntry.id = UUID()
+        dictEntry.term = "openai"
+        dictEntry.preferred = "OpenAI"
+
+        let snippet = SnippetEntry(context: viewContext)
+        snippet.id = UUID()
+        snippet.trigger = "回覆確認"
+        snippet.content = "您好，\n\n已收到您的來信，我會儘快回覆。\n\n謝謝。"
+
+        do {
+            try viewContext.save()
+        } catch {
+            let nsError = error as NSError
+            fatalError("Unresolved error \(nsError), \(nsError.userInfo)")
+        }
+        return result
+    }()
+
+    let container: NSPersistentContainer
+
+    init(inMemory: Bool = false) {
+        container = NSPersistentContainer(name: "speakertpyer")
+        if inMemory {
+            container.persistentStoreDescriptions.first!.url = URL(fileURLWithPath: "/dev/null")
+        }
+        container.loadPersistentStores { _, error in
+            if let error = error as NSError? {
+                fatalError("Unresolved error \(error), \(error.userInfo)")
+            }
+        }
+        container.viewContext.automaticallyMergesChangesFromParent = true
+    }
+}
