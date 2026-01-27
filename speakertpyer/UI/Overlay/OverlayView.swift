@@ -59,11 +59,11 @@ struct CapsuleBarView: View {
         .overlay(capsuleBorder)
         .shadow(color: confirmingShadowColor, radius: confirmingShadowRadius, y: 3)
         .animation(.easeInOut(duration: 0.2), value: settingsStore.capsuleScale)
-        .onChange(of: session.state) { _, newState in
+        .onChange(of: session.state) { oldState, newState in
             withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
                 updateDimensions(for: newState)
             }
-            handleAnimations(for: newState)
+            handleAnimations(from: oldState, to: newState)
         }
     }
 
@@ -238,8 +238,8 @@ struct CapsuleBarView: View {
 
     // MARK: - Animations
 
-    private func handleAnimations(for state: TranscriptionSession.State) {
-        switch state {
+    private func handleAnimations(from oldState: TranscriptionSession.State, to newState: TranscriptionSession.State) {
+        switch newState {
         case .recording:
             withAnimation(.easeInOut(duration: 0.6).repeatForever(autoreverses: true)) {
                 pulseScale = 1.4
@@ -248,6 +248,8 @@ struct CapsuleBarView: View {
                 breatheOpacity = 1.0
             }
         case .confirming:
+            // Only start breathing animation on first entry, not on remaining count changes
+            if case .confirming = oldState { return }
             withAnimation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true)) {
                 pulseScale = 1.3
                 breatheOpacity = 0.4

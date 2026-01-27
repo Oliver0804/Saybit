@@ -16,20 +16,32 @@ class AudioLevelMonitor {
     private let audioEngine = AVAudioEngine()
     private let speechThreshold: Float = 0.15
     private var isMonitoring = false
+    private var graceUntil: Date = .distantPast
+    private var tapCallbackCount = 0
+    private var maxLevelSeen: Float = 0
     private let log = AppLogger.shared
 
-    func startMonitoring(inputDeviceUID: String = "") {
+    func startMonitoring(inputDeviceUID: String = "", gracePeriod: TimeInterval = 0) {
         guard !isMonitoring else { return }
+
+        if gracePeriod > 0 {
+            graceUntil = Date().addingTimeInterval(gracePeriod)
+        }
+        tapCallbackCount = 0
+        maxLevelSeen = 0
 
         let inputNode = audioEngine.inputNode
         inputNode.removeTap(onBus: 0)
 
-        // 設定指定輸入裝置
+        // Prepare engine first so audio unit is fully initialized
+        audioEngine.prepare()
+
+        // 設定指定輸入裝置 (after prepare to ensure audioUnit exists)
         if !inputDeviceUID.isEmpty,
            let deviceID = AudioSessionManager.deviceID(forUID: inputDeviceUID),
            let audioUnit = inputNode.audioUnit {
             var devID = deviceID
-            AudioUnitSetProperty(
+            let status = AudioUnitSetProperty(
                 audioUnit,
                 kAudioOutputUnitProperty_CurrentDevice,
                 kAudioUnitScope_Global,
@@ -37,14 +49,23 @@ class AudioLevelMonitor {
                 &devID,
                 UInt32(MemoryLayout<AudioDeviceID>.size)
             )
+            if status != noErr {
+                log.error("AudioLevelMonitor 設定輸入裝置失敗 (status=\(status))", category: "SmartSend")
+            }
         }
 
         let recordingFormat = inputNode.outputFormat(forBus: 0)
         let tapFormat = recordingFormat.channelCount > 0 ? recordingFormat : nil
+        log.info("AudioLevelMonitor format: \(recordingFormat.sampleRate)Hz, \(recordingFormat.channelCount)ch", category: "SmartSend")
 
         inputNode.installTap(onBus: 0, bufferSize: 1024, format: tapFormat) {
             [weak self] buffer, _ in
             guard let self, self.isMonitoring else { return }
+
+            self.tapCallbackCount += 1
+
+            // Skip detection during grace period (avoids sound feedback triggering cancel)
+            guard Date() >= self.graceUntil else { return }
             guard let channelData = buffer.floatChannelData?[0] else { return }
 
             let frameLength = Int(buffer.frameLength)
@@ -57,14 +78,18 @@ class AudioLevelMonitor {
             let rms = sqrtf(sum / Float(frameLength))
             let level = max(0, min(1, rms * 5))
 
+            if level > self.maxLevelSeen {
+                self.maxLevelSeen = level
+            }
+
             if level >= self.speechThreshold {
                 DispatchQueue.main.async {
+                    self.log.info("語音偵測觸發 (level=\(String(format: "%.3f", level)))", category: "SmartSend")
                     self.onSpeechDetected?()
                 }
             }
         }
 
-        audioEngine.prepare()
         do {
             try audioEngine.start()
             isMonitoring = true
@@ -79,7 +104,7 @@ class AudioLevelMonitor {
         audioEngine.stop()
         audioEngine.inputNode.removeTap(onBus: 0)
         isMonitoring = false
+        log.info("AudioLevelMonitor 已停止 (callbacks=\(tapCallbackCount), maxLevel=\(String(format: "%.4f", maxLevelSeen)), threshold=\(speechThreshold))", category: "SmartSend")
         onSpeechDetected = nil
-        log.info("AudioLevelMonitor 已停止", category: "SmartSend")
     }
 }

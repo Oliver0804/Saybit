@@ -291,7 +291,7 @@ struct OnboardingView: View {
         let client = OpenRouterClient()
         Task {
             do {
-                try await client.testConnection(model: "openai/gpt-4.1-mini")
+                try await client.testConnection(model: "openai/gpt-4.1-mini", provider: .openRouter)
                 await MainActor.run {
                     testResult = "✓ API 連線成功"
                     isTesting = false

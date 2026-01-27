@@ -26,6 +26,10 @@ class TranscriptionSession {
     var endTime: Date?
     var audioLevel: Float = 0.0
     var smartSendCancelled: Bool = false
+    var modelName: String = ""
+    var promptTokens: Int = 0
+    var completionTokens: Int = 0
+    var totalTokens: Int = 0
 
     var duration: TimeInterval {
         guard let start = startTime else { return 0 }
@@ -42,5 +46,9 @@ class TranscriptionSession {
         endTime = nil
         audioLevel = 0.0
         smartSendCancelled = false
+        modelName = ""
+        promptTokens = 0
+        completionTokens = 0
+        totalTokens = 0
     }
 }

@@ -8,6 +8,10 @@
         <attribute name="mode" optional="YES" attributeType="String"/>
         <attribute name="timestamp" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
         <attribute name="duration" optional="YES" attributeType="Double" defaultValueString="0.0" usesScalarValueType="YES"/>
+        <attribute name="modelName" optional="YES" attributeType="String"/>
+        <attribute name="promptTokens" optional="YES" attributeType="Integer 32" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="completionTokens" optional="YES" attributeType="Integer 32" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="totalTokens" optional="YES" attributeType="Integer 32" defaultValueString="0" usesScalarValueType="YES"/>
     </entity>
     <entity name="PersonalDictionaryEntry" representedClassName="PersonalDictionaryEntry" syncable="YES" codeGenerationType="class">
         <attribute name="id" optional="YES" attributeType="UUID" usesScalarValueType="NO"/>
@@ -20,7 +24,7 @@
         <attribute name="content" optional="YES" attributeType="String"/>
     </entity>
     <elements>
-        <element name="TranscriptionRecord" positionX="-63" positionY="-18" width="128" height="148"/>
+        <element name="TranscriptionRecord" positionX="-63" positionY="-18" width="128" height="223"/>
         <element name="PersonalDictionaryEntry" positionX="160" positionY="-18" width="128" height="88"/>
         <element name="SnippetEntry" positionX="160" positionY="120" width="128" height="88"/>
     </elements>

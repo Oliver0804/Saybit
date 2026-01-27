@@ -71,11 +71,36 @@ struct HistoryView: View {
                             }
 
                             GlassCard {
-                                HStack(spacing: 16) {
-                                    Label(record.appContext ?? "-", systemImage: "app")
-                                    if record.duration > 0 {
-                                        Spacer()
-                                        Label(String(format: "%.1f 秒", record.duration), systemImage: "timer")
+                                VStack(alignment: .leading, spacing: 8) {
+                                    // Row 1: App & Duration
+                                    HStack(spacing: 16) {
+                                        Label(record.appContext ?? "-", systemImage: "app")
+                                        if record.duration > 0 {
+                                            Spacer()
+                                            Label(String(format: "%.1f 秒", record.duration), systemImage: "timer")
+                                        }
+                                    }
+
+                                    Divider()
+
+                                    // Row 2: Model
+                                    if let modelName = record.modelName, !modelName.isEmpty {
+                                        Label(modelName, systemImage: "cpu")
+                                    }
+
+                                    // Row 3: Token usage
+                                    if record.totalTokens > 0 {
+                                        HStack(spacing: 12) {
+                                            Label("輸入 \(record.promptTokens)", systemImage: "arrow.up.circle")
+                                            Label("輸出 \(record.completionTokens)", systemImage: "arrow.down.circle")
+                                            Spacer()
+                                            Label("共 \(record.totalTokens) tokens", systemImage: "number")
+                                        }
+                                    }
+
+                                    // Row 4: Timestamp
+                                    if let timestamp = record.timestamp {
+                                        Label(timestamp.formatted(.dateTime.year().month().day().hour().minute().second()), systemImage: "calendar")
                                     }
                                 }
                                 .font(.caption)

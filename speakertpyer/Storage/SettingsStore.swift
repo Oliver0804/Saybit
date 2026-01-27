@@ -11,6 +11,26 @@ import Foundation
 class SettingsStore: ObservableObject {
     // MARK: - API
 
+    @Published var selectedProviderID: String {
+        didSet { UserDefaults.standard.set(selectedProviderID, forKey: "selectedProviderID") }
+    }
+
+    @Published var customProviders: [LLMProvider] {
+        didSet {
+            if let data = try? JSONEncoder().encode(customProviders) {
+                UserDefaults.standard.set(data, forKey: "customProviders")
+            }
+        }
+    }
+
+    var allProviders: [LLMProvider] {
+        LLMProvider.builtInProviders + customProviders
+    }
+
+    var selectedProvider: LLMProvider {
+        allProviders.first(where: { $0.id == selectedProviderID }) ?? .openRouter
+    }
+
     @Published var selectedModel: String {
         didSet { UserDefaults.standard.set(selectedModel, forKey: "selectedModel") }
     }
@@ -128,6 +148,14 @@ class SettingsStore: ObservableObject {
     init() {
         let defaults = UserDefaults.standard
 
+        self.selectedProviderID = defaults.string(forKey: "selectedProviderID") ?? "openrouter"
+        if let data = defaults.data(forKey: "customProviders"),
+           let decoded = try? JSONDecoder().decode([LLMProvider].self, from: data)
+        {
+            self.customProviders = decoded
+        } else {
+            self.customProviders = []
+        }
         self.selectedModel = defaults.string(forKey: "selectedModel") ?? "openai/gpt-4.1-mini"
         self.promptStyle = PromptStyle(rawValue: defaults.string(forKey: "promptStyle") ?? "") ?? .typeless
         self.languagePreference = defaults.string(forKey: "languagePreference") ?? "zh-TW"

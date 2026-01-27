@@ -11,6 +11,10 @@ struct GeneralSettingsView: View {
     @EnvironmentObject var settingsStore: SettingsStore
     @State private var accessibilityAuthorized = AccessibilityManager.shared.isAuthorized
     @State private var micAuthorized = AudioSessionManager.isMicrophoneAuthorized
+    @State private var inputDevices: [AudioInputDevice] = []
+    @State private var micTestLevel: Float = 0
+    @State private var isMicTesting: Bool = false
+    @StateObject private var micTester = MicLevelTester()
 
     var body: some View {
         ScrollView {
@@ -77,6 +81,63 @@ struct GeneralSettingsView: View {
                             }
                             Slider(value: $settingsStore.capsuleScale, in: 0.5...2.0, step: 0.1)
                             Text("調整浮動膠囊的顯示大小")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+
+                // MARK: - 輸入裝置
+                GlassCard {
+                    VStack(alignment: .leading, spacing: 10) {
+                        GlassSectionHeader(title: "輸入裝置", icon: "mic.badge.xmark")
+
+                        Picker("輸入裝置", selection: $settingsStore.selectedInputDeviceUID) {
+                            Text("系統預設").tag("")
+                            ForEach(inputDevices) { device in
+                                Text(device.name).tag(device.uid)
+                            }
+                        }
+
+                        Text("選擇語音輸入使用的麥克風")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+
+                        Divider().opacity(0.3)
+
+                        // 音量偵測
+                        HStack(spacing: 8) {
+                            Button {
+                                toggleMicTest()
+                            } label: {
+                                Label(isMicTesting ? "停止測試" : "測試麥克風", systemImage: isMicTesting ? "stop.fill" : "waveform")
+                            }
+                            .controlSize(.small)
+                            .buttonStyle(.bordered)
+                            .tint(isMicTesting ? .red : .accentColor)
+
+                            // 音量條
+                            GeometryReader { geo in
+                                ZStack(alignment: .leading) {
+                                    RoundedRectangle(cornerRadius: 3)
+                                        .fill(Color.primary.opacity(0.1))
+                                    RoundedRectangle(cornerRadius: 3)
+                                        .fill(micTester.level > 0.6 ? Color.green : micTester.level > 0.3 ? Color.yellow : Color.green.opacity(0.7))
+                                        .frame(width: geo.size.width * CGFloat(micTester.level))
+                                        .animation(.linear(duration: 0.05), value: micTester.level)
+                                }
+                            }
+                            .frame(height: 8)
+
+                            Text(String(format: "%.0f%%", micTester.level * 100))
+                                .font(.system(.caption, design: .monospaced))
+                                .foregroundStyle(.secondary)
+                                .frame(width: 40, alignment: .trailing)
+                        }
+                        .frame(height: 24)
+
+                        if isMicTesting {
+                            Text("對麥克風說話，觀察音量條是否有反應")
                                 .font(.caption2)
                                 .foregroundStyle(.secondary)
                         }
@@ -227,6 +288,17 @@ struct GeneralSettingsView: View {
         }
         .onAppear {
             refreshPermissions()
+            inputDevices = AudioSessionManager.listInputDevices()
+        }
+    }
+
+    private func toggleMicTest() {
+        if isMicTesting {
+            micTester.stop()
+            isMicTesting = false
+        } else {
+            micTester.start(inputDeviceUID: settingsStore.selectedInputDeviceUID)
+            isMicTesting = true
         }
     }
 

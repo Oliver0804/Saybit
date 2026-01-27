@@ -46,9 +46,10 @@ class VoicePipeline {
         }
 
         // Check prerequisites
-        guard KeychainHelper.loadAPIKey() != nil else {
-            log.error("未設定 API Key", category: "Pipeline")
-            session.state = .error("未設定 API Key，請在設定中輸入")
+        let provider = settingsStore.selectedProvider
+        guard KeychainHelper.loadAPIKey(for: provider.id) != nil else {
+            log.error("未設定 \(provider.name) API Key", category: "Pipeline")
+            session.state = .error("未設定 \(provider.name) API Key，請在設定中輸入")
             autoResetState(after: 3.0)
             return
         }
@@ -157,8 +158,9 @@ class VoicePipeline {
         let style = settingsStore.promptStyle
         let systemPrompt = SystemPrompts.forStyle(style)
         let temperature = SystemPrompts.temperatureForStyle(style)
+        let provider = settingsStore.selectedProvider
 
-        log.info("LLM 處理開始 (model=\(settingsStore.selectedModel), style=\(style.rawValue), temp=\(temperature))", category: "LLM")
+        log.info("LLM 處理開始 (provider=\(provider.name), model=\(settingsStore.selectedModel), style=\(style.rawValue), temp=\(temperature))", category: "LLM")
 
         let selectedText = session.appContext.selectedText
         let hasSelectedText = selectedText != nil && !selectedText!.isEmpty
@@ -184,17 +186,26 @@ class VoicePipeline {
         }
 
         var accumulated = ""
+        session.modelName = settingsStore.selectedModel
 
         do {
             let stream = await llmClient.sendStreaming(
                 systemPrompt: systemPrompt,
                 payload: payload,
                 model: settingsStore.selectedModel,
-                temperature: temperature
+                temperature: temperature,
+                provider: provider
             )
-            for try await chunk in stream {
-                accumulated += chunk
-                session.processedText = accumulated
+            for try await event in stream {
+                switch event {
+                case .text(let chunk):
+                    accumulated += chunk
+                    session.processedText = accumulated
+                case .usage(let usage):
+                    session.promptTokens = usage.promptTokens
+                    session.completionTokens = usage.completionTokens
+                    session.totalTokens = usage.totalTokens
+                }
             }
 
             guard !accumulated.isEmpty else {
@@ -237,8 +248,8 @@ class VoicePipeline {
     private func friendlyErrorMessage(_ error: Error) -> String {
         if let clientError = error as? OpenRouterClient.ClientError {
             switch clientError {
-            case .noAPIKey:
-                return "未設定 API Key"
+            case .noAPIKey(let provider):
+                return "未設定 \(provider) API Key"
             case .invalidResponse(let code):
                 switch code {
                 case 401: return "API Key 無效"
@@ -264,12 +275,13 @@ class VoicePipeline {
 
         session.state = .confirming(remaining: totalSeconds)
 
-        // 啟動麥克風監聽
+        // 啟動麥克風監聽（grace period 避免完成音效觸發誤取消）
         let monitor = AudioLevelMonitor()
         monitor.onSpeechDetected = { [weak self] in
             self?.cancelSmartSend()
         }
-        monitor.startMonitoring(inputDeviceUID: settingsStore.selectedInputDeviceUID)
+        let grace: TimeInterval = settingsStore.enableSoundFeedback ? 0.8 : 0
+        monitor.startMonitoring(inputDeviceUID: settingsStore.selectedInputDeviceUID, gracePeriod: grace)
         self.audioLevelMonitor = monitor
 
         // 倒數 Task
@@ -380,6 +392,10 @@ class VoicePipeline {
         record.mode = "auto"
         record.timestamp = Date()
         record.duration = session.duration
+        record.modelName = session.modelName
+        record.promptTokens = Int32(session.promptTokens)
+        record.completionTokens = Int32(session.completionTokens)
+        record.totalTokens = Int32(session.totalTokens)
 
         try? context.save()
     }

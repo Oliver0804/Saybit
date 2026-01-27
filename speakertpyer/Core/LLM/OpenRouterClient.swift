@@ -8,20 +8,19 @@
 import Foundation
 
 actor OpenRouterClient {
-    private let baseURL = URL(string: "https://openrouter.ai/api/v1/chat/completions")!
     private let session = URLSession.shared
     private let jsonEncoder = JSONEncoder()
     private let jsonDecoder = JSONDecoder()
 
     enum ClientError: LocalizedError {
-        case noAPIKey
+        case noAPIKey(String)
         case invalidResponse(Int)
         case decodingError(Error)
         case networkError(Error)
 
         var errorDescription: String? {
             switch self {
-            case .noAPIKey: return "未設定 OpenRouter API Key"
+            case .noAPIKey(let provider): return "未設定 \(provider) API Key"
             case .invalidResponse(let code): return "API 回應錯誤: \(code)"
             case .decodingError(let error): return "解碼錯誤: \(error.localizedDescription)"
             case .networkError(let error): return "網路錯誤: \(error.localizedDescription)"
@@ -33,13 +32,21 @@ actor OpenRouterClient {
         systemPrompt: String,
         payload: LLMPayload,
         model: String,
-        temperature: Double
-    ) -> AsyncThrowingStream<String, Error> {
+        temperature: Double,
+        provider: LLMProvider
+    ) -> AsyncThrowingStream<StreamEvent, Error> {
         AsyncThrowingStream { continuation in
             Task {
                 do {
-                    guard let apiKey = KeychainHelper.loadAPIKey() else {
-                        continuation.finish(throwing: ClientError.noAPIKey)
+                    guard let apiKey = KeychainHelper.loadAPIKey(for: provider.id) else {
+                        continuation.finish(throwing: ClientError.noAPIKey(provider.name))
+                        return
+                    }
+
+                    guard let endpointURL = URL(string: provider.baseURL) else {
+                        continuation.finish(throwing: ClientError.networkError(
+                            NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "無效的端點 URL"])
+                        ))
                         return
                     }
 
@@ -53,15 +60,17 @@ actor OpenRouterClient {
                             .init(role: "user", content: payloadString),
                         ],
                         stream: true,
-                        temperature: temperature
+                        temperature: temperature,
+                        streamOptions: .init(includeUsage: true)
                     )
 
-                    var request = URLRequest(url: baseURL)
+                    var request = URLRequest(url: endpointURL)
                     request.httpMethod = "POST"
                     request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
                     request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-                    request.setValue("https://speakertyper.bashcat.net", forHTTPHeaderField: "HTTP-Referer")
-                    request.setValue("SpeakerTyper", forHTTPHeaderField: "X-Title")
+                    for (key, value) in provider.extraHeaders {
+                        request.setValue(value, forHTTPHeaderField: key)
+                    }
                     request.httpBody = try jsonEncoder.encode(chatRequest)
 
                     let (bytes, response) = try await session.bytes(for: request)
@@ -85,7 +94,10 @@ actor OpenRouterClient {
                         do {
                             let chunk = try jsonDecoder.decode(OpenRouterStreamChunk.self, from: jsonData)
                             if let content = chunk.choices?.first?.delta?.content {
-                                continuation.yield(content)
+                                continuation.yield(.text(content))
+                            }
+                            if let usage = chunk.usage {
+                                continuation.yield(.usage(usage))
                             }
                         } catch {
                             // Skip malformed chunks
@@ -102,24 +114,32 @@ actor OpenRouterClient {
     }
 
     /// Quick API key validation with a minimal request
-    func testConnection(model: String) async throws {
-        guard let apiKey = KeychainHelper.loadAPIKey() else {
-            throw ClientError.noAPIKey
+    func testConnection(model: String, provider: LLMProvider) async throws {
+        guard let apiKey = KeychainHelper.loadAPIKey(for: provider.id) else {
+            throw ClientError.noAPIKey(provider.name)
+        }
+
+        guard let endpointURL = URL(string: provider.baseURL) else {
+            throw ClientError.networkError(
+                NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "無效的端點 URL"])
+            )
         }
 
         let chatRequest = OpenRouterChatRequest(
             model: model,
             messages: [.init(role: "user", content: "Hi")],
             stream: false,
-            temperature: 0
+            temperature: 0,
+            streamOptions: nil
         )
 
-        var request = URLRequest(url: baseURL)
+        var request = URLRequest(url: endpointURL)
         request.httpMethod = "POST"
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue("https://speakertyper.bashcat.net", forHTTPHeaderField: "HTTP-Referer")
-        request.setValue("SpeakerTyper", forHTTPHeaderField: "X-Title")
+        for (key, value) in provider.extraHeaders {
+            request.setValue(value, forHTTPHeaderField: key)
+        }
         request.httpBody = try jsonEncoder.encode(chatRequest)
         request.timeoutInterval = 10
 
@@ -139,16 +159,20 @@ actor OpenRouterClient {
         systemPrompt: String,
         payload: LLMPayload,
         model: String,
-        temperature: Double
+        temperature: Double,
+        provider: LLMProvider
     ) async throws -> String {
         var result = ""
-        for try await chunk in sendStreaming(
+        for try await event in sendStreaming(
             systemPrompt: systemPrompt,
             payload: payload,
             model: model,
-            temperature: temperature
+            temperature: temperature,
+            provider: provider
         ) {
-            result += chunk
+            if case .text(let chunk) = event {
+                result += chunk
+            }
         }
         return result
     }

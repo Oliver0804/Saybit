@@ -44,15 +44,30 @@ struct OpenRouterChatRequest: Encodable {
     let messages: [ChatMessage]
     let stream: Bool
     let temperature: Double
+    let streamOptions: StreamOptions?
 
     struct ChatMessage: Encodable {
         let role: String
         let content: String
     }
+
+    struct StreamOptions: Encodable {
+        let includeUsage: Bool
+
+        enum CodingKeys: String, CodingKey {
+            case includeUsage = "include_usage"
+        }
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case model, messages, stream, temperature
+        case streamOptions = "stream_options"
+    }
 }
 
 struct OpenRouterStreamChunk: Decodable {
     let choices: [Choice]?
+    let usage: LLMUsage?
 
     struct Choice: Decodable {
         let delta: Delta?
@@ -67,4 +82,21 @@ struct OpenRouterStreamChunk: Decodable {
     struct Delta: Decodable {
         let content: String?
     }
+}
+
+struct LLMUsage: Decodable {
+    let promptTokens: Int
+    let completionTokens: Int
+    let totalTokens: Int
+
+    enum CodingKeys: String, CodingKey {
+        case promptTokens = "prompt_tokens"
+        case completionTokens = "completion_tokens"
+        case totalTokens = "total_tokens"
+    }
+}
+
+enum StreamEvent {
+    case text(String)
+    case usage(LLMUsage)
 }

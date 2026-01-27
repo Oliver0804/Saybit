@@ -10,24 +10,28 @@ import Security
 
 enum KeychainHelper {
     private static let service = "com.bashcat.speakertpyer"
-    private static let apiKeyAccount = "openrouter-api-key"
 
-    static func saveAPIKey(_ apiKey: String) throws {
+    private static func account(for providerId: String) -> String {
+        "\(providerId)-api-key"
+    }
+
+    // MARK: - Per-provider API Key
+
+    static func saveAPIKey(_ apiKey: String, for providerId: String) throws {
         guard let data = apiKey.data(using: .utf8) else { return }
+        let acct = account(for: providerId)
 
-        // Delete existing
         let deleteQuery: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
-            kSecAttrAccount as String: apiKeyAccount,
+            kSecAttrAccount as String: acct,
         ]
         SecItemDelete(deleteQuery as CFDictionary)
 
-        // Add new
         let addQuery: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
-            kSecAttrAccount as String: apiKeyAccount,
+            kSecAttrAccount as String: acct,
             kSecValueData as String: data,
         ]
         let status = SecItemAdd(addQuery as CFDictionary, nil)
@@ -36,11 +40,11 @@ enum KeychainHelper {
         }
     }
 
-    static func loadAPIKey() -> String? {
+    static func loadAPIKey(for providerId: String) -> String? {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
-            kSecAttrAccount as String: apiKeyAccount,
+            kSecAttrAccount as String: account(for: providerId),
             kSecReturnData as String: true,
             kSecMatchLimit as String: kSecMatchLimitOne,
         ]
@@ -53,13 +57,27 @@ enum KeychainHelper {
         return String(data: data, encoding: .utf8)
     }
 
-    static func deleteAPIKey() {
+    static func deleteAPIKey(for providerId: String) {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
-            kSecAttrAccount as String: apiKeyAccount,
+            kSecAttrAccount as String: account(for: providerId),
         ]
         SecItemDelete(query as CFDictionary)
+    }
+
+    // MARK: - Legacy (backward-compatible, defaults to openrouter)
+
+    static func saveAPIKey(_ apiKey: String) throws {
+        try saveAPIKey(apiKey, for: "openrouter")
+    }
+
+    static func loadAPIKey() -> String? {
+        loadAPIKey(for: "openrouter")
+    }
+
+    static func deleteAPIKey() {
+        deleteAPIKey(for: "openrouter")
     }
 }
 
