@@ -33,6 +33,20 @@ enum TextInjector {
         }
     }
 
+    /// 模擬按下 Enter/Return 鍵
+    static func simulateEnter() {
+        let source = CGEventSource(stateID: .hidSystemState)
+
+        // Key code 0x24 = Return key
+        guard let keyDown = CGEvent(keyboardEventSource: source, virtualKey: 0x24, keyDown: true),
+              let keyUp = CGEvent(keyboardEventSource: source, virtualKey: 0x24, keyDown: false) else {
+            return
+        }
+
+        keyDown.post(tap: .cghidEventTap)
+        keyUp.post(tap: .cghidEventTap)
+    }
+
     private static func simulatePaste() {
         let source = CGEventSource(stateID: .hidSystemState)
 

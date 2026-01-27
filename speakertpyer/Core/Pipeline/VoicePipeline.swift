@@ -18,6 +18,8 @@ class VoicePipeline {
     private let settingsStore: SettingsStore
     private let log = AppLogger.shared
     private var overlayConfigured = false
+    private var audioLevelMonitor: AudioLevelMonitor?
+    private var smartSendTask: Task<Void, Never>?
 
     init(settingsStore: SettingsStore) {
         self.settingsStore = settingsStore
@@ -37,6 +39,12 @@ class VoicePipeline {
     // MARK: - Recording
 
     func startRecording() {
+        // 若 Smart Send 倒數中，先取消
+        if case .confirming = session.state {
+            smartSendTask?.cancel()
+            cleanupSmartSend()
+        }
+
         // Check prerequisites
         guard KeychainHelper.loadAPIKey() != nil else {
             log.error("未設定 API Key", category: "Pipeline")
@@ -210,8 +218,12 @@ class VoicePipeline {
                 NSSound(named: .init("Purr"))?.play()
             }
 
-            // Reset to idle after showing done state
-            autoResetState(after: 2.0)
+            // Smart Send 或一般 reset
+            if settingsStore.enableSmartSend {
+                startSmartSendCountdown()
+            } else {
+                autoResetState(after: 2.0)
+            }
         } catch {
             let msg = friendlyErrorMessage(error)
             log.error("LLM 錯誤: \(msg) (\(error))", category: "LLM")
@@ -242,6 +254,74 @@ class VoicePipeline {
             }
         }
         return error.localizedDescription
+    }
+
+    // MARK: - Smart Send
+
+    private func startSmartSendCountdown() {
+        let totalSeconds = Int(settingsStore.smartSendDelay)
+        log.info("Smart Send 倒數開始 (\(totalSeconds)s)", category: "SmartSend")
+
+        session.state = .confirming(remaining: totalSeconds)
+
+        // 啟動麥克風監聽
+        let monitor = AudioLevelMonitor()
+        monitor.onSpeechDetected = { [weak self] in
+            self?.cancelSmartSend()
+        }
+        monitor.startMonitoring(inputDeviceUID: settingsStore.selectedInputDeviceUID)
+        self.audioLevelMonitor = monitor
+
+        // 倒數 Task
+        smartSendTask = Task { @MainActor [weak self] in
+            for remaining in stride(from: totalSeconds, through: 1, by: -1) {
+                guard let self, case .confirming = self.session.state else { return }
+                self.session.state = .confirming(remaining: remaining)
+
+                do {
+                    try await Task.sleep(for: .seconds(1))
+                } catch {
+                    return // Task 被取消
+                }
+            }
+
+            // 倒數結束，送出 Enter
+            guard let self, case .confirming = self.session.state else { return }
+            self.cleanupSmartSend()
+            self.log.info("Smart Send 倒數結束，送出 Enter", category: "SmartSend")
+
+            try? await Task.sleep(for: .milliseconds(100))
+            TextInjector.simulateEnter()
+
+            self.session.state = .done
+            if self.settingsStore.enableSoundFeedback {
+                NSSound(named: .init("Submarine"))?.play()
+            }
+            self.autoResetState(after: 1.0)
+        }
+    }
+
+    private func cancelSmartSend() {
+        guard case .confirming = session.state else { return }
+        log.info("Smart Send 已取消（偵測到說話）", category: "SmartSend")
+
+        smartSendTask?.cancel()
+        cleanupSmartSend()
+
+        session.smartSendCancelled = true
+        session.state = .done
+
+        if settingsStore.enableSoundFeedback {
+            NSSound(named: .init("Basso"))?.play()
+        }
+
+        autoResetState(after: 1.5)
+    }
+
+    private func cleanupSmartSend() {
+        audioLevelMonitor?.stopMonitoring()
+        audioLevelMonitor = nil
+        smartSendTask = nil
     }
 
     // MARK: - Helpers

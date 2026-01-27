@@ -109,6 +109,36 @@ struct GeneralSettingsView: View {
                     }
                 }
 
+                // MARK: - Smart Send
+                GlassCard {
+                    VStack(alignment: .leading, spacing: 10) {
+                        GlassSectionHeader(title: "Smart Send", icon: "paperplane.fill")
+
+                        Toggle("啟用 Smart Send", isOn: $settingsStore.enableSmartSend)
+                        Text("文字貼上後自動倒數，到期自動按下 Enter 送出")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .padding(.leading, 2)
+
+                        if settingsStore.enableSmartSend {
+                            VStack(alignment: .leading, spacing: 4) {
+                                HStack {
+                                    Text("倒數秒數")
+                                    Spacer()
+                                    Text(String(format: "%.1f 秒", settingsStore.smartSendDelay))
+                                        .font(.system(.body, design: .monospaced))
+                                        .foregroundStyle(.secondary)
+                                }
+                                Slider(value: $settingsStore.smartSendDelay, in: 1.0...10.0, step: 0.5)
+                                Text("倒數期間若偵測到說話，會自動取消送出")
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                            }
+                            .padding(.leading, 2)
+                        }
+                    }
+                }
+
                 // MARK: - 權限狀態
                 GlassCard {
                     VStack(alignment: .leading, spacing: 10) {

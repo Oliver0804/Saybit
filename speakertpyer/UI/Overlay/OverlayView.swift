@@ -40,6 +40,7 @@ struct CapsuleBarView: View {
     @State private var capsuleWidth: CGFloat = 120
     @State private var capsuleHeight: CGFloat = 36
     @State private var pulseScale: CGFloat = 1.0
+    @State private var breatheOpacity: Double = 1.0
 
     var body: some View {
         HStack(spacing: 8) {
@@ -53,7 +54,7 @@ struct CapsuleBarView: View {
         .background(capsuleBackground)
         .clipShape(Capsule())
         .overlay(capsuleBorder)
-        .shadow(color: .black.opacity(0.3), radius: 10, y: 3)
+        .shadow(color: confirmingShadowColor, radius: confirmingShadowRadius, y: 3)
         .onChange(of: session.state) { _, newState in
             withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
                 updateDimensions(for: newState)
@@ -84,6 +85,12 @@ struct CapsuleBarView: View {
             Image(systemName: "checkmark")
                 .font(.system(size: 12, weight: .bold))
                 .foregroundStyle(.green)
+        case .confirming(let remaining):
+            Text("\(remaining)")
+                .font(.system(size: 16, weight: .heavy, design: .rounded))
+                .foregroundStyle(.cyan)
+                .opacity(breatheOpacity)
+                .scaleEffect(pulseScale)
         case .error:
             Image(systemName: "exclamationmark.triangle.fill")
                 .font(.system(size: 12))
@@ -116,9 +123,21 @@ struct CapsuleBarView: View {
                 TypingDotsView()
             }
         case .done:
+            if session.smartSendCancelled {
+                Text("已取消")
+                    .font(.system(size: 12, weight: .medium, design: .rounded))
+                    .foregroundStyle(.orange)
+            } else {
+                Text(session.processedText.isEmpty ? session.rawTranscript : session.processedText)
+                    .font(.system(size: 12, design: .rounded))
+                    .foregroundStyle(.white)
+                    .lineLimit(2)
+                    .truncationMode(.tail)
+            }
+        case .confirming:
             Text(session.processedText.isEmpty ? session.rawTranscript : session.processedText)
                 .font(.system(size: 12, design: .rounded))
-                .foregroundStyle(.white)
+                .foregroundStyle(.white.opacity(breatheOpacity * 0.7 + 0.3))
                 .lineLimit(2)
                 .truncationMode(.tail)
         case .error(let msg):
@@ -153,6 +172,8 @@ struct CapsuleBarView: View {
                 return [.orange.opacity(0.5), .orange.opacity(0.15)]
             case .done:
                 return [.green.opacity(0.5), .green.opacity(0.1)]
+            case .confirming:
+                return [.cyan.opacity(0.6), .blue.opacity(0.2)]
             case .error:
                 return [.red.opacity(0.5), .red.opacity(0.1)]
             }
@@ -162,6 +183,22 @@ struct CapsuleBarView: View {
             startPoint: .topLeading,
             endPoint: .bottomTrailing
         )
+    }
+
+    // MARK: - Shadow
+
+    private var confirmingShadowColor: Color {
+        if case .confirming = session.state {
+            return .cyan.opacity(0.4 * breatheOpacity)
+        }
+        return .black.opacity(0.3)
+    }
+
+    private var confirmingShadowRadius: CGFloat {
+        if case .confirming = session.state {
+            return 12
+        }
+        return 10
     }
 
     // MARK: - Dimensions
@@ -183,6 +220,12 @@ struct CapsuleBarView: View {
             let estimatedWidth = min(400, max(160, CGFloat(text.count) * charWidth + 60))
             capsuleWidth = estimatedWidth
             capsuleHeight = text.count > 25 ? 56 : 36
+        case .confirming:
+            let text = session.processedText.isEmpty ? session.rawTranscript : session.processedText
+            let charWidth: CGFloat = text.unicodeScalars.allSatisfy({ $0.isASCII }) ? 7 : 13
+            let estimatedWidth = min(400, max(180, CGFloat(text.count) * charWidth + 80))
+            capsuleWidth = estimatedWidth
+            capsuleHeight = text.count > 25 ? 56 : 36
         case .error:
             capsuleWidth = 260
             capsuleHeight = 36
@@ -197,9 +240,18 @@ struct CapsuleBarView: View {
             withAnimation(.easeInOut(duration: 0.6).repeatForever(autoreverses: true)) {
                 pulseScale = 1.4
             }
+            withAnimation(.easeInOut(duration: 0.2)) {
+                breatheOpacity = 1.0
+            }
+        case .confirming:
+            withAnimation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true)) {
+                pulseScale = 1.3
+                breatheOpacity = 0.4
+            }
         default:
             withAnimation(.easeInOut(duration: 0.2)) {
                 pulseScale = 1.0
+                breatheOpacity = 1.0
             }
         }
     }

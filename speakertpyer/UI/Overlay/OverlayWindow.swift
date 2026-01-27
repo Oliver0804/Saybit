@@ -203,6 +203,12 @@ class OverlayWindowController: NSObject {
         soundItem.state = (settingsStore?.enableSoundFeedback == true) ? .on : .off
         menu.addItem(soundItem)
 
+        // Smart Send toggle
+        let smartSendItem = NSMenuItem(title: "Smart Send", action: #selector(toggleSmartSend(_:)), keyEquivalent: "")
+        smartSendItem.target = self
+        smartSendItem.state = (settingsStore?.enableSmartSend == true) ? .on : .off
+        menu.addItem(smartSendItem)
+
         menu.addItem(.separator())
 
         // Reset position
@@ -251,6 +257,10 @@ class OverlayWindowController: NSObject {
         settingsStore?.enableSoundFeedback.toggle()
     }
 
+    @objc private func toggleSmartSend(_ sender: NSMenuItem) {
+        settingsStore?.enableSmartSend.toggle()
+    }
+
     @objc private func resetPosition(_ sender: NSMenuItem) {
         guard let screen = NSScreen.main else { return }
         let screenFrame = screen.visibleFrame
@@ -277,6 +287,7 @@ class OverlayWindowController: NSObject {
             backing: .buffered,
             defer: false
         )
+        window.isReleasedWhenClosed = false
         window.title = "SpeakerTyper 設定"
         window.contentView = NSHostingView(rootView: settingsView)
         window.center()

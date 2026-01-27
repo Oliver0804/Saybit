@@ -87,6 +87,16 @@ class SettingsStore: ObservableObject {
         didSet { UserDefaults.standard.set(enableAutoStop, forKey: "enableAutoStop") }
     }
 
+    // MARK: - Smart Send
+
+    @Published var enableSmartSend: Bool {
+        didSet { UserDefaults.standard.set(enableSmartSend, forKey: "enableSmartSend") }
+    }
+
+    @Published var smartSendDelay: Double {
+        didSet { UserDefaults.standard.set(smartSendDelay, forKey: "smartSendDelay") }
+    }
+
     // MARK: - Microphone Sensitivity
 
     @Published var micSensitivity: Double {
@@ -127,6 +137,8 @@ class SettingsStore: ObservableObject {
         self.enableWhisperMode = defaults.object(forKey: "enableWhisperMode") as? Bool ?? false
         self.silenceTimeout = defaults.object(forKey: "silenceTimeout") as? Double ?? 2.0
         self.enableAutoStop = defaults.object(forKey: "enableAutoStop") as? Bool ?? true
+        self.enableSmartSend = defaults.object(forKey: "enableSmartSend") as? Bool ?? false
+        self.smartSendDelay = defaults.object(forKey: "smartSendDelay") as? Double ?? 3.0
         self.micSensitivity = defaults.object(forKey: "micSensitivity") as? Double ?? 2.0
         self.overlayPositionX = defaults.object(forKey: "overlayPositionX") as? Double ?? 0
         self.overlayPositionY = defaults.object(forKey: "overlayPositionY") as? Double ?? 0

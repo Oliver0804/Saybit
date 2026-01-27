@@ -14,6 +14,7 @@ class TranscriptionSession {
         case recording
         case processing
         case done
+        case confirming(remaining: Int)
         case error(String)
     }
 
@@ -24,6 +25,7 @@ class TranscriptionSession {
     var startTime: Date?
     var endTime: Date?
     var audioLevel: Float = 0.0
+    var smartSendCancelled: Bool = false
 
     var duration: TimeInterval {
         guard let start = startTime else { return 0 }
@@ -39,5 +41,6 @@ class TranscriptionSession {
         startTime = nil
         endTime = nil
         audioLevel = 0.0
+        smartSendCancelled = false
     }
 }
