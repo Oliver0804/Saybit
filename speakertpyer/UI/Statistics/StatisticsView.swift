@@ -21,9 +21,17 @@ struct StatisticsView: View {
     @State private var timeRange: TimeRange = .week
 
     enum TimeRange: String, CaseIterable {
-        case week = "7 天"
-        case month = "30 天"
-        case all = "全部"
+        case week
+        case month
+        case all
+
+        var displayName: String {
+            switch self {
+            case .week: return L10n.Stats.week
+            case .month: return L10n.Stats.month
+            case .all: return L10n.Stats.all
+            }
+        }
     }
 
     private var filteredRecords: [TranscriptionRecord] {
@@ -42,9 +50,9 @@ struct StatisticsView: View {
         ScrollView {
             VStack(spacing: 16) {
                 // Time range picker
-                Picker("時間範圍", selection: $timeRange) {
+                Picker(L10n.Stats.timeRange, selection: $timeRange) {
                     ForEach(TimeRange.allCases, id: \.self) { range in
-                        Text(range.rawValue).tag(range)
+                        Text(range.displayName).tag(range)
                     }
                 }
                 .pickerStyle(.segmented)
@@ -73,25 +81,25 @@ struct StatisticsView: View {
     private var summaryCards: some View {
         HStack(spacing: 12) {
             StatCard(
-                title: "總次數",
+                title: L10n.Stats.totalCount,
                 value: "\(filteredRecords.count)",
                 icon: "number",
                 color: .blue
             )
             StatCard(
-                title: "總 Token",
+                title: L10n.Stats.totalTokens,
                 value: formatNumber(filteredRecords.reduce(0) { $0 + Int($1.totalTokens) }),
                 icon: "bitcoinsign.circle",
                 color: .orange
             )
             StatCard(
-                title: "平均時長",
+                title: L10n.Stats.avgDuration,
                 value: String(format: "%.1fs", averageDuration),
                 icon: "timer",
                 color: .green
             )
             StatCard(
-                title: "今日次數",
+                title: L10n.Stats.todayCount,
                 value: "\(todayCount)",
                 icon: "calendar",
                 color: .purple
@@ -104,7 +112,7 @@ struct StatisticsView: View {
     private var dailyUsageChart: some View {
         GlassCard {
             VStack(alignment: .leading, spacing: 8) {
-                GlassSectionHeader(title: "每日使用次數", icon: "chart.bar.fill")
+                GlassSectionHeader(title: L10n.Stats.dailyUsage, icon: "chart.bar.fill")
 
                 Chart(dailyUsageData, id: \.date) { item in
                     BarMark(
@@ -129,10 +137,10 @@ struct StatisticsView: View {
     private var topAppsCard: some View {
         GlassCard {
             VStack(alignment: .leading, spacing: 8) {
-                GlassSectionHeader(title: "常用 App", icon: "app.badge.fill")
+                GlassSectionHeader(title: L10n.Stats.topApps, icon: "app.badge.fill")
 
                 if topApps.isEmpty {
-                    Text("尚無資料")
+                    Text(L10n.Stats.noData)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 } else {
@@ -141,7 +149,7 @@ struct StatisticsView: View {
                             Text(item.app)
                                 .font(.body)
                             Spacer()
-                            Text("\(item.count) 次")
+                            Text("\(item.count) \(L10n.Stats.times)")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
 
@@ -163,7 +171,7 @@ struct StatisticsView: View {
     private var tokenTrendChart: some View {
         GlassCard {
             VStack(alignment: .leading, spacing: 8) {
-                GlassSectionHeader(title: "Token 消耗趨勢", icon: "chart.line.uptrend.xyaxis")
+                GlassSectionHeader(title: L10n.Stats.tokenTrend, icon: "chart.line.uptrend.xyaxis")
 
                 Chart(dailyTokenData, id: \.date) { item in
                     LineMark(
@@ -195,10 +203,10 @@ struct StatisticsView: View {
     private var modeDistributionCard: some View {
         GlassCard {
             VStack(alignment: .leading, spacing: 8) {
-                GlassSectionHeader(title: "模式分佈", icon: "chart.pie.fill")
+                GlassSectionHeader(title: L10n.Stats.modeDistribution, icon: "chart.pie.fill")
 
                 if modeDistribution.isEmpty {
-                    Text("尚無資料")
+                    Text(L10n.Stats.noData)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 } else {
@@ -311,12 +319,7 @@ private struct ModeUsage {
     let count: Int
 
     var displayName: String {
-        switch mode {
-        case "dictation": return "聽寫"
-        case "command": return "指令"
-        case "edit": return "編輯"
-        default: return mode
-        }
+        L10n.modeUsageDisplayName(mode)
     }
 
     var color: Color {

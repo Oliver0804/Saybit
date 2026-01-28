@@ -15,14 +15,7 @@ enum ToneStyle: String, CaseIterable, Identifiable {
 
     var id: String { rawValue }
 
-    var displayName: String {
-        switch self {
-        case .auto: return "自動"
-        case .formal: return "正式"
-        case .casual: return "口語"
-        case .veryCasual: return "很口語"
-        }
-    }
+    var displayName: String { L10n.toneStyle(self) }
 }
 
 enum PromptStyle: String, CaseIterable, Identifiable {

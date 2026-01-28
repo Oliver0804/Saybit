@@ -21,10 +21,10 @@ struct HotKeySettingsView: View {
                 // MARK: - 快捷鍵
                 GlassCard {
                     VStack(alignment: .leading, spacing: 12) {
-                        GlassSectionHeader(title: "快捷鍵", icon: "command")
+                        GlassSectionHeader(title: L10n.HotKey.hotkey, icon: "command")
 
                         HStack(spacing: 12) {
-                            Text("目前快捷鍵")
+                            Text(L10n.HotKey.currentHotkey)
                                 .foregroundStyle(.secondary)
 
                             Text(currentHotkeyLabel)
@@ -52,13 +52,13 @@ struct HotKeySettingsView: View {
                                     .foregroundStyle(.orange)
                                     .monospacedDigit()
 
-                                Button("取消") {
+                                Button(L10n.Common.cancel) {
                                     cancelRecording()
                                 }
                                 .controlSize(.small)
                                 .buttonStyle(.bordered)
                             } else {
-                                Button("錄製新快捷鍵") {
+                                Button(L10n.HotKey.recordNew) {
                                     startRecording()
                                 }
                                 .controlSize(.small)
@@ -67,8 +67,8 @@ struct HotKeySettingsView: View {
                         }
 
                         Text(isRecording
-                            ? "按住修飾鍵 (⌘⌃⌥⇧) 再按一個按鍵，按 Esc 取消"
-                            : "需包含至少一個修飾鍵 (⌘⌃⌥⇧) + 一個按鍵")
+                            ? L10n.HotKey.recordingHint
+                            : L10n.HotKey.requirement)
                             .font(.caption)
                             .foregroundStyle(isRecording ? .orange : .secondary)
                     }
@@ -77,7 +77,7 @@ struct HotKeySettingsView: View {
                 // MARK: - 觸發模式
                 GlassCard {
                     VStack(alignment: .leading, spacing: 10) {
-                        GlassSectionHeader(title: "觸發模式", icon: "hand.tap")
+                        GlassSectionHeader(title: L10n.HotKey.triggerMode, icon: "hand.tap")
 
                         Picker("", selection: $settingsStore.hotkeyTriggerMode) {
                             ForEach(HotkeyTriggerMode.allCases) { mode in
@@ -101,28 +101,28 @@ struct HotKeySettingsView: View {
                 // MARK: - 使用說明
                 GlassCard {
                     VStack(alignment: .leading, spacing: 10) {
-                        GlassSectionHeader(title: "使用方式", icon: "questionmark.circle")
+                        GlassSectionHeader(title: L10n.HotKey.usageGuide, icon: "questionmark.circle")
 
                         switch settingsStore.hotkeyTriggerMode {
                         case .toggle:
                             VStack(alignment: .leading, spacing: 8) {
-                                StepRow(step: 1, text: "按一下快捷鍵開始錄音")
-                                StepRow(step: 2, text: "說出想要輸入的文字")
-                                StepRow(step: 3, text: "說完後自動停止，AI 處理並輸入")
-                                StepRow(step: 4, text: "也可再按一次手動停止")
+                                StepRow(step: 1, text: L10n.HotKey.toggleStep1)
+                                StepRow(step: 2, text: L10n.HotKey.toggleStep2)
+                                StepRow(step: 3, text: L10n.HotKey.toggleStep3)
+                                StepRow(step: 4, text: L10n.HotKey.toggleStep4)
                             }
                         case .hold:
                             VStack(alignment: .leading, spacing: 8) {
-                                StepRow(step: 1, text: "按住快捷鍵開始錄音")
-                                StepRow(step: 2, text: "說出想要輸入的文字")
-                                StepRow(step: 3, text: "放開按鍵，AI 自動處理並輸入")
+                                StepRow(step: 1, text: L10n.HotKey.holdStep1)
+                                StepRow(step: 2, text: L10n.HotKey.holdStep2)
+                                StepRow(step: 3, text: L10n.HotKey.holdStep3)
                             }
                         case .doubleTap:
                             VStack(alignment: .leading, spacing: 8) {
-                                StepRow(step: 1, text: "快速雙擊快捷鍵開始錄音")
-                                StepRow(step: 2, text: "說出想要輸入的文字")
-                                StepRow(step: 3, text: "說完後自動停止，AI 處理並輸入")
-                                StepRow(step: 4, text: "也可再次雙擊手動停止")
+                                StepRow(step: 1, text: L10n.HotKey.doubleTapStep1)
+                                StepRow(step: 2, text: L10n.HotKey.doubleTapStep2)
+                                StepRow(step: 3, text: L10n.HotKey.doubleTapStep3)
+                                StepRow(step: 4, text: L10n.HotKey.doubleTapStep4)
                             }
                         }
                     }
@@ -134,7 +134,7 @@ struct HotKeySettingsView: View {
 
     private var currentHotkeyLabel: String {
         if isRecording {
-            return "按下新的快捷鍵..."
+            return L10n.HotKey.recording
         }
         return GlobalHotKeyManager.hotkeyDescription(
             keyCode: UInt16(settingsStore.hotkeyKeyCode),

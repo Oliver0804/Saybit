@@ -31,9 +31,9 @@ struct APISettingsView: View {
                 // MARK: - Provider 選擇
                 GlassCard {
                     VStack(alignment: .leading, spacing: 10) {
-                        GlassSectionHeader(title: "API 服務商", icon: "server.rack")
+                        GlassSectionHeader(title: L10n.API.provider, icon: "server.rack")
 
-                        Picker("服務商", selection: $settingsStore.selectedProviderID) {
+                        Picker(L10n.API.providerPicker, selection: $settingsStore.selectedProviderID) {
                             ForEach(settingsStore.allProviders) { provider in
                                 Text(provider.name).tag(provider.id)
                             }
@@ -52,7 +52,7 @@ struct APISettingsView: View {
                                         Button {
                                             removeCustomProvider(cp)
                                         } label: {
-                                            Label("移除「\(cp.name)」", systemImage: "trash")
+                                            Label(L10n.API.removeProvider(cp.name), systemImage: "trash")
                                         }
                                         .controlSize(.small)
                                         .buttonStyle(.bordered)
@@ -65,7 +65,7 @@ struct APISettingsView: View {
                         Button {
                             showAddCustom = true
                         } label: {
-                            Label("新增自訂端點", systemImage: "plus")
+                            Label(L10n.API.addCustomEndpoint, systemImage: "plus")
                         }
                         .controlSize(.small)
                         .buttonStyle(.bordered)
@@ -88,7 +88,7 @@ struct APISettingsView: View {
                                 }
                                 .textFieldStyle(.roundedBorder)
 
-                                Button(showKey ? "隱藏" : "顯示") {
+                                Button(showKey ? L10n.Common.hide : L10n.Common.show) {
                                     showKey.toggle()
                                 }
                                 .controlSize(.small)
@@ -96,23 +96,23 @@ struct APISettingsView: View {
                             }
 
                             HStack(spacing: 8) {
-                                Button("儲存") {
+                                Button(L10n.Common.save) {
                                     do {
                                         try KeychainHelper.saveAPIKey(apiKey, for: currentProvider.id)
                                         hasKey = true
-                                        showTemporaryStatus("已儲存")
+                                        showTemporaryStatus(L10n.Common.saved)
                                     } catch {
-                                        showTemporaryStatus("儲存失敗")
+                                        showTemporaryStatus(L10n.Common.saveFailed)
                                     }
                                 }
                                 .buttonStyle(.borderedProminent)
                                 .controlSize(.small)
 
-                                Button("清除") {
+                                Button(L10n.API.clear) {
                                     KeychainHelper.deleteAPIKey(for: currentProvider.id)
                                     apiKey = ""
                                     hasKey = false
-                                    showTemporaryStatus("已清除")
+                                    showTemporaryStatus(L10n.Common.cleared)
                                 }
                                 .controlSize(.small)
                                 .buttonStyle(.bordered)
@@ -125,7 +125,7 @@ struct APISettingsView: View {
                                         ProgressView()
                                             .controlSize(.small)
                                     } else {
-                                        Text("測試連線")
+                                        Text(L10n.Common.testConnection)
                                     }
                                 }
                                 .controlSize(.small)
@@ -138,7 +138,7 @@ struct APISettingsView: View {
                                     Circle()
                                         .fill(hasKey ? Color.green : Color.red)
                                         .frame(width: 8, height: 8)
-                                    Text(hasKey ? "已設定" : "未設定")
+                                    Text(L10n.API.apiKeySet(hasKey))
                                         .font(.caption)
                                         .foregroundStyle(.secondary)
                                 }
@@ -167,7 +167,7 @@ struct APISettingsView: View {
                     // Ollama / no-key provider
                     GlassCard {
                         VStack(alignment: .leading, spacing: 10) {
-                            GlassSectionHeader(title: "\(currentProvider.name) 狀態", icon: "desktopcomputer")
+                            GlassSectionHeader(title: L10n.API.providerStatus(currentProvider.name), icon: "desktopcomputer")
 
                             HStack(spacing: 8) {
                                 Circle()
@@ -181,7 +181,7 @@ struct APISettingsView: View {
                                 Button {
                                     checkOllamaStatus()
                                 } label: {
-                                    Label("重新檢查", systemImage: "arrow.clockwise")
+                                    Label(L10n.Common.recheck, systemImage: "arrow.clockwise")
                                 }
                                 .controlSize(.small)
                                 .buttonStyle(.bordered)
@@ -192,7 +192,7 @@ struct APISettingsView: View {
                                     if isTesting {
                                         ProgressView().controlSize(.small)
                                     } else {
-                                        Text("測試連線")
+                                        Text(L10n.Common.testConnection)
                                     }
                                 }
                                 .controlSize(.small)
@@ -202,7 +202,7 @@ struct APISettingsView: View {
 
                             if !ollamaModels.isEmpty {
                                 VStack(alignment: .leading, spacing: 4) {
-                                    Text("可用模型：")
+                                    Text(L10n.API.availableModels)
                                         .font(.caption)
                                         .foregroundStyle(.secondary)
                                     FlowLayout(spacing: 4) {
@@ -218,7 +218,7 @@ struct APISettingsView: View {
                                 }
                             }
 
-                            Text("無需 API Key，請確保 Ollama 已啟動（ollama serve）")
+                            Text(L10n.API.ollamaHint)
                                 .font(.caption2)
                                 .foregroundStyle(.secondary)
 
@@ -239,13 +239,13 @@ struct APISettingsView: View {
                 // MARK: - 模型選擇
                 GlassCard {
                     VStack(alignment: .leading, spacing: 10) {
-                        GlassSectionHeader(title: "模型", icon: "cpu")
+                        GlassSectionHeader(title: L10n.API.model, icon: "cpu")
 
                         TextField("Model ID", text: $settingsStore.selectedModel)
                             .textFieldStyle(.roundedBorder)
 
                         if !currentProvider.modelHint.isEmpty {
-                            Text("常用: \(currentProvider.modelHint)")
+                            Text(L10n.API.commonModels(currentProvider.modelHint))
                                 .font(.caption2)
                                 .foregroundStyle(.secondary)
                         }
@@ -266,24 +266,24 @@ struct APISettingsView: View {
 
     private var addCustomProviderSheet: some View {
         VStack(spacing: 16) {
-            Text("新增自訂端點")
+            Text(L10n.API.addCustomTitle)
                 .font(.headline)
 
-            TextField("名稱（如 Ollama）", text: $customName)
+            TextField(L10n.API.nameHint, text: $customName)
                 .textFieldStyle(.roundedBorder)
 
-            TextField("Base URL（如 http://localhost:11434/v1/chat/completions）", text: $customBaseURL)
+            TextField(L10n.API.baseURLHint, text: $customBaseURL)
                 .textFieldStyle(.roundedBorder)
 
             HStack {
-                Button("取消") {
+                Button(L10n.Common.cancel) {
                     showAddCustom = false
                     customName = ""
                     customBaseURL = ""
                 }
                 .buttonStyle(.bordered)
 
-                Button("新增") {
+                Button(L10n.Common.add) {
                     addCustomProvider()
                 }
                 .buttonStyle(.borderedProminent)
@@ -306,9 +306,9 @@ struct APISettingsView: View {
 
     private var ollamaStatusText: String {
         switch ollamaRunning {
-        case .none: return "檢查中..."
-        case .some(true): return "已連線 (\(ollamaModels.count) 個模型)"
-        case .some(false): return "未偵測到 Ollama"
+        case .none: return L10n.API.checking
+        case .some(true): return L10n.API.connectedModels(ollamaModels.count)
+        case .some(false): return L10n.API.notDetected
         }
     }
 
@@ -385,7 +385,7 @@ struct APISettingsView: View {
             do {
                 try await client.testConnection(model: model, provider: provider)
                 await MainActor.run {
-                    testResult = "✓ 連線成功 (\(model))"
+                    testResult = L10n.API.connectionSuccessModel(model)
                     isTesting = false
                     clearTestResult()
                 }

@@ -130,7 +130,7 @@ struct CapsuleBarView: View {
                 Button {
                     onConfirmInject?()
                 } label: {
-                    Label("輸入", systemImage: "checkmark.circle.fill")
+                    Label(L10n.Overlay.inject, systemImage: "checkmark.circle.fill")
                         .font(.system(size: 11, weight: .semibold))
                 }
                 .buttonStyle(.bordered)
@@ -140,7 +140,7 @@ struct CapsuleBarView: View {
                 Button {
                     onRegenerate?()
                 } label: {
-                    Label("重新生成", systemImage: "arrow.clockwise")
+                    Label(L10n.Overlay.regenerate, systemImage: "arrow.clockwise")
                         .font(.system(size: 11, weight: .medium))
                 }
                 .buttonStyle(.bordered)
@@ -150,7 +150,7 @@ struct CapsuleBarView: View {
                 Button {
                     onCancelPreview?()
                 } label: {
-                    Label("取消", systemImage: "xmark.circle")
+                    Label(L10n.Common.cancel, systemImage: "xmark.circle")
                         .font(.system(size: 11, weight: .medium))
                 }
                 .buttonStyle(.bordered)
@@ -217,21 +217,21 @@ struct CapsuleBarView: View {
                     .font(.system(size: 11, design: .monospaced))
                     .foregroundStyle(.white.opacity(0.5))
                 if !session.rawTranscript.isEmpty {
-                    Text("\(session.rawTranscript.count) 字")
+                    Text("\(session.rawTranscript.count) \(L10n.Overlay.chars)")
                         .font(.system(size: 10, design: .monospaced))
                         .foregroundStyle(.white.opacity(0.35))
                 }
             }
         case .processing:
             HStack(spacing: 4) {
-                Text("處理中")
+                Text(L10n.Overlay.processing)
                     .font(.system(size: 12, design: .rounded))
                     .foregroundStyle(.white.opacity(0.7))
                 TypingDotsView()
             }
         case .done:
             if session.smartSendCancelled {
-                Text("已取消")
+                Text(L10n.Overlay.cancelled)
                     .font(.system(size: 12, weight: .medium, design: .rounded))
                     .foregroundStyle(.orange)
             } else {

@@ -14,11 +14,5 @@ enum ProcessingMode: String, CaseIterable, Identifiable {
 
     var id: String { rawValue }
 
-    var displayName: String {
-        switch self {
-        case .dictation: return "聽寫"
-        case .command: return "指令"
-        case .edit: return "編輯"
-        }
-    }
+    var displayName: String { L10n.processingMode(self) }
 }

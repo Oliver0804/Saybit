@@ -72,11 +72,28 @@ actor OpenRouterClient {
                     let payloadJSON = try jsonEncoder.encode(payload)
                     let payloadString = String(data: payloadJSON, encoding: .utf8) ?? "{}"
 
+                    // When existing_text is present, use structured format for clarity
+                    let userMessage: String
+                    if let existingText = payload.existingText, !existingText.isEmpty {
+                        userMessage = """
+                        ## Voice Instruction
+                        \(payload.transcript)
+
+                        ## Selected Text
+                        \(existingText)
+
+                        ## Metadata
+                        \(payloadString)
+                        """
+                    } else {
+                        userMessage = payloadString
+                    }
+
                     let chatRequest = OpenRouterChatRequest(
                         model: model,
                         messages: [
                             .init(role: "system", content: systemPrompt),
-                            .init(role: "user", content: payloadString),
+                            .init(role: "user", content: userMessage),
                         ],
                         stream: true,
                         temperature: temperature,

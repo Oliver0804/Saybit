@@ -28,12 +28,12 @@ struct GeneralSettingsView: View {
                 // MARK: - 語言
                 GlassCard {
                     VStack(alignment: .leading, spacing: 10) {
-                        GlassSectionHeader(title: "語言", icon: "globe")
+                        GlassSectionHeader(title: L10n.General.language, icon: "globe")
 
-                        Picker("偏好語言", selection: $settingsStore.languagePreference) {
-                            Text("繁體中文").tag("zh-TW")
-                            Text("English").tag("en-US")
-                            Text("日本語").tag("ja-JP")
+                        Picker(L10n.General.preferredLanguage, selection: $settingsStore.languagePreference) {
+                            ForEach(AppLanguage.allCases) { lang in
+                                Text(lang.displayName).tag(lang.rawValue)
+                            }
                         }
                         .pickerStyle(.segmented)
                     }
@@ -42,22 +42,22 @@ struct GeneralSettingsView: View {
                 // MARK: - 功能開關
                 GlassCard {
                     VStack(alignment: .leading, spacing: 10) {
-                        GlassSectionHeader(title: "功能", icon: "switch.2")
+                        GlassSectionHeader(title: L10n.General.features, icon: "switch.2")
 
-                        Toggle("Context Awareness", isOn: $settingsStore.enableContextAwareness)
-                        Text("讀取目前選取的文字作為上下文")
+                        Toggle(L10n.General.contextAwareness, isOn: $settingsStore.enableContextAwareness)
+                        Text(L10n.General.contextAwarenessDesc)
                             .font(.caption2)
                             .foregroundStyle(.secondary)
                             .padding(.leading, 2)
 
                         Divider().opacity(0.3)
 
-                        Toggle("音效回饋", isOn: $settingsStore.enableSoundFeedback)
+                        Toggle(L10n.General.soundFeedback, isOn: $settingsStore.enableSoundFeedback)
 
                         Divider().opacity(0.3)
 
-                        Toggle("Whisper Mode", isOn: $settingsStore.enableWhisperMode)
-                        Text("提示 LLM 過濾背景噪音與雜訊")
+                        Toggle(L10n.General.whisperMode, isOn: $settingsStore.enableWhisperMode)
+                        Text(L10n.General.whisperModeDesc)
                             .font(.caption2)
                             .foregroundStyle(.secondary)
                             .padding(.leading, 2)
@@ -67,9 +67,9 @@ struct GeneralSettingsView: View {
                 // MARK: - 語音辨識引擎
                 GlassCard {
                     VStack(alignment: .leading, spacing: 10) {
-                        GlassSectionHeader(title: "語音辨識引擎", icon: "waveform.circle")
+                        GlassSectionHeader(title: L10n.General.sttEngine, icon: "waveform.circle")
 
-                        Picker("辨識引擎", selection: $settingsStore.sttEngine) {
+                        Picker(L10n.General.sttEnginePicker, selection: $settingsStore.sttEngine) {
                             ForEach(STTEngine.allCases, id: \.self) { engine in
                                 Text(engine.displayName).tag(engine)
                             }
@@ -79,7 +79,7 @@ struct GeneralSettingsView: View {
                         if settingsStore.sttEngine == .whisperAPI {
                             VStack(alignment: .leading, spacing: 8) {
                                 HStack {
-                                    Text("Whisper API Key")
+                                    Text(L10n.General.whisperAPIKey)
                                     Spacer()
                                     whisperAPIKeyStatus
                                 }
@@ -100,7 +100,7 @@ struct GeneralSettingsView: View {
                                     }
                                     .buttonStyle(.borderless)
 
-                                    Button("儲存") {
+                                    Button(L10n.Common.save) {
                                         saveWhisperAPIKey()
                                     }
                                     .controlSize(.small)
@@ -113,13 +113,13 @@ struct GeneralSettingsView: View {
                                         testWhisperConnection()
                                     } label: {
                                         Label(
-                                            whisperTestStatus ?? "測試連線",
-                                            systemImage: whisperTestStatus == "連線成功" ? "checkmark.circle.fill" : "bolt.horizontal"
+                                            whisperTestStatus ?? L10n.Common.testConnection,
+                                            systemImage: whisperTestStatus == L10n.Common.connectionSuccess ? "checkmark.circle.fill" : "bolt.horizontal"
                                         )
                                     }
                                     .controlSize(.small)
                                     .buttonStyle(.bordered)
-                                    .tint(whisperTestStatus == "連線成功" ? .green : .accentColor)
+                                    .tint(whisperTestStatus == L10n.Common.connectionSuccess ? .green : .accentColor)
                                     .disabled(isTestingWhisper)
 
                                     if isTestingWhisper {
@@ -128,7 +128,7 @@ struct GeneralSettingsView: View {
                                     }
                                 }
 
-                                Text("使用 OpenAI Whisper API 進行語音辨識，辨識準確度更高，但需網路連線且會產生 API 費用")
+                                Text(L10n.General.whisperDesc)
                                     .font(.caption2)
                                     .foregroundStyle(.secondary)
                             }
@@ -138,8 +138,8 @@ struct GeneralSettingsView: View {
                         if settingsStore.sttEngine == .appleSpeech {
                             Divider().opacity(0.3)
 
-                            Toggle("On-Device STT", isOn: $settingsStore.enableOnDeviceSTT)
-                            Text("使用本地語音辨識，不需網路")
+                            Toggle(L10n.General.onDeviceSTT, isOn: $settingsStore.enableOnDeviceSTT)
+                            Text(L10n.General.onDeviceSTTDesc)
                                 .font(.caption2)
                                 .foregroundStyle(.secondary)
                                 .padding(.leading, 2)
@@ -150,18 +150,18 @@ struct GeneralSettingsView: View {
                 // MARK: - 膠囊大小
                 GlassCard {
                     VStack(alignment: .leading, spacing: 10) {
-                        GlassSectionHeader(title: "膠囊大小", icon: "arrow.up.left.and.arrow.down.right")
+                        GlassSectionHeader(title: L10n.General.capsuleSize, icon: "arrow.up.left.and.arrow.down.right")
 
                         VStack(alignment: .leading, spacing: 4) {
                             HStack {
-                                Text("縮放比例")
+                                Text(L10n.General.scaleRatio)
                                 Spacer()
                                 Text(String(format: "%.0f%%", settingsStore.capsuleScale * 100))
                                     .font(.system(.body, design: .monospaced))
                                     .foregroundStyle(.secondary)
                             }
                             Slider(value: $settingsStore.capsuleScale, in: 0.5...2.0, step: 0.1)
-                            Text("調整浮動膠囊的顯示大小")
+                            Text(L10n.General.capsuleSizeDesc)
                                 .font(.caption2)
                                 .foregroundStyle(.secondary)
                         }
@@ -171,16 +171,16 @@ struct GeneralSettingsView: View {
                 // MARK: - 輸入裝置
                 GlassCard {
                     VStack(alignment: .leading, spacing: 10) {
-                        GlassSectionHeader(title: "輸入裝置", icon: "mic.badge.xmark")
+                        GlassSectionHeader(title: L10n.General.inputDevice, icon: "mic.badge.xmark")
 
-                        Picker("輸入裝置", selection: $settingsStore.selectedInputDeviceUID) {
-                            Text("系統預設").tag("")
+                        Picker(L10n.General.inputDevice, selection: $settingsStore.selectedInputDeviceUID) {
+                            Text(L10n.General.systemDefault).tag("")
                             ForEach(inputDevices) { device in
                                 Text(device.name).tag(device.uid)
                             }
                         }
 
-                        Text("選擇語音輸入使用的麥克風")
+                        Text(L10n.General.selectMicDesc)
                             .font(.caption2)
                             .foregroundStyle(.secondary)
 
@@ -191,7 +191,7 @@ struct GeneralSettingsView: View {
                             Button {
                                 toggleMicTest()
                             } label: {
-                                Label(isMicTesting ? "停止測試" : "測試麥克風", systemImage: isMicTesting ? "stop.fill" : "waveform")
+                                Label(isMicTesting ? L10n.General.stopTest : L10n.General.testMic, systemImage: isMicTesting ? "stop.fill" : "waveform")
                             }
                             .controlSize(.small)
                             .buttonStyle(.bordered)
@@ -218,7 +218,7 @@ struct GeneralSettingsView: View {
                         .frame(height: 24)
 
                         if isMicTesting {
-                            Text("對麥克風說話，觀察音量條是否有反應")
+                            Text(L10n.General.micTestHint)
                                 .font(.caption2)
                                 .foregroundStyle(.secondary)
                         }
@@ -228,18 +228,18 @@ struct GeneralSettingsView: View {
                 // MARK: - 麥克風靈敏度
                 GlassCard {
                     VStack(alignment: .leading, spacing: 10) {
-                        GlassSectionHeader(title: "麥克風靈敏度", icon: "mic.fill")
+                        GlassSectionHeader(title: L10n.General.micSensitivity, icon: "mic.fill")
 
                         VStack(alignment: .leading, spacing: 4) {
                             HStack {
-                                Text("增益倍數")
+                                Text(L10n.General.gainMultiplier)
                                 Spacer()
                                 Text(String(format: "%.1fx", settingsStore.micSensitivity))
                                     .font(.system(.body, design: .monospaced))
                                     .foregroundStyle(.secondary)
                             }
                             Slider(value: $settingsStore.micSensitivity, in: 0.5...5.0, step: 0.5)
-                            Text("調高此值可讓音量顯示更靈敏，建議錄音時觀察音量條調整至 3-4 格")
+                            Text(L10n.General.micSensitivityDesc)
                                 .font(.caption2)
                                 .foregroundStyle(.secondary)
                         }
@@ -249,21 +249,21 @@ struct GeneralSettingsView: View {
                 // MARK: - 自動停止
                 GlassCard {
                     VStack(alignment: .leading, spacing: 10) {
-                        GlassSectionHeader(title: "靜音自動停止", icon: "waveform.slash")
+                        GlassSectionHeader(title: L10n.General.silenceAutoStop, icon: "waveform.slash")
 
-                        Toggle("啟用自動停止", isOn: $settingsStore.enableAutoStop)
+                        Toggle(L10n.General.enableAutoStop, isOn: $settingsStore.enableAutoStop)
 
                         if settingsStore.enableAutoStop {
                             VStack(alignment: .leading, spacing: 4) {
                                 HStack {
-                                    Text("靜音等待時間")
+                                    Text(L10n.General.silenceTimeout)
                                     Spacer()
-                                    Text(String(format: "%.1f 秒", settingsStore.silenceTimeout))
+                                    Text(L10n.General.seconds(settingsStore.silenceTimeout))
                                         .font(.system(.body, design: .monospaced))
                                         .foregroundStyle(.secondary)
                                 }
                                 Slider(value: $settingsStore.silenceTimeout, in: 0.5...5.0, step: 0.5)
-                                Text("說完話後等待此時間未偵測到聲音即自動結束錄音")
+                                Text(L10n.General.silenceAutoStopDesc)
                                     .font(.caption2)
                                     .foregroundStyle(.secondary)
                             }
@@ -275,10 +275,10 @@ struct GeneralSettingsView: View {
                 // MARK: - 注入前預覽
                 GlassCard {
                     VStack(alignment: .leading, spacing: 10) {
-                        GlassSectionHeader(title: "注入前預覽", icon: "eye")
+                        GlassSectionHeader(title: L10n.General.previewBeforeInject, icon: "eye")
 
-                        Toggle("啟用注入前預覽", isOn: $settingsStore.enablePreviewBeforeInject)
-                        Text("LLM 處理完成後先顯示預覽，手動確認後再注入文字")
+                        Toggle(L10n.General.enablePreview, isOn: $settingsStore.enablePreviewBeforeInject)
+                        Text(L10n.General.previewDesc)
                             .font(.caption2)
                             .foregroundStyle(.secondary)
                             .padding(.leading, 2)
@@ -288,10 +288,10 @@ struct GeneralSettingsView: View {
                 // MARK: - Smart Send
                 GlassCard {
                     VStack(alignment: .leading, spacing: 10) {
-                        GlassSectionHeader(title: "Smart Send", icon: "paperplane.fill")
+                        GlassSectionHeader(title: L10n.General.smartSend, icon: "paperplane.fill")
 
-                        Toggle("啟用 Smart Send", isOn: $settingsStore.enableSmartSend)
-                        Text("文字貼上後自動倒數，到期自動按下 Enter 送出")
+                        Toggle(L10n.General.enableSmartSend, isOn: $settingsStore.enableSmartSend)
+                        Text(L10n.General.smartSendDesc)
                             .font(.caption2)
                             .foregroundStyle(.secondary)
                             .padding(.leading, 2)
@@ -299,14 +299,14 @@ struct GeneralSettingsView: View {
                         if settingsStore.enableSmartSend {
                             VStack(alignment: .leading, spacing: 4) {
                                 HStack {
-                                    Text("倒數秒數")
+                                    Text(L10n.General.countdownSeconds)
                                     Spacer()
-                                    Text(String(format: "%.1f 秒", settingsStore.smartSendDelay))
+                                    Text(L10n.General.seconds(settingsStore.smartSendDelay))
                                         .font(.system(.body, design: .monospaced))
                                         .foregroundStyle(.secondary)
                                 }
                                 Slider(value: $settingsStore.smartSendDelay, in: 1.0...10.0, step: 0.5)
-                                Text("倒數期間若偵測到說話，會自動取消送出")
+                                Text(L10n.General.smartSendCancelHint)
                                     .font(.caption2)
                                     .foregroundStyle(.secondary)
                             }
@@ -318,16 +318,16 @@ struct GeneralSettingsView: View {
                 // MARK: - 歷史記錄清理
                 GlassCard {
                     VStack(alignment: .leading, spacing: 10) {
-                        GlassSectionHeader(title: "歷史記錄清理", icon: "clock.arrow.circlepath")
+                        GlassSectionHeader(title: L10n.General.historyCleanup, icon: "clock.arrow.circlepath")
 
-                        Toggle("自動清理舊紀錄", isOn: $settingsStore.enableHistoryAutoCleanup)
+                        Toggle(L10n.General.autoCleanup, isOn: $settingsStore.enableHistoryAutoCleanup)
 
                         if settingsStore.enableHistoryAutoCleanup {
                             VStack(alignment: .leading, spacing: 4) {
                                 HStack {
-                                    Text("保留天數")
+                                    Text(L10n.General.retentionDays)
                                     Spacer()
-                                    Text("\(settingsStore.historyRetentionDays) 天")
+                                    Text(L10n.General.days(settingsStore.historyRetentionDays))
                                         .font(.system(.body, design: .monospaced))
                                         .foregroundStyle(.secondary)
                                 }
@@ -339,7 +339,7 @@ struct GeneralSettingsView: View {
                                     in: 7...90,
                                     step: 1
                                 )
-                                Text("超過此天數的歷史紀錄會在開啟時自動清除")
+                                Text(L10n.General.historyCleanupDesc)
                                     .font(.caption2)
                                     .foregroundStyle(.secondary)
                             }
@@ -348,23 +348,38 @@ struct GeneralSettingsView: View {
                     }
                 }
 
+                // MARK: - Tutorial
+                GlassCard {
+                    VStack(alignment: .leading, spacing: 10) {
+                        GlassSectionHeader(title: L10n.General.tutorial, icon: "book.fill")
+
+                        Button {
+                            NotificationCenter.default.post(name: .showTutorial, object: nil)
+                        } label: {
+                            Label(L10n.General.replayTutorial, systemImage: "play.circle")
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                    }
+                }
+
                 // MARK: - 權限狀態
                 GlassCard {
                     VStack(alignment: .leading, spacing: 10) {
-                        GlassSectionHeader(title: "權限狀態", icon: "lock.shield")
+                        GlassSectionHeader(title: L10n.General.permissionStatus, icon: "lock.shield")
 
                         HStack {
                             Image(systemName: "hand.raised.fill")
                                 .foregroundStyle(.secondary)
                                 .frame(width: 20)
-                            Text("Accessibility")
+                            Text(L10n.General.accessibility)
                             Spacer()
                             if accessibilityAuthorized {
-                                Label("已授權", systemImage: "checkmark.circle.fill")
+                                Label(L10n.Common.authorized, systemImage: "checkmark.circle.fill")
                                     .font(.caption)
                                     .foregroundStyle(.green)
                             } else {
-                                Button("開啟設定") {
+                                Button(L10n.Common.openSettings) {
                                     AccessibilityManager.shared.promptIfNeeded()
                                 }
                                 .controlSize(.small)
@@ -378,14 +393,14 @@ struct GeneralSettingsView: View {
                             Image(systemName: "mic.fill")
                                 .foregroundStyle(.secondary)
                                 .frame(width: 20)
-                            Text("麥克風")
+                            Text(L10n.General.microphone)
                             Spacer()
                             if micAuthorized {
-                                Label("已授權", systemImage: "checkmark.circle.fill")
+                                Label(L10n.Common.authorized, systemImage: "checkmark.circle.fill")
                                     .font(.caption)
                                     .foregroundStyle(.green)
                             } else {
-                                Button("開啟設定") {
+                                Button(L10n.Common.openSettings) {
                                     if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone") {
                                         NSWorkspace.shared.open(url)
                                     }
@@ -402,7 +417,7 @@ struct GeneralSettingsView: View {
                             Button {
                                 refreshPermissions()
                             } label: {
-                                Label("重新檢查", systemImage: "arrow.clockwise")
+                                Label(L10n.Common.recheck, systemImage: "arrow.clockwise")
                                     .font(.caption)
                             }
                             .buttonStyle(.bordered)
@@ -443,11 +458,11 @@ struct GeneralSettingsView: View {
     @ViewBuilder
     private var whisperAPIKeyStatus: some View {
         if KeychainHelper.loadAPIKey(for: "whisper_api") != nil {
-            Label("已設定", systemImage: "checkmark.circle.fill")
+            Label(L10n.Common.set, systemImage: "checkmark.circle.fill")
                 .font(.caption)
                 .foregroundStyle(.green)
         } else {
-            Label("未設定", systemImage: "xmark.circle.fill")
+            Label(L10n.Common.notSet, systemImage: "xmark.circle.fill")
                 .font(.caption)
                 .foregroundStyle(.red)
         }
@@ -467,7 +482,7 @@ struct GeneralSettingsView: View {
                 let client = WhisperSTTClient()
                 try await client.testConnection()
                 await MainActor.run {
-                    whisperTestStatus = "連線成功"
+                    whisperTestStatus = L10n.Common.connectionSuccess
                     isTestingWhisper = false
                 }
             } catch {

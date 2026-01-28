@@ -16,7 +16,7 @@ struct PromptSettingsView: View {
                 // MARK: - Prompt 風格
                 GlassCard {
                     VStack(alignment: .leading, spacing: 10) {
-                        GlassSectionHeader(title: "Prompt 風格", icon: "text.bubble")
+                        GlassSectionHeader(title: L10n.Prompt.promptStyle, icon: "text.bubble")
 
                         Picker("", selection: $settingsStore.promptStyle) {
                             ForEach(PromptStyle.allCases) { style in
@@ -35,7 +35,7 @@ struct PromptSettingsView: View {
                 // MARK: - 語調
                 GlassCard {
                     VStack(alignment: .leading, spacing: 10) {
-                        GlassSectionHeader(title: "語調", icon: "theatermasks")
+                        GlassSectionHeader(title: L10n.Prompt.tone, icon: "theatermasks")
 
                         Picker("", selection: $settingsStore.toneStyle) {
                             ForEach(ToneStyle.allCases) { tone in
@@ -44,7 +44,7 @@ struct PromptSettingsView: View {
                         }
                         .pickerStyle(.radioGroup)
 
-                        Text("「自動」會根據當前 App 推斷語調（Slack → 口語，Mail → 正式）")
+                        Text(L10n.Prompt.toneAutoDesc)
                             .font(.caption)
                             .foregroundStyle(.secondary)
                             .padding(.top, 2)
@@ -59,9 +59,9 @@ struct PromptSettingsView: View {
     private var promptDescription: some View {
         switch settingsStore.promptStyle {
         case .typeless:
-            Text("強調意圖理解、自動格式化清單、去贅詞/改口修正。適合一般文字輸入。")
+            Text(L10n.Prompt.typelessDesc)
         case .wisprFlow:
-            Text("強調開發者功能（變數命名、CLI 命令）、Command Mode。適合程式開發。")
+            Text(L10n.Prompt.wisprFlowDesc)
         }
     }
 }

@@ -164,7 +164,7 @@ class OverlayWindowController: NSObject {
         let menu = NSMenu()
 
         // Prompt Style submenu
-        let promptItem = NSMenuItem(title: "Prompt 風格", action: nil, keyEquivalent: "")
+        let promptItem = NSMenuItem(title: L10n.Overlay.promptStyleMenu, action: nil, keyEquivalent: "")
         let promptSubmenu = NSMenu()
         for style in PromptStyle.allCases {
             let item = NSMenuItem(title: style.displayName, action: #selector(selectPromptStyle(_:)), keyEquivalent: "")
@@ -177,7 +177,7 @@ class OverlayWindowController: NSObject {
         menu.addItem(promptItem)
 
         // Tone submenu
-        let toneItem = NSMenuItem(title: "語調", action: nil, keyEquivalent: "")
+        let toneItem = NSMenuItem(title: L10n.Overlay.toneMenu, action: nil, keyEquivalent: "")
         let toneSubmenu = NSMenu()
         for tone in ToneStyle.allCases {
             let item = NSMenuItem(title: tone.displayName, action: #selector(selectToneStyle(_:)), keyEquivalent: "")
@@ -204,7 +204,7 @@ class OverlayWindowController: NSObject {
         menu.addItem(contextItem)
 
         // Sound Feedback toggle
-        let soundItem = NSMenuItem(title: "音效回饋", action: #selector(toggleSoundFeedback(_:)), keyEquivalent: "")
+        let soundItem = NSMenuItem(title: L10n.General.soundFeedback, action: #selector(toggleSoundFeedback(_:)), keyEquivalent: "")
         soundItem.target = self
         soundItem.state = (settingsStore?.enableSoundFeedback == true) ? .on : .off
         menu.addItem(soundItem)
@@ -218,19 +218,19 @@ class OverlayWindowController: NSObject {
         menu.addItem(.separator())
 
         // Reset position
-        let resetPosItem = NSMenuItem(title: "重置位置", action: #selector(resetPosition(_:)), keyEquivalent: "")
+        let resetPosItem = NSMenuItem(title: L10n.Overlay.resetPosition, action: #selector(resetPosition(_:)), keyEquivalent: "")
         resetPosItem.target = self
         menu.addItem(resetPosItem)
 
         // Settings...
-        let settingsItem = NSMenuItem(title: "設定...", action: #selector(openSettings(_:)), keyEquivalent: ",")
+        let settingsItem = NSMenuItem(title: L10n.Common.settings, action: #selector(openSettings(_:)), keyEquivalent: ",")
         settingsItem.target = self
         menu.addItem(settingsItem)
 
         menu.addItem(.separator())
 
         // Quit
-        let quitItem = NSMenuItem(title: "結束 SpeakerTyper", action: #selector(quitApp(_:)), keyEquivalent: "q")
+        let quitItem = NSMenuItem(title: L10n.Common.quit, action: #selector(quitApp(_:)), keyEquivalent: "q")
         quitItem.target = self
         menu.addItem(quitItem)
 
@@ -287,15 +287,25 @@ class OverlayWindowController: NSObject {
             .environment(\.managedObjectContext, PersistenceController.shared.container.viewContext)
             .environmentObject(settingsStore ?? SettingsStore())
 
+        let hostingView = NSHostingView(rootView: settingsView)
+
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 600, height: 500),
+            contentRect: NSRect(x: 0, y: 0, width: 700, height: 720),
             styleMask: [.titled, .closable, .resizable],
             backing: .buffered,
             defer: false
         )
         window.isReleasedWhenClosed = false
-        window.title = "SpeakerTyper 設定"
-        window.contentView = NSHostingView(rootView: settingsView)
+        window.title = L10n.Overlay.settingsWindowTitle
+        window.contentView = hostingView
+        window.minSize = NSSize(width: 700, height: 500)
+
+        // Auto-size window to fit content
+        let fittingSize = hostingView.fittingSize
+        window.setContentSize(NSSize(
+            width: max(fittingSize.width, 700),
+            height: max(fittingSize.height, 500)
+        ))
         window.center()
 
         NSApp.setActivationPolicy(.regular)

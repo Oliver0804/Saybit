@@ -55,7 +55,7 @@ class VoicePipeline {
         let provider = settingsStore.selectedProvider
         if provider.requiresAPIKey, KeychainHelper.loadAPIKey(for: provider.id) == nil {
             log.error("未設定 \(provider.name) API Key", category: "Pipeline")
-            session.state = .error("未設定 \(provider.name) API Key，請在設定中輸入")
+            session.state = .error(L10n.Errors.noAPIKey(provider.name))
             autoResetState(after: 3.0)
             return
         }
@@ -64,7 +64,7 @@ class VoicePipeline {
         if settingsStore.sttEngine == .whisperAPI {
             guard let key = KeychainHelper.loadAPIKey(for: "whisper_api"), !key.isEmpty else {
                 log.error("未設定 Whisper API Key", category: "Pipeline")
-                session.state = .error("未設定 Whisper API Key，請在設定中輸入")
+                session.state = .error(L10n.Errors.noWhisperKey)
                 autoResetState(after: 3.0)
                 return
             }
@@ -274,10 +274,27 @@ class VoicePipeline {
         let selectedText = session.appContext.selectedText
         let hasSelectedText = selectedText != nil && !selectedText!.isEmpty
 
+        // 當有選取文字時，強化 system prompt 中的指令模式提示
+        if hasSelectedText {
+            systemPrompt += """
+
+            \n\n## ⚠️ ACTIVE MODE: Speak-to-Edit
+            The user has SELECTED TEXT in their application. The `existing_text` field contains their selection.
+            The `transcript` field is their VOICE INSTRUCTION — it tells you what to do with the selected text.
+
+            You MUST:
+            1. Treat the transcript as an INSTRUCTION (e.g. "翻譯成英文" = translate to English)
+            2. Apply that instruction to the existing_text
+            3. Return ONLY the transformed result
+            4. Do NOT return the original text unchanged
+            5. Do NOT return the instruction itself
+            """
+        }
+
         let payload = LLMPayload(
             transcript: transcript,
             context: session.appContext.contextIdentifier.isEmpty ? nil : session.appContext.contextIdentifier,
-            mode: nil,
+            mode: hasSelectedText ? "edit" : nil,
             tone: settingsStore.toneStyle == .auto ? nil : settingsStore.toneStyle.rawValue,
             languagePreference: settingsStore.languagePreference,
             personalDictionary: loadPersonalDictionary(),
@@ -288,7 +305,7 @@ class VoicePipeline {
         )
 
         if hasSelectedText {
-            log.info("選取文字已傳入 existing_text (\(selectedText!.count) 字)", category: "LLM")
+            log.info("選取文字已傳入 existing_text (\(selectedText!.count) 字), mode=edit", category: "LLM")
         }
         if settingsStore.enableWhisperMode {
             log.info("Whisper Mode 已啟用", category: "LLM")
@@ -319,7 +336,7 @@ class VoicePipeline {
 
             guard !accumulated.isEmpty else {
                 log.error("LLM 回傳空結果", category: "LLM")
-                session.state = .error("LLM 未回傳任何文字")
+                session.state = .error(L10n.Errors.llmNoResponse)
                 autoResetState(after: 3.0)
                 return
             }
@@ -348,21 +365,21 @@ class VoicePipeline {
         if let clientError = error as? OpenRouterClient.ClientError {
             switch clientError {
             case .noAPIKey(let provider):
-                return "未設定 \(provider) API Key"
+                return L10n.Errors.noAPIKey(provider)
             case .invalidResponse(let code):
                 switch code {
-                case 401: return "API Key 無效"
-                case 402: return "API 餘額不足"
-                case 429: return "API 請求過於頻繁，請稍後再試"
-                case 500...599: return "伺服器暫時不可用"
-                default: return "API 錯誤 (\(code))"
+                case 401: return L10n.Errors.invalidAPIKey
+                case 402: return L10n.Errors.insufficientBalance
+                case 429: return L10n.Errors.rateLimited
+                case 500...599: return L10n.Errors.serverUnavailable
+                default: return L10n.Errors.apiError(code)
                 }
             case .decodingError:
-                return "回應解析失敗"
+                return L10n.Errors.decodingError
             case .networkError:
-                return "網路連線失敗"
+                return L10n.Errors.networkError
             case .retriesExhausted(let code, let attempts):
-                return "重試 \(attempts) 次仍失敗 (HTTP \(code))"
+                return L10n.Errors.retriesExhausted(attempts, code)
             }
         }
         return error.localizedDescription

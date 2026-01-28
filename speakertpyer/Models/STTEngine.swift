@@ -11,10 +11,5 @@ enum STTEngine: String, CaseIterable {
     case appleSpeech = "apple_speech"
     case whisperAPI = "whisper_api"
 
-    var displayName: String {
-        switch self {
-        case .appleSpeech: return "Apple Speech (本地)"
-        case .whisperAPI: return "Whisper API (雲端)"
-        }
-    }
+    var displayName: String { L10n.sttEngine(self) }
 }

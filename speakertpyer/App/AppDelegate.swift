@@ -14,9 +14,19 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var hotKeyManager: GlobalHotKeyManager?
     private(set) var voicePipeline: VoicePipeline?
     private var onboardingWindow: NSWindow?
+    private var tutorialWindow: NSWindow?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        SettingsStore.shared = settingsStore
         setupPipeline()
+
+        // Listen for tutorial show requests from Settings
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleShowTutorial),
+            name: .showTutorial,
+            object: nil
+        )
 
         if !UserDefaults.standard.bool(forKey: "hasCompletedOnboarding") {
             showOnboarding()
@@ -29,32 +39,39 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: - Onboarding
 
     private func showOnboarding() {
-        // LSUIElement apps need to temporarily become regular apps to show windows
         NSApp.setActivationPolicy(.regular)
 
-        let onboardingView = OnboardingView { [weak self] in
-            DispatchQueue.main.async {
-                self?.onboardingWindow?.close()
-                self?.onboardingWindow = nil
-                // Revert to accessory (menu bar only, no Dock icon)
-                NSApp.setActivationPolicy(.accessory)
-                // Now register hotkey (accessibility permission should be granted)
-                self?.setupHotKey()
+        let onboardingView = OnboardingView(
+            settingsStore: settingsStore,
+            onComplete: { [weak self] in
+                DispatchQueue.main.async {
+                    self?.onboardingWindow?.close()
+                    self?.onboardingWindow = nil
+                    NSApp.setActivationPolicy(.accessory)
+                    self?.setupHotKey()
+                }
+            },
+            onStartTutorial: { [weak self] in
+                DispatchQueue.main.async {
+                    self?.onboardingWindow?.close()
+                    self?.onboardingWindow = nil
+                    self?.setupHotKey()
+                    self?.showTutorial()
+                }
             }
-        }
+        )
 
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 480, height: 360),
+            contentRect: NSRect(x: 0, y: 0, width: 520, height: 440),
             styleMask: [.titled, .closable],
             backing: .buffered,
             defer: false
         )
-        window.title = "SpeakerTyper 設定引導"
+        window.title = L10n.Onboarding.title
         window.contentView = NSHostingView(rootView: onboardingView)
         window.center()
         window.makeKeyAndOrderFront(nil)
 
-        // Activate after a brief delay to ensure the policy change takes effect
         DispatchQueue.main.async {
             NSApp.activate(ignoringOtherApps: true)
         }
@@ -62,24 +79,61 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         self.onboardingWindow = window
     }
 
+    // MARK: - Tutorial
+
+    func showTutorial() {
+        if let existing = tutorialWindow, existing.isVisible {
+            existing.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+            return
+        }
+
+        NSApp.setActivationPolicy(.regular)
+
+        let tutorialView = TutorialView(settingsStore: settingsStore) { [weak self] in
+            self?.tutorialWindow?.close()
+            self?.tutorialWindow = nil
+            NSApp.setActivationPolicy(.accessory)
+        }
+
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 560, height: 420),
+            styleMask: [.titled, .closable],
+            backing: .buffered,
+            defer: false
+        )
+        window.isReleasedWhenClosed = false
+        window.title = L10n.Tutorial.title
+        window.contentView = NSHostingView(rootView: tutorialView)
+        window.center()
+        window.makeKeyAndOrderFront(nil)
+
+        DispatchQueue.main.async {
+            NSApp.activate(ignoringOtherApps: true)
+        }
+
+        self.tutorialWindow = window
+    }
+
+    @objc private func handleShowTutorial() {
+        showTutorial()
+    }
+
     // MARK: - Permissions
 
     private func requestPermissions() {
-        // Microphone
         AVAudioApplication.requestRecordPermission { granted in
             if !granted {
                 print("[SpeakerTyper] Microphone permission denied")
             }
         }
 
-        // Speech Recognition
         SFSpeechRecognizer.requestAuthorization { status in
             if status != .authorized {
                 print("[SpeakerTyper] Speech recognition permission denied: \(status.rawValue)")
             }
         }
 
-        // Accessibility
         AccessibilityManager.shared.promptIfNeeded()
     }
 
@@ -95,7 +149,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func configureHotkeyCallbacks() {
-        // Reset all callbacks
         hotKeyManager?.onKeyDown = nil
         hotKeyManager?.onKeyUp = nil
         hotKeyManager?.onDoubleTap = nil
@@ -124,4 +177,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private func setupPipeline() {
         voicePipeline = VoicePipeline(settingsStore: settingsStore)
     }
+}
+
+// MARK: - Notification Names
+
+extension Notification.Name {
+    static let showTutorial = Notification.Name("com.bashcat.speakertpyer.showTutorial")
 }

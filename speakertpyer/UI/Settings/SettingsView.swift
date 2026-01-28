@@ -8,44 +8,48 @@
 import SwiftUI
 
 struct SettingsView: View {
+    @EnvironmentObject var settingsStore: SettingsStore
+
     var body: some View {
         TabView {
             GeneralSettingsView()
                 .tabItem {
-                    Label("一般", systemImage: "gear")
+                    Label(L10n.Tabs.general, systemImage: "gear")
                 }
 
             APISettingsView()
                 .tabItem {
-                    Label("API", systemImage: "key.fill")
+                    Label(L10n.Tabs.api, systemImage: "key.fill")
                 }
 
             PromptSettingsView()
                 .tabItem {
-                    Label("Prompt", systemImage: "text.bubble")
+                    Label(L10n.Tabs.prompt, systemImage: "text.bubble")
                 }
 
             HotKeySettingsView()
                 .tabItem {
-                    Label("快捷鍵", systemImage: "keyboard")
+                    Label(L10n.Tabs.hotkey, systemImage: "keyboard")
                 }
 
             DictionarySettingsView()
                 .tabItem {
-                    Label("字典 / 技能", systemImage: "book")
+                    Label(L10n.Tabs.dictionary, systemImage: "book")
                 }
 
             HistoryView()
                 .tabItem {
-                    Label("歷史", systemImage: "clock")
+                    Label(L10n.Tabs.history, systemImage: "clock")
                 }
 
             StatisticsView()
                 .tabItem {
-                    Label("統計", systemImage: "chart.bar.fill")
+                    Label(L10n.Tabs.statistics, systemImage: "chart.bar.fill")
                 }
         }
-        .frame(width: 680, height: 640)
+        .frame(minWidth: 680, idealWidth: 680, maxWidth: .infinity,
+               minHeight: 500, idealHeight: 720, maxHeight: .infinity)
+        .id(settingsStore.languagePreference)
     }
 }
 

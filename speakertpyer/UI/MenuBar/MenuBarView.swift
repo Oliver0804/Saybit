@@ -25,7 +25,7 @@ struct MenuBarView: View {
             Divider()
 
             // Prompt Style
-            Menu("Prompt: \(settingsStore.promptStyle.displayName)") {
+            Menu(L10n.Menu.promptLabel(settingsStore.promptStyle.displayName)) {
                 ForEach(PromptStyle.allCases) { style in
                     Button(style.displayName) {
                         settingsStore.promptStyle = style
@@ -36,7 +36,7 @@ struct MenuBarView: View {
             .padding(.vertical, 4)
 
             // Tone
-            Menu("語調: \(settingsStore.toneStyle.displayName)") {
+            Menu(L10n.Menu.toneLabel(settingsStore.toneStyle.displayName)) {
                 ForEach(ToneStyle.allCases) { tone in
                     Button(tone.displayName) {
                         settingsStore.toneStyle = tone
@@ -64,7 +64,7 @@ struct MenuBarView: View {
             Divider()
 
             // Quick actions
-            Button("重新註冊快捷鍵 (\(currentHotkeyLabel))") {
+            Button(L10n.Menu.reregisterHotkey(currentHotkeyLabel)) {
                 GlobalHotKeyManager.shared.register(
                     keyCode: UInt16(settingsStore.hotkeyKeyCode),
                     modifiers: CGEventFlags(rawValue: UInt64(settingsStore.hotkeyModifiers))
@@ -80,7 +80,7 @@ struct MenuBarView: View {
                 Circle()
                     .fill(KeychainHelper.loadAPIKey() != nil ? Color.green : Color.red)
                     .frame(width: 8, height: 8)
-                Text(KeychainHelper.loadAPIKey() != nil ? "API Key 已設定" : "未設定 API Key")
+                Text(L10n.Menu.apiKeyStatus(KeychainHelper.loadAPIKey() != nil))
                     .font(.caption)
                     .foregroundColor(.secondary)
             }
@@ -92,7 +92,7 @@ struct MenuBarView: View {
                 Circle()
                     .fill(AccessibilityManager.shared.isAuthorized ? Color.green : Color.red)
                     .frame(width: 8, height: 8)
-                Text(AccessibilityManager.shared.isAuthorized ? "輔助使用已授權" : "輔助使用未授權")
+                Text(L10n.Menu.accessibilityStatus(AccessibilityManager.shared.isAuthorized))
                     .font(.caption)
                     .foregroundColor(.secondary)
             }
@@ -103,7 +103,7 @@ struct MenuBarView: View {
 
             // Settings
             SettingsLink {
-                Text("設定...")
+                Text(L10n.Common.settings)
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 4)
@@ -111,7 +111,7 @@ struct MenuBarView: View {
             Divider()
 
             // Quit
-            Button("結束 SpeakerTyper") {
+            Button(L10n.Common.quit) {
                 NSApplication.shared.terminate(nil)
             }
             .padding(.horizontal, 12)

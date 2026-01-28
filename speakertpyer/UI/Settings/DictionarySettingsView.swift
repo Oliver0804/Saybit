@@ -34,19 +34,19 @@ struct DictionarySettingsView: View {
                 // MARK: - 新增詞條
                 GlassCard {
                     VStack(alignment: .leading, spacing: 10) {
-                        GlassSectionHeader(title: "新增詞條", icon: "plus.circle")
+                        GlassSectionHeader(title: L10n.Dict.addEntry, icon: "plus.circle")
 
                         HStack(spacing: 8) {
-                            TextField("原始詞", text: $newTerm)
+                            TextField(L10n.Dict.originalTerm, text: $newTerm)
                                 .textFieldStyle(.roundedBorder)
 
                             Image(systemName: "arrow.right")
                                 .foregroundStyle(.secondary)
 
-                            TextField("偏好寫法", text: $newPreferred)
+                            TextField(L10n.Dict.preferredForm, text: $newPreferred)
                                 .textFieldStyle(.roundedBorder)
 
-                            Button("新增") {
+                            Button(L10n.Common.add) {
                                 addDictionaryEntry()
                             }
                             .buttonStyle(.borderedProminent)
@@ -54,7 +54,7 @@ struct DictionarySettingsView: View {
                             .disabled(newTerm.isEmpty || newPreferred.isEmpty)
                         }
 
-                        Text("語音辨識容易出錯的詞彙，LLM 會自動替換")
+                        Text(L10n.Dict.dictDesc)
                             .font(.caption2)
                             .foregroundStyle(.secondary)
                     }
@@ -63,12 +63,12 @@ struct DictionarySettingsView: View {
                 // MARK: - 字典列表
                 GlassCard {
                     VStack(alignment: .leading, spacing: 8) {
-                        GlassSectionHeader(title: "字典列表", icon: "book")
+                        GlassSectionHeader(title: L10n.Dict.dictList, icon: "book")
 
                         if dictEntries.isEmpty {
                             HStack {
                                 Spacer()
-                                Text("尚無字典項目")
+                                Text(L10n.Dict.emptyDict)
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                                 Spacer()
@@ -109,14 +109,14 @@ struct DictionarySettingsView: View {
                 // MARK: - 新增語音技能
                 GlassCard {
                     VStack(alignment: .leading, spacing: 10) {
-                        GlassSectionHeader(title: "新增語音技能", icon: "sparkles")
+                        GlassSectionHeader(title: L10n.Dict.addSkill, icon: "sparkles")
 
                         HStack(spacing: 8) {
-                            TextField("觸發詞（例：寫信）", text: $newTrigger)
+                            TextField(L10n.Dict.triggerWord, text: $newTrigger)
                                 .textFieldStyle(.roundedBorder)
                                 .frame(maxWidth: 200)
 
-                            Button("新增") {
+                            Button(L10n.Common.add) {
                                 addSnippetEntry()
                             }
                             .buttonStyle(.borderedProminent)
@@ -124,7 +124,7 @@ struct DictionarySettingsView: View {
                             .disabled(newTrigger.isEmpty || newSnippetContent.isEmpty)
                         }
 
-                        Text("Prompt 指令:")
+                        Text(L10n.Dict.promptInstruction)
                             .font(.caption)
                             .foregroundStyle(.secondary)
 
@@ -137,18 +137,18 @@ struct DictionarySettingsView: View {
                                     .strokeBorder(Color.primary.opacity(0.1), lineWidth: 1)
                             )
 
-                        Text("說出觸發詞時，會載入對應的 Prompt 指令引導 LLM 處理後續語音內容")
+                        Text(L10n.Dict.skillDesc)
                             .font(.caption2)
                             .foregroundStyle(.secondary)
 
                         VStack(alignment: .leading, spacing: 2) {
-                            Text("範例：")
+                            Text(L10n.Dict.example)
                                 .font(.caption2)
                                 .foregroundStyle(.secondary)
-                            Text("觸發詞「寫信」→ Prompt「請用正式商業書信格式撰寫，包含問候語與結尾敬語」")
+                            Text(L10n.Dict.exampleWrite)
                                 .font(.caption2)
                                 .foregroundStyle(.tertiary)
-                            Text("觸發詞「摘要」→ Prompt「請將以下內容整理為 3-5 條重點摘要」")
+                            Text(L10n.Dict.exampleSummary)
                                 .font(.caption2)
                                 .foregroundStyle(.tertiary)
                         }
@@ -158,12 +158,12 @@ struct DictionarySettingsView: View {
                 // MARK: - 語音技能列表
                 GlassCard {
                     VStack(alignment: .leading, spacing: 8) {
-                        GlassSectionHeader(title: "語音技能列表", icon: "list.star")
+                        GlassSectionHeader(title: L10n.Dict.skillList, icon: "list.star")
 
                         if snippetEntries.isEmpty {
                             HStack {
                                 Spacer()
-                                Text("尚無語音技能")
+                                Text(L10n.Dict.emptySkills)
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                                 Spacer()

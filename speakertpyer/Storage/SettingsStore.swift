@@ -9,6 +9,12 @@ import Combine
 import Foundation
 
 class SettingsStore: ObservableObject {
+    static var shared: SettingsStore?
+
+    var appLanguage: AppLanguage {
+        AppLanguage(rawValue: languagePreference) ?? .zhTW
+    }
+
     // MARK: - API
 
     @Published var selectedProviderID: String {

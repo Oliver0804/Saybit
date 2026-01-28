@@ -62,12 +62,12 @@ struct HistoryView: View {
 
                 // Bottom bar: record count + cleanup actions
                 HStack(spacing: 8) {
-                    Text("\(records.count) 筆紀錄")
+                    Text(L10n.History.recordCount(records.count))
                         .font(.caption)
                         .foregroundStyle(.secondary)
 
                     if displayedCount < records.count {
-                        Text("(顯示 \(min(displayedCount, records.count)) 筆)")
+                        Text(L10n.History.showing(displayedCount, records.count))
                             .font(.caption2)
                             .foregroundStyle(.tertiary)
                     }
@@ -75,18 +75,18 @@ struct HistoryView: View {
                     Spacer()
 
                     Menu {
-                        Button("刪除 7 天前的紀錄") {
+                        Button(L10n.History.deleteOlder7) {
                             showDeleteOlderConfirmation = true
                         }
-                        Button("刪除 30 天前的紀錄") {
+                        Button(L10n.History.deleteOlder30) {
                             deleteRecordsOlderThan(days: 30)
                         }
                         Divider()
-                        Button("清除全部紀錄", role: .destructive) {
+                        Button(L10n.History.deleteAll, role: .destructive) {
                             showDeleteAllConfirmation = true
                         }
                     } label: {
-                        Label("清理", systemImage: "trash.circle")
+                        Label(L10n.History.cleanup, systemImage: "trash.circle")
                             .font(.caption)
                     }
                     .menuStyle(.borderlessButton)
@@ -105,7 +105,7 @@ struct HistoryView: View {
                         VStack(spacing: 12) {
                             GlassCard {
                                 VStack(alignment: .leading, spacing: 6) {
-                                    GlassSectionHeader(title: "原始轉錄", icon: "mic")
+                                    GlassSectionHeader(title: L10n.History.rawTranscript, icon: "mic")
                                     Text(record.rawTranscript ?? "-")
                                         .textSelection(.enabled)
                                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -114,7 +114,7 @@ struct HistoryView: View {
 
                             GlassCard {
                                 VStack(alignment: .leading, spacing: 6) {
-                                    GlassSectionHeader(title: "處理後文字", icon: "text.badge.checkmark")
+                                    GlassSectionHeader(title: L10n.History.processedText, icon: "text.badge.checkmark")
                                     Text(record.processedText ?? "-")
                                         .textSelection(.enabled)
                                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -128,7 +128,7 @@ struct HistoryView: View {
                                         Label(record.appContext ?? "-", systemImage: "app")
                                         if record.duration > 0 {
                                             Spacer()
-                                            Label(String(format: "%.1f 秒", record.duration), systemImage: "timer")
+                                            Label(String(format: "%.1fs", record.duration), systemImage: "timer")
                                         }
                                     }
 
@@ -142,10 +142,10 @@ struct HistoryView: View {
                                     // Row 3: Token usage
                                     if record.totalTokens > 0 {
                                         HStack(spacing: 12) {
-                                            Label("輸入 \(record.promptTokens)", systemImage: "arrow.up.circle")
-                                            Label("輸出 \(record.completionTokens)", systemImage: "arrow.down.circle")
+                                            Label(L10n.History.inputTokens(record.promptTokens), systemImage: "arrow.up.circle")
+                                            Label(L10n.History.outputTokens(record.completionTokens), systemImage: "arrow.down.circle")
                                             Spacer()
-                                            Label("共 \(record.totalTokens) tokens", systemImage: "number")
+                                            Label(L10n.History.totalTokensLabel(record.totalTokens), systemImage: "number")
                                         }
                                     }
 
@@ -165,7 +165,7 @@ struct HistoryView: View {
                                         NSPasteboard.general.setString(text, forType: .string)
                                     }
                                 } label: {
-                                    Label("複製結果", systemImage: "doc.on.doc")
+                                    Label(L10n.History.copyResult, systemImage: "doc.on.doc")
                                 }
                                 .controlSize(.small)
                                 .buttonStyle(.bordered)
@@ -176,7 +176,7 @@ struct HistoryView: View {
                                         NSPasteboard.general.setString(text, forType: .string)
                                     }
                                 } label: {
-                                    Label("複製原始", systemImage: "doc.on.clipboard")
+                                    Label(L10n.History.copyRaw, systemImage: "doc.on.clipboard")
                                 }
                                 .controlSize(.small)
                                 .buttonStyle(.bordered)
@@ -186,7 +186,7 @@ struct HistoryView: View {
                                 Button(role: .destructive) {
                                     showDeleteConfirmation = true
                                 } label: {
-                                    Label("刪除", systemImage: "trash")
+                                    Label(L10n.Common.delete, systemImage: "trash")
                                 }
                                 .controlSize(.small)
                                 .buttonStyle(.bordered)
@@ -203,7 +203,7 @@ struct HistoryView: View {
                         Image(systemName: "doc.text.magnifyingglass")
                             .font(.system(size: 32))
                             .foregroundStyle(.secondary.opacity(0.4))
-                        Text("選擇一筆紀錄查看詳情")
+                        Text(L10n.History.selectRecord)
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
@@ -212,8 +212,8 @@ struct HistoryView: View {
             }
             .animation(.easeInOut(duration: 0.2), value: selectedRecord?.id)
         }
-        .confirmationDialog("確定刪除此紀錄？", isPresented: $showDeleteConfirmation) {
-            Button("刪除", role: .destructive) {
+        .confirmationDialog(L10n.History.confirmDelete, isPresented: $showDeleteConfirmation) {
+            Button(L10n.Common.delete, role: .destructive) {
                 if let record = selectedRecord {
                     viewContext.delete(record)
                     try? viewContext.save()
@@ -221,21 +221,21 @@ struct HistoryView: View {
                 }
             }
         } message: {
-            Text("此操作無法復原。")
+            Text(L10n.History.cannotUndo)
         }
-        .confirmationDialog("確定清除全部紀錄？", isPresented: $showDeleteAllConfirmation) {
-            Button("清除全部", role: .destructive) {
+        .confirmationDialog(L10n.History.confirmDeleteAll, isPresented: $showDeleteAllConfirmation) {
+            Button(L10n.History.deleteAll, role: .destructive) {
                 deleteAllRecords()
             }
         } message: {
-            Text("將刪除所有 \(records.count) 筆歷史紀錄，此操作無法復原。")
+            Text(L10n.History.deleteAllMessage(records.count))
         }
-        .confirmationDialog("確定刪除舊紀錄？", isPresented: $showDeleteOlderConfirmation) {
-            Button("刪除 7 天前的紀錄", role: .destructive) {
+        .confirmationDialog(L10n.History.confirmDeleteOlder, isPresented: $showDeleteOlderConfirmation) {
+            Button(L10n.History.deleteOlder7, role: .destructive) {
                 deleteRecordsOlderThan(days: 7)
             }
         } message: {
-            Text("將刪除 7 天前的所有紀錄，此操作無法復原。")
+            Text(L10n.History.deleteOlder7Message)
         }
         .onAppear {
             performAutoCleanupIfNeeded()

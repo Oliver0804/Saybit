@@ -10,6 +10,7 @@ import Speech
 import SwiftUI
 
 struct OnboardingView: View {
+    @ObservedObject var settingsStore: SettingsStore
     @State private var currentStep = 0
     @State private var micGranted = false
     @State private var speechGranted = false
@@ -19,18 +20,23 @@ struct OnboardingView: View {
     @State private var isTesting = false
 
     var onComplete: () -> Void
+    var onStartTutorial: (() -> Void)?
+
+    private let totalSteps = 4
 
     var body: some View {
         VStack(spacing: 0) {
             // Header
             HStack {
-                Text("SpeakerTyper 設定引導")
+                Text(currentStep == 0 ? "SpeakerTyper" : L10n.Onboarding.title)
                     .font(.title2)
                     .fontWeight(.semibold)
                 Spacer()
-                Text("步驟 \(currentStep + 1) / 3")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
+                if currentStep > 0 {
+                    Text(L10n.Onboarding.stepOf(currentStep, totalSteps - 1))
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
             }
             .padding()
 
@@ -39,9 +45,10 @@ struct OnboardingView: View {
             // Content
             Group {
                 switch currentStep {
-                case 0: permissionsStep
-                case 1: apiKeyStep
-                case 2: testStep
+                case 0: languageStep
+                case 1: permissionsStep
+                case 2: apiKeyStep
+                case 3: testStep
                 default: EmptyView()
                 }
             }
@@ -53,32 +60,104 @@ struct OnboardingView: View {
             // Navigation
             HStack {
                 if currentStep > 0 {
-                    Button("上一步") {
-                        currentStep -= 1
+                    Button(L10n.Common.previous) {
+                        withAnimation { currentStep -= 1 }
                     }
                 }
 
                 Spacer()
 
-                if currentStep < 2 {
-                    Button("下一步") {
-                        currentStep += 1
+                if currentStep < totalSteps - 1 {
+                    Button(L10n.Common.next) {
+                        withAnimation { currentStep += 1 }
                     }
                     .buttonStyle(.borderedProminent)
-                    // Allow skipping permissions — user can set them later
                 } else {
-                    Button("開始使用") {
-                        UserDefaults.standard.set(true, forKey: "hasCompletedOnboarding")
-                        onComplete()
+                    HStack(spacing: 10) {
+                        if onStartTutorial != nil {
+                            Button(L10n.Onboarding.continueTutorial) {
+                                UserDefaults.standard.set(true, forKey: "hasCompletedOnboarding")
+                                onStartTutorial?()
+                            }
+                            .buttonStyle(.borderedProminent)
+                        }
+
+                        if onStartTutorial != nil {
+                            Button(L10n.Common.startUsing) {
+                                UserDefaults.standard.set(true, forKey: "hasCompletedOnboarding")
+                                onComplete()
+                            }
+                            .buttonStyle(.bordered)
+                        } else {
+                            Button(L10n.Common.startUsing) {
+                                UserDefaults.standard.set(true, forKey: "hasCompletedOnboarding")
+                                onComplete()
+                            }
+                            .buttonStyle(.borderedProminent)
+                        }
                     }
-                    .buttonStyle(.borderedProminent)
                 }
             }
             .padding()
         }
-        .frame(width: 480, height: 360)
+        .frame(width: 520, height: 440)
         .onAppear {
             checkPermissions()
+        }
+    }
+
+    // MARK: - Step 0: Language Selection
+
+    private var languageStep: some View {
+        VStack(spacing: 24) {
+            Spacer()
+
+            Image(systemName: "globe")
+                .font(.system(size: 48))
+                .foregroundStyle(.blue.gradient)
+
+            Text(L10n.Onboarding.chooseLanguage)
+                .font(.headline)
+                .multilineTextAlignment(.center)
+
+            VStack(spacing: 8) {
+                ForEach(AppLanguage.allCases) { lang in
+                    Button {
+                        settingsStore.languagePreference = lang.rawValue
+                    } label: {
+                        HStack {
+                            Text(lang.displayName)
+                                .font(.body)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                            if settingsStore.appLanguage == lang {
+                                Image(systemName: "checkmark")
+                                    .foregroundStyle(.blue)
+                            }
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 10)
+                        .background(
+                            RoundedRectangle(cornerRadius: 8)
+                                .fill(settingsStore.appLanguage == lang
+                                    ? Color.accentColor.opacity(0.1)
+                                    : Color.primary.opacity(0.03))
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 8)
+                                .strokeBorder(
+                                    settingsStore.appLanguage == lang
+                                        ? Color.accentColor.opacity(0.5)
+                                        : Color.clear,
+                                    lineWidth: 1
+                                )
+                        )
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .frame(maxWidth: 280)
+
+            Spacer()
         }
     }
 
@@ -86,20 +165,19 @@ struct OnboardingView: View {
 
     private var permissionsStep: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("權限設定")
+            Text(L10n.Onboarding.permissionsTitle)
                 .font(.headline)
 
-            Text("SpeakerTyper 需要以下權限才能正常運作。\n點擊「開啟設定」後，請在系統設定中允許 SpeakerTyper。")
+            Text(L10n.Onboarding.permissionsDesc)
                 .foregroundColor(.secondary)
 
             VStack(spacing: 12) {
                 permissionRow(
                     icon: "mic.fill",
-                    title: "麥克風",
-                    description: "用於錄製語音",
+                    title: L10n.Onboarding.micTitle,
+                    description: L10n.Onboarding.micDesc,
                     granted: micGranted
                 ) {
-                    // Try system API first, then open System Settings as fallback
                     AVAudioApplication.requestRecordPermission { granted in
                         DispatchQueue.main.async {
                             micGranted = granted
@@ -112,8 +190,8 @@ struct OnboardingView: View {
 
                 permissionRow(
                     icon: "waveform",
-                    title: "語音辨識",
-                    description: "將語音轉換為文字",
+                    title: L10n.Onboarding.speechTitle,
+                    description: L10n.Onboarding.speechDesc,
                     granted: speechGranted
                 ) {
                     SFSpeechRecognizer.requestAuthorization { status in
@@ -128,8 +206,8 @@ struct OnboardingView: View {
 
                 permissionRow(
                     icon: "accessibility",
-                    title: "輔助使用",
-                    description: "讀取選取文字、注入文字",
+                    title: L10n.Onboarding.accessibilityTitle,
+                    description: L10n.Onboarding.accessibilityDesc,
                     granted: accessibilityGranted
                 ) {
                     AccessibilityManager.shared.promptIfNeeded()
@@ -139,7 +217,7 @@ struct OnboardingView: View {
                 }
             }
 
-            Button("重新檢查權限") {
+            Button(L10n.Onboarding.recheckPermissions) {
                 checkPermissions()
             }
             .font(.caption)
@@ -176,7 +254,7 @@ struct OnboardingView: View {
                 Image(systemName: "checkmark.circle.fill")
                     .foregroundColor(.green)
             } else {
-                Button("開啟設定") { action() }
+                Button(L10n.Common.openSettings) { action() }
                     .controlSize(.small)
             }
         }
@@ -188,16 +266,16 @@ struct OnboardingView: View {
 
     private var apiKeyStep: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("設定 API Key")
+            Text(L10n.Onboarding.apiKeyTitle)
                 .font(.headline)
 
-            Text("請輸入您的 OpenRouter API Key，用於 LLM 文字處理。")
+            Text(L10n.Onboarding.apiKeyDesc)
                 .foregroundColor(.secondary)
 
             SecureField("sk-or-...", text: $apiKey)
                 .textFieldStyle(.roundedBorder)
 
-            Button("儲存") {
+            Button(L10n.Common.save) {
                 if !apiKey.isEmpty {
                     try? KeychainHelper.saveAPIKey(apiKey)
                 }
@@ -208,13 +286,13 @@ struct OnboardingView: View {
                 HStack {
                     Image(systemName: "checkmark.circle.fill")
                         .foregroundColor(.green)
-                    Text("API Key 已儲存")
+                    Text(L10n.Onboarding.apiKeySaved)
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }
             }
 
-            Link("取得 OpenRouter API Key →",
+            Link(L10n.Onboarding.getAPIKey,
                  destination: URL(string: "https://openrouter.ai/keys")!)
                 .font(.caption)
         }
@@ -224,10 +302,10 @@ struct OnboardingView: View {
 
     private var testStep: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("準備完成！")
+            Text(L10n.Onboarding.readyTitle)
                 .font(.headline)
 
-            Text("測試 API 連線是否正常，確認一切就緒。")
+            Text(L10n.Onboarding.readyDesc)
                 .foregroundColor(.secondary)
 
             HStack(spacing: 12) {
@@ -238,10 +316,10 @@ struct OnboardingView: View {
                         HStack(spacing: 6) {
                             ProgressView()
                                 .controlSize(.small)
-                            Text("測試中...")
+                            Text(L10n.Onboarding.testing)
                         }
                     } else {
-                        Text("測試 API 連線")
+                        Text(L10n.Onboarding.testAPI)
                     }
                 }
                 .disabled(isTesting || KeychainHelper.loadAPIKey() == nil)
@@ -256,32 +334,6 @@ struct OnboardingView: View {
                     }
                 }
             }
-
-            Divider()
-
-            VStack(alignment: .leading, spacing: 8) {
-                Text("使用方式")
-                    .font(.subheadline)
-                    .fontWeight(.medium)
-                HStack {
-                    Image(systemName: "keyboard")
-                    Text("按住快捷鍵（預設 ⌥ Space）開始錄音")
-                }
-                HStack {
-                    Image(systemName: "hand.raised")
-                    Text("放開按鍵停止錄音，自動處理並輸入文字")
-                }
-                HStack {
-                    Image(systemName: "text.cursor")
-                    Text("可先選取文字，語音輸入會考慮上下文")
-                }
-                HStack {
-                    Image(systemName: "command")
-                    Text("支援聽寫、指令、編輯三種模式")
-                }
-            }
-            .font(.callout)
-            .foregroundColor(.secondary)
         }
     }
 
@@ -293,7 +345,7 @@ struct OnboardingView: View {
             do {
                 try await client.testConnection(model: "openai/gpt-4.1-mini", provider: .openRouter)
                 await MainActor.run {
-                    testResult = "✓ API 連線成功"
+                    testResult = L10n.Onboarding.testSuccess
                     isTesting = false
                 }
             } catch {
