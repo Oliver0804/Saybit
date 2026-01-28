@@ -9,8 +9,10 @@ import AppKit
 import ApplicationServices
 
 enum TextExtractor {
-    /// Get the current frontmost app context including selected text
-    static func getCurrentContext() -> AppContext {
+    private static let log = AppLogger.shared
+
+    /// Get the current frontmost app context including selected text (async to avoid blocking main thread)
+    static func getCurrentContext() async -> AppContext {
         guard let frontApp = NSWorkspace.shared.frontmostApplication else {
             return .empty
         }
@@ -18,12 +20,17 @@ enum TextExtractor {
         let appName = frontApp.localizedName ?? "Unknown"
         let bundleID = frontApp.bundleIdentifier
 
-        // Try to get selected text via Accessibility API
-        var selectedText = getSelectedText(for: frontApp)
+        // Strategy 1: AX API — focused element → selected text (fast, no side effects)
+        var selectedText = getSelectedTextViaAX(for: frontApp)
 
-        // Fallback: use clipboard-based extraction for Electron/web apps
+        // Strategy 2: Clipboard-based Cmd+C (AppleScript → CGEvent fallback)
         if selectedText == nil {
-            selectedText = getSelectedTextViaClipboard()
+            log.info("AX API 未取得選取文字，嘗試 clipboard fallback", category: "TextExtract")
+            selectedText = await getSelectedTextViaClipboard()
+        }
+
+        if let text = selectedText {
+            log.info("成功擷取選取文字 (\(text.count) 字)", category: "TextExtract")
         }
 
         return AppContext(
@@ -33,11 +40,13 @@ enum TextExtractor {
         )
     }
 
-    private static func getSelectedText(for app: NSRunningApplication) -> String? {
+    // MARK: - Strategy 1: Accessibility API
+
+    private static func getSelectedTextViaAX(for app: NSRunningApplication) -> String? {
         let pid = app.processIdentifier
         let appElement = AXUIElementCreateApplication(pid)
 
-        // Get focused element
+        // Try 1a: focused element → selected text
         var focusedElement: AnyObject?
         let focusResult = AXUIElementCopyAttributeValue(
             appElement,
@@ -45,34 +54,46 @@ enum TextExtractor {
             &focusedElement
         )
 
-        guard focusResult == .success,
-              let focused = focusedElement,
-              CFGetTypeID(focused) == AXUIElementGetTypeID() else {
-            return nil
+        if focusResult == .success,
+           let focused = focusedElement,
+           CFGetTypeID(focused) == AXUIElementGetTypeID() {
+            let focusedAX = focused as! AXUIElement
+            var selText: AnyObject?
+            let textResult = AXUIElementCopyAttributeValue(
+                focusedAX,
+                kAXSelectedTextAttribute as CFString,
+                &selText
+            )
+            if textResult == .success, let text = selText as? String, !text.isEmpty {
+                return text
+            }
+            log.info("AX focusedElement 有但 selectedText 失敗 (status=\(textResult.rawValue))", category: "TextExtract")
+        } else {
+            log.info("AX focusedElement 失敗 (status=\(focusResult.rawValue))", category: "TextExtract")
         }
 
-        // Get selected text (safe: CFGetTypeID already validated above)
-        let focusedAXElement = focused as! AXUIElement
-        var selectedText: AnyObject?
-        let textResult = AXUIElementCopyAttributeValue(
-            focusedAXElement,
+        // Try 1b: directly on app element (some apps expose it here)
+        var appSelText: AnyObject?
+        let appResult = AXUIElementCopyAttributeValue(
+            appElement,
             kAXSelectedTextAttribute as CFString,
-            &selectedText
+            &appSelText
         )
-
-        guard textResult == .success, let text = selectedText as? String, !text.isEmpty else {
-            return nil
+        if appResult == .success, let text = appSelText as? String, !text.isEmpty {
+            return text
         }
 
-        return text
+        return nil
     }
 
-    /// Fallback: simulate Cmd+C to capture selected text, then restore clipboard
-    private static func getSelectedTextViaClipboard() -> String? {
+    // MARK: - Strategy 2: Clipboard-based Cmd+C
+
+    /// Unified clipboard approach: save clipboard → try AppleScript → try CGEvent → poll → restore
+    private static func getSelectedTextViaClipboard() async -> String? {
         let pasteboard = NSPasteboard.general
         let originalChangeCount = pasteboard.changeCount
 
-        // Save current clipboard contents
+        // Save current clipboard content
         let savedItems = pasteboard.pasteboardItems?.compactMap { item -> (String, NSPasteboard.PasteboardType)? in
             for type in item.types {
                 if let data = item.string(forType: type) {
@@ -82,22 +103,54 @@ enum TextExtractor {
             return nil
         } ?? []
 
-        // Simulate Cmd+C
-        let source = CGEventSource(stateID: .combinedSessionState)
-        let keyDown = CGEvent(keyboardEventSource: source, virtualKey: 0x08, keyDown: true) // 'c' key
-        keyDown?.flags = CGEventFlags.maskCommand
-        let keyUp = CGEvent(keyboardEventSource: source, virtualKey: 0x08, keyDown: false)
-        keyUp?.flags = CGEventFlags.maskCommand
+        // Try AppleScript first (more reliable for Electron apps)
+        var cmdCSent = false
+        let script = NSAppleScript(source: """
+            tell application "System Events"
+                keystroke "c" using command down
+            end tell
+        """)
+        var errorInfo: NSDictionary?
+        script?.executeAndReturnError(&errorInfo)
+        if let err = errorInfo {
+            log.info("AppleScript Cmd+C 失敗: \(err)", category: "TextExtract")
+        } else {
+            cmdCSent = true
+            log.info("AppleScript Cmd+C 已送出", category: "TextExtract")
+        }
 
-        keyDown?.post(tap: CGEventTapLocation.cghidEventTap)
-        keyUp?.post(tap: CGEventTapLocation.cghidEventTap)
+        // If AppleScript failed, try CGEvent
+        // Use nil source to avoid inheriting physical modifier keys (user may still hold hotkey)
+        if !cmdCSent {
+            let keyDown = CGEvent(keyboardEventSource: nil, virtualKey: 0x08, keyDown: true)
+            keyDown?.flags = .maskCommand
+            let keyUp = CGEvent(keyboardEventSource: nil, virtualKey: 0x08, keyDown: false)
 
-        // Wait for clipboard to update
-        Thread.sleep(forTimeInterval: 0.1)
+            keyDown?.post(tap: .cghidEventTap)
+            keyUp?.post(tap: .cghidEventTap)
+            cmdCSent = true
+            log.info("CGEvent Cmd+C 已送出 (nil source)", category: "TextExtract")
+        }
 
-        // Check if clipboard changed
-        guard pasteboard.changeCount != originalChangeCount else {
-            return nil // No selection was copied
+        guard cmdCSent else {
+            log.info("Cmd+C 無法送出", category: "TextExtract")
+            return nil
+        }
+
+        // Poll for clipboard change (up to 600ms)
+        // Use Task.sleep to yield the main actor instead of blocking the thread
+        var clipboardChanged = false
+        for _ in 0..<12 {
+            try? await Task.sleep(for: .milliseconds(50))
+            if pasteboard.changeCount != originalChangeCount {
+                clipboardChanged = true
+                break
+            }
+        }
+
+        guard clipboardChanged else {
+            log.info("Clipboard fallback: 剪貼簿未改變", category: "TextExtract")
+            return nil
         }
 
         let copiedText = pasteboard.string(forType: .string)
@@ -112,6 +165,7 @@ enum TextExtractor {
             return nil
         }
 
+        log.info("Clipboard fallback 成功取得文字 (\(text.count) 字)", category: "TextExtract")
         return text
     }
 }

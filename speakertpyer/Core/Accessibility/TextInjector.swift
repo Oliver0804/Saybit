@@ -43,6 +43,10 @@ enum TextInjector {
             return
         }
 
+        // 確保不帶任何修飾鍵（避免 Cmd+V 殘留 flags 導致 Cmd+Enter）
+        keyDown.flags = []
+        keyUp.flags = []
+
         keyDown.post(tap: .cghidEventTap)
         keyUp.post(tap: .cghidEventTap)
     }

@@ -14,7 +14,7 @@ struct SpeakerTyperApp: App {
     let persistenceController = PersistenceController.shared
 
     var body: some Scene {
-        MenuBarExtra("SpeakerTyper", systemImage: "mic.fill") {
+        MenuBarExtra("Saybit", systemImage: "mic.fill") {
             MenuBarView()
                 .environment(\.managedObjectContext, persistenceController.container.viewContext)
                 .environmentObject(appDelegate.settingsStore)

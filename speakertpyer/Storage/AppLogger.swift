@@ -45,13 +45,13 @@ class AppLogger {
 
     var logDirectoryURL: URL {
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-        return appSupport.appendingPathComponent("SpeakerTyper/logs", isDirectory: true)
+        return appSupport.appendingPathComponent("Saybit/logs", isDirectory: true)
     }
 
     var todayLogFileURL: URL {
         let df = DateFormatter()
         df.dateFormat = "yyyy-MM-dd"
-        let filename = "speakertyper-\(df.string(from: Date())).jsonl"
+        let filename = "saybit-\(df.string(from: Date())).jsonl"
         return logDirectoryURL.appendingPathComponent(filename)
     }
 

@@ -172,6 +172,11 @@ struct CapsuleBarView: View {
             Image(systemName: "mic.fill")
                 .font(.system(size: 14, weight: .medium))
                 .foregroundStyle(.white.opacity(0.8))
+        case .listening:
+            Image(systemName: "mic.badge.xmark")
+                .font(.system(size: 14, weight: .medium))
+                .foregroundStyle(.orange)
+                .scaleEffect(pulseScale)
         case .recording:
             Circle()
                 .fill(Color.red)
@@ -206,9 +211,17 @@ struct CapsuleBarView: View {
     private var stateContent: some View {
         switch session.state {
         case .idle:
-            Text("SpeakerTyper")
+            Text("Saybit")
                 .font(.system(size: 12, weight: .medium, design: .rounded))
                 .foregroundStyle(.white.opacity(0.7))
+        case .listening:
+            HStack(spacing: 6) {
+                WaveformView(audioLevel: session.audioLevel)
+                    .frame(width: 60, height: 16)
+                Text(L10n.Overlay.listening)
+                    .font(.system(size: 11, design: .rounded))
+                    .foregroundStyle(.orange.opacity(0.8))
+            }
         case .recording:
             HStack(spacing: 6) {
                 WaveformView(audioLevel: session.audioLevel)
@@ -271,6 +284,8 @@ struct CapsuleBarView: View {
             switch session.state {
             case .idle:
                 return [.white.opacity(0.2), .white.opacity(0.05)]
+            case .listening:
+                return [.orange.opacity(0.5), .orange.opacity(0.15)]
             case .recording:
                 return [.red.opacity(0.6), .red.opacity(0.2)]
             case .processing:
@@ -301,6 +316,9 @@ struct CapsuleBarView: View {
         if case .previewing = session.state {
             return .blue.opacity(0.3)
         }
+        if case .listening = session.state {
+            return .orange.opacity(0.3)
+        }
         return .black.opacity(0.3)
     }
 
@@ -309,6 +327,9 @@ struct CapsuleBarView: View {
             return 12
         }
         if case .previewing = session.state {
+            return 12
+        }
+        if case .listening = session.state {
             return 12
         }
         return 10
@@ -320,6 +341,9 @@ struct CapsuleBarView: View {
         switch state {
         case .idle:
             capsuleWidth = 120
+            capsuleHeight = 36
+        case .listening:
+            capsuleWidth = 200
             capsuleHeight = 36
         case .recording:
             capsuleWidth = session.rawTranscript.isEmpty ? 200 : 240
@@ -353,6 +377,13 @@ struct CapsuleBarView: View {
 
     private func handleAnimations(from oldState: TranscriptionSession.State, to newState: TranscriptionSession.State) {
         switch newState {
+        case .listening:
+            withAnimation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true)) {
+                pulseScale = 1.3
+            }
+            withAnimation(.easeInOut(duration: 0.2)) {
+                breatheOpacity = 1.0
+            }
         case .recording:
             withAnimation(.easeInOut(duration: 0.6).repeatForever(autoreverses: true)) {
                 pulseScale = 1.4

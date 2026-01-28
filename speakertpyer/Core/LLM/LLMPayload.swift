@@ -39,6 +39,22 @@ struct LLMCommandResponse: Decodable {
     let replacement: String?
 }
 
+// MARK: - Two-Stage Intent Classification
+
+struct LLMIntentResponse: Decodable {
+    let intent: String          // "dictation", "translate", "rewrite", "compose", "skill", "create_event", "create_reminder"
+    let language: String?       // for translate (e.g. "en", "ja", "zh-TW")
+    let style: String?          // for rewrite (e.g. "formal", "casual")
+    let format: String?         // for compose (e.g. "email", "list")
+    let skillName: String?      // for skill (matches snippet trigger)
+    let content: String?        // extracted content to process (from transcript)
+
+    enum CodingKeys: String, CodingKey {
+        case intent, language, style, format, content
+        case skillName = "skill_name"
+    }
+}
+
 struct OpenRouterChatRequest: Encodable {
     let model: String
     let messages: [ChatMessage]

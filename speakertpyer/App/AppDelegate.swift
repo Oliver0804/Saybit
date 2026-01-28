@@ -124,13 +124,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private func requestPermissions() {
         AVAudioApplication.requestRecordPermission { granted in
             if !granted {
-                print("[SpeakerTyper] Microphone permission denied")
+                print("[Saybit] Microphone permission denied")
             }
         }
 
         SFSpeechRecognizer.requestAuthorization { status in
             if status != .authorized {
-                print("[SpeakerTyper] Speech recognition permission denied: \(status.rawValue)")
+                print("[Saybit] Speech recognition permission denied: \(status.rawValue)")
             }
         }
 

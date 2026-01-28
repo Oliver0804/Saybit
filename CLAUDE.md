@@ -19,7 +19,7 @@ Xcode project uses `PBXFileSystemSynchronizedRootGroup` — new Swift files are 
 
 ## Architecture
 
-**SpeakerTyper** is a macOS menu bar app (LSUIElement) that converts speech to LLM-refined text and injects it into any focused application.
+**Saybit** is a macOS menu bar app (LSUIElement) that converts speech to LLM-refined text and injects it into any focused application.
 
 ### Pipeline Flow
 
@@ -34,7 +34,7 @@ Hotkey → Recording (SpeechRecognizer) → STT transcript
 
 | Layer | Location | Role |
 |-------|----------|------|
-| Entry | `App/` | SpeakerTyperApp (@main, MenuBarExtra), AppDelegate (permissions, hotkey) |
+| Entry | `App/` | SaybitApp (@main, MenuBarExtra), AppDelegate (permissions, hotkey) |
 | Pipeline | `Core/Pipeline/VoicePipeline.swift` | State machine orchestrator — the central coordinator |
 | STT | `Core/SpeechRecognition/` | SpeechRecognizer (Speech framework), AudioLevelMonitor, AudioSessionManager |
 | LLM | `Core/LLM/` | OpenRouterClient (actor, streaming), SystemPrompts, LLMPayload |
@@ -62,7 +62,7 @@ All settings are `@Published` with `didSet` → `UserDefaults`. No Core Data for
 - Settings UI uses `GlassCard` + `GlassSectionHeader` components
 - No external SPM packages — all system frameworks
 - API key stored in Keychain via `KeychainHelper`
-- Logs written to `~/Library/Application Support/SpeakerTyper/logs/` (JSONL, 7-day retention)
+- Logs written to `~/Library/Application Support/Saybit/logs/` (JSONL, 7-day retention)
 
 ## Known Gotchas
 

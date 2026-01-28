@@ -20,7 +20,11 @@ class VoicePipeline {
     private let log = AppLogger.shared
     private var overlayConfigured = false
     private var audioLevelMonitor: AudioLevelMonitor?
+    private var listeningMonitor: AudioLevelMonitor?
     private var smartSendTask: Task<Void, Never>?
+    private var previewAutoConfirmTask: Task<Void, Never>?
+    /// 聆聽模式開關（持續偵測，直到使用者點擊關閉）
+    private var isListeningModeEnabled = false
     /// 在按下快捷鍵時預先擷取的選取文字與上下文（async Task）
     private var contextCaptureTask: Task<AppContext, Never>?
 
@@ -39,9 +43,57 @@ class VoicePipeline {
         overlayConfigured = true
     }
 
+    // MARK: - Click to Listen
+
+    func startListening() {
+        guard case .idle = session.state else { return }
+
+        isListeningModeEnabled = true
+        log.info("進入聆聽模式（持續），等待語音觸發", category: "Pipeline")
+        session.state = .listening
+        session.audioLevel = 0.0
+
+        let monitor = AudioLevelMonitor()
+        monitor.onAudioLevel = { [weak self] level in
+            self?.session.audioLevel = level
+        }
+        monitor.onSpeechDetected = { [weak self] in
+            guard let self, case .listening = self.session.state else { return }
+            self.log.info("聆聽模式偵測到語音，自動開始錄音", category: "Pipeline")
+            self.cleanupListening()
+            self.startRecording()
+            self.enableSilenceAutoStop()
+        }
+        monitor.startMonitoring(inputDeviceUID: settingsStore.selectedInputDeviceUID)
+        listeningMonitor = monitor
+
+        if settingsStore.enableSoundFeedback {
+            NSSound(named: .init("Morse"))?.play()
+        }
+    }
+
+    func cancelListening() {
+        isListeningModeEnabled = false
+        if case .listening = session.state {
+            log.info("取消聆聽模式", category: "Pipeline")
+            cleanupListening()
+            session.state = .idle
+        }
+    }
+
+    private func cleanupListening() {
+        listeningMonitor?.stopMonitoring()
+        listeningMonitor = nil
+    }
+
     // MARK: - Recording
 
     func startRecording() {
+        // 若聆聽中，先清除
+        if case .listening = session.state {
+            cleanupListening()
+        }
+
         // 若 Smart Send 倒數中，先取消
         if case .confirming = session.state {
             smartSendTask?.cancel()
@@ -122,25 +174,28 @@ class VoicePipeline {
             stopRecordingAndProcess()
         } else {
             startRecording()
-            // Enable silence detection for auto-stop
-            if settingsStore.enableAutoStop {
-                let silenceHandler: () -> Void = { [weak self] in
-                    DispatchQueue.main.async {
-                        guard let self, case .recording = self.session.state else { return }
-                        self.log.info("靜音偵測觸發自動停止 (\(self.settingsStore.silenceTimeout)s)", category: "Pipeline")
-                        self.stopRecordingAndProcess()
-                    }
-                }
+            enableSilenceAutoStop()
+        }
+    }
 
-                switch settingsStore.sttEngine {
-                case .appleSpeech:
-                    speechRecognizer.silenceTimeoutDuration = settingsStore.silenceTimeout
-                    speechRecognizer.onSilenceTimeout = silenceHandler
-                case .whisperAPI:
-                    whisperClient.silenceTimeoutDuration = settingsStore.silenceTimeout
-                    whisperClient.onSilenceTimeout = silenceHandler
-                }
+    /// 啟用靜音自動停止（listening 觸發和 toggleRecording 共用）
+    private func enableSilenceAutoStop() {
+        guard settingsStore.enableAutoStop else { return }
+        let silenceHandler: () -> Void = { [weak self] in
+            DispatchQueue.main.async {
+                guard let self, case .recording = self.session.state else { return }
+                self.log.info("靜音偵測觸發自動停止 (\(self.settingsStore.silenceTimeout)s)", category: "Pipeline")
+                self.stopRecordingAndProcess()
             }
+        }
+
+        switch settingsStore.sttEngine {
+        case .appleSpeech:
+            speechRecognizer.silenceTimeoutDuration = settingsStore.silenceTimeout
+            speechRecognizer.onSilenceTimeout = silenceHandler
+        case .whisperAPI:
+            whisperClient.silenceTimeoutDuration = settingsStore.silenceTimeout
+            whisperClient.onSilenceTimeout = silenceHandler
         }
     }
 
@@ -159,7 +214,7 @@ class VoicePipeline {
 
             guard !transcript.isEmpty else {
                 log.info("轉錄為空，跳過 LLM", category: "Pipeline")
-                session.state = .idle
+                returnToIdle()
                 return
             }
 
@@ -176,7 +231,7 @@ class VoicePipeline {
 
             guard let audioData, !audioData.isEmpty else {
                 log.info("錄音資料為空，跳過", category: "Pipeline")
-                session.state = .idle
+                returnToIdle()
                 return
             }
 
@@ -198,7 +253,7 @@ class VoicePipeline {
                     )
                     guard !transcript.isEmpty else {
                         log.info("Whisper 轉錄為空，跳過 LLM", category: "Pipeline")
-                        session.state = .idle
+                        returnToIdle()
                         return
                     }
                     session.rawTranscript = transcript
@@ -385,6 +440,7 @@ class VoicePipeline {
             if settingsStore.enablePreviewBeforeInject {
                 session.state = .previewing
                 log.info("進入預覽模式，等待使用者確認", category: "Pipeline")
+                startPreviewAutoConfirm()
             } else {
                 performInject()
             }
@@ -552,6 +608,7 @@ class VoicePipeline {
                 session.processedText = eventResponse.confirmationText
                 session.pendingAction = .createEvent(eventResponse)
                 session.state = .previewing
+                startPreviewAutoCancel()
                 log.info("Event preview: \(eventResponse.title) @ \(eventResponse.date)", category: "Action")
 
             case "create_reminder":
@@ -559,6 +616,7 @@ class VoicePipeline {
                 session.processedText = reminderResponse.confirmationText
                 session.pendingAction = .createReminder(reminderResponse)
                 session.state = .previewing
+                startPreviewAutoCancel()
                 log.info("Reminder preview: \(reminderResponse.title)", category: "Action")
 
             default:
@@ -642,6 +700,7 @@ class VoicePipeline {
     /// 使用者確認注入（預覽模式）
     func confirmInject() {
         guard case .previewing = session.state else { return }
+        cancelPreviewAutoConfirm()
         log.info("使用者確認注入", category: "Pipeline")
 
         if let action = session.pendingAction {
@@ -656,18 +715,51 @@ class VoicePipeline {
     /// 使用者取消（預覽模式）
     func cancelPreview() {
         guard case .previewing = session.state else { return }
+        cancelPreviewAutoConfirm()
         log.info("使用者取消預覽", category: "Pipeline")
-        session.state = .idle
+        returnToIdle()
     }
 
     /// 使用者要求重新生成（預覽模式）
     func regenerate() {
         guard case .previewing = session.state else { return }
+        cancelPreviewAutoConfirm()
         log.info("使用者要求重新生成", category: "Pipeline")
         session.processedText = ""
         session.state = .processing
         Task { @MainActor in
             await processWithLLM()
+        }
+    }
+
+    /// 預覽模式 3 秒自動確認
+    private func startPreviewAutoConfirm() {
+        cancelPreviewAutoConfirm()
+        previewAutoConfirmTask = Task { @MainActor [weak self] in
+            do {
+                try await Task.sleep(for: .seconds(3))
+            } catch { return }
+            guard let self, case .previewing = self.session.state else { return }
+            self.log.info("預覽 3 秒無操作，自動確認", category: "Pipeline")
+            self.confirmInject()
+        }
+    }
+
+    private func cancelPreviewAutoConfirm() {
+        previewAutoConfirmTask?.cancel()
+        previewAutoConfirmTask = nil
+    }
+
+    /// 行事曆/備忘錄預覽 3 秒無操作自動取消
+    private func startPreviewAutoCancel() {
+        cancelPreviewAutoConfirm()
+        previewAutoConfirmTask = Task { @MainActor [weak self] in
+            do {
+                try await Task.sleep(for: .seconds(3))
+            } catch { return }
+            guard let self, case .previewing = self.session.state else { return }
+            self.log.info("預覽 3 秒無操作，自動取消", category: "Pipeline")
+            self.cancelPreview()
         }
     }
 
@@ -761,9 +853,17 @@ class VoicePipeline {
 
     // MARK: - Helpers
 
+    /// 回到 idle 或自動重新進入聆聽模式
+    private func returnToIdle() {
+        session.state = .idle
+        if isListeningModeEnabled {
+            startListening()
+        }
+    }
+
     private func autoResetState(after seconds: Double) {
         DispatchQueue.main.asyncAfter(deadline: .now() + seconds) { [weak self] in
-            self?.session.state = .idle
+            self?.returnToIdle()
         }
     }
 

@@ -12,6 +12,7 @@ import Foundation
 /// 輕量麥克風監聽器 — 只偵測是否有人說話，不做語音辨識
 class AudioLevelMonitor {
     var onSpeechDetected: (() -> Void)?
+    var onAudioLevel: ((Float) -> Void)?
 
     private let audioEngine = AVAudioEngine()
     private let speechThreshold: Float = 0.15
@@ -82,6 +83,13 @@ class AudioLevelMonitor {
                 self.maxLevelSeen = level
             }
 
+            // 即時回報音量
+            if let onLevel = self.onAudioLevel {
+                DispatchQueue.main.async {
+                    onLevel(level)
+                }
+            }
+
             if level >= self.speechThreshold {
                 DispatchQueue.main.async {
                     self.log.info("語音偵測觸發 (level=\(String(format: "%.3f", level)))", category: "SmartSend")
@@ -106,5 +114,6 @@ class AudioLevelMonitor {
         isMonitoring = false
         log.info("AudioLevelMonitor 已停止 (callbacks=\(tapCallbackCount), maxLevel=\(String(format: "%.4f", maxLevelSeen)), threshold=\(speechThreshold))", category: "SmartSend")
         onSpeechDetected = nil
+        onAudioLevel = nil
     }
 }

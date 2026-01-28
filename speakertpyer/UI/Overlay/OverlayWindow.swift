@@ -23,7 +23,13 @@ class OverlayWindowController: NSObject {
     private weak var pipeline: VoicePipeline?
     private var moveObserver: Any?
     private var rightClickMonitor: Any?
+    private var leftDownMonitor: Any?
+    private var leftUpMonitor: Any?
     private var settingsWindow: NSWindow?
+
+    // Click vs drag discrimination
+    private var mouseDownLocation: NSPoint = .zero
+    private var mouseDownTime: Date = .distantPast
 
     private let panelWidth: CGFloat = 840
     private let panelHeight: CGFloat = 160
@@ -93,6 +99,28 @@ class OverlayWindowController: NSObject {
             return nil
         }
 
+        // Left-click monitor: record mouseDown position + time
+        leftDownMonitor = NSEvent.addLocalMonitorForEvents(matching: .leftMouseDown) { [weak self] event in
+            guard let self, event.window == self.panel else { return event }
+            self.mouseDownLocation = event.locationInWindow
+            self.mouseDownTime = Date()
+            return event // pass through so drag still works
+        }
+
+        // Left-click monitor: check if it's a tap (not drag)
+        leftUpMonitor = NSEvent.addLocalMonitorForEvents(matching: .leftMouseUp) { [weak self] event in
+            guard let self, event.window == self.panel else { return event }
+            let displacement = hypot(
+                event.locationInWindow.x - self.mouseDownLocation.x,
+                event.locationInWindow.y - self.mouseDownLocation.y
+            )
+            let elapsed = Date().timeIntervalSince(self.mouseDownTime)
+            if displacement < 5 && elapsed < 0.3 {
+                self.handleCapsuleTap()
+            }
+            return event
+        }
+
         // Observe drag to save position
         moveObserver = NotificationCenter.default.addObserver(
             forName: NSWindow.didMoveNotification,
@@ -111,6 +139,14 @@ class OverlayWindowController: NSObject {
         if let monitor = rightClickMonitor {
             NSEvent.removeMonitor(monitor)
             rightClickMonitor = nil
+        }
+        if let monitor = leftDownMonitor {
+            NSEvent.removeMonitor(monitor)
+            leftDownMonitor = nil
+        }
+        if let monitor = leftUpMonitor {
+            NSEvent.removeMonitor(monitor)
+            leftUpMonitor = nil
         }
         panel?.orderOut(nil)
         panel = nil
@@ -156,6 +192,24 @@ class OverlayWindowController: NSObject {
         origin.x = max(visible.minX, min(origin.x, visible.maxX - rect.width))
         origin.y = max(visible.minY, min(origin.y, visible.maxY - rect.height))
         return NSRect(origin: origin, size: rect.size)
+    }
+
+    // MARK: - Capsule Tap
+
+    private func handleCapsuleTap() {
+        guard let session else { return }
+        switch session.state {
+        case .idle:
+            pipeline?.startListening()
+        case .listening:
+            pipeline?.cancelListening()
+        case .recording:
+            pipeline?.stopRecordingAndProcess()
+        case .confirming:
+            pipeline?.toggleRecording()
+        default:
+            break
+        }
     }
 
     // MARK: - Context Menu (NSMenu)

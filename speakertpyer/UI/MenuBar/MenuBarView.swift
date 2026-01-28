@@ -16,7 +16,7 @@ struct MenuBarView: View {
             HStack {
                 Image(systemName: "mic.fill")
                     .foregroundColor(.accentColor)
-                Text("SpeakerTyper")
+                Text("Saybit")
                     .font(.headline)
             }
             .padding(.horizontal, 12)

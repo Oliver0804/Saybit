@@ -330,6 +330,7 @@ enum L10n {
     enum Overlay {
         static var processing: String { d("處理中", "处理中", "Processing", "処理中") }
         static var cancelled: String { d("已取消", "已取消", "Cancelled", "キャンセル済み") }
+        static var listening: String { d("等待語音...", "等待语音...", "Listening...", "音声待ち...") }
         static var chars: String { d("字", "字", "chars", "文字") }
         static var inject: String { d("輸入", "输入", "Inject", "入力") }
         static var regenerate: String { d("重新生成", "重新生成", "Regenerate", "再生成") }

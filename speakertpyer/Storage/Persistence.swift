@@ -101,5 +101,76 @@ struct PersistenceController {
             }
         }
         container.viewContext.automaticallyMergesChangesFromParent = true
+
+        if !inMemory {
+            seedDefaultSkillsIfNeeded()
+            cleanupLegacySkills()
+        }
     }
+
+    // MARK: - Default Skills Seeding
+
+    private static let hasSeededDefaultSkillsKey = "hasSeededDefaultSkills_v2"
+
+    private func seedDefaultSkillsIfNeeded() {
+        guard !UserDefaults.standard.bool(forKey: Self.hasSeededDefaultSkillsKey) else { return }
+
+        let context = container.viewContext
+        for skill in Self.defaultSkills {
+            let entry = SnippetEntry(context: context)
+            entry.id = UUID()
+            entry.trigger = skill.trigger
+            entry.content = skill.prompt
+        }
+
+        do {
+            try context.save()
+            UserDefaults.standard.set(true, forKey: Self.hasSeededDefaultSkillsKey)
+        } catch {
+            print("Failed to seed default skills: \(error)")
+        }
+    }
+
+    // MARK: - Legacy Cleanup
+
+    private static let hasCleanedLegacySkillsKey = "hasCleanedLegacySkills_v1"
+
+    /// 移除 v1 預設技能中與 LLM 意圖分類衝突的項目（翻譯類由 LLM 自動處理）
+    private func cleanupLegacySkills() {
+        guard !UserDefaults.standard.bool(forKey: Self.hasCleanedLegacySkillsKey) else { return }
+
+        let context = container.viewContext
+        let request: NSFetchRequest<SnippetEntry> = SnippetEntry.fetchRequest()
+        // 匹配 v1 時期的翻譯、郵件、改寫等技能
+        let legacyPrefixes = ["翻譯", "正式", "口語", "改寫"]
+        request.predicate = NSPredicate(
+            format: "trigger BEGINSWITH %@ OR trigger BEGINSWITH %@ OR trigger BEGINSWITH %@ OR trigger BEGINSWITH %@",
+            legacyPrefixes[0], legacyPrefixes[1], legacyPrefixes[2], legacyPrefixes[3]
+        )
+
+        if let entries = try? context.fetch(request), !entries.isEmpty {
+            for entry in entries {
+                context.delete(entry)
+            }
+            try? context.save()
+            print("[Saybit] 已清理 \(entries.count) 個舊版技能")
+        }
+
+        UserDefaults.standard.set(true, forKey: Self.hasCleanedLegacySkillsKey)
+    }
+
+    private static let defaultSkills: [(trigger: String, prompt: String)] = [
+        (
+            trigger: "摘要",
+            prompt: "將輸入內容濃縮為簡潔的摘要。保留關鍵資訊，去除冗餘內容。以條列式或短段落呈現，不超過原文的 1/3 長度。"
+        ),
+        (
+            trigger: "條列",
+            prompt: "將輸入內容整理為條列式（bullet points）。每個要點簡潔明確，使用 - 作為項目符號。自動偵測並分組相關內容。"
+        ),
+        (
+            trigger: "代辦",
+            prompt: "將輸入內容轉換為待辦事項清單。每個項目使用 - [ ] 格式（Markdown checkbox）。自動拆解複合任務為獨立項目，按邏輯順序排列。"
+        ),
+    ]
 }

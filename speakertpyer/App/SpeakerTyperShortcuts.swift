@@ -46,7 +46,7 @@ struct SpeakerTyperShortcuts: AppShortcutsProvider {
 
 struct StartDictationIntent: AppIntent {
     static var title: LocalizedStringResource = "開始語音輸入"
-    static var description = IntentDescription("開始 SpeakerTyper 語音錄音")
+    static var description = IntentDescription("開始 Saybit 語音錄音")
     static var openAppWhenRun: Bool = false
 
     func perform() async throws -> some IntentResult {
@@ -71,7 +71,7 @@ struct StartDictationIntent: AppIntent {
 
 struct StopDictationIntent: AppIntent {
     static var title: LocalizedStringResource = "停止語音輸入"
-    static var description = IntentDescription("停止 SpeakerTyper 語音錄音並處理文字")
+    static var description = IntentDescription("停止 Saybit 語音錄音並處理文字")
     static var openAppWhenRun: Bool = false
 
     func perform() async throws -> some IntentResult {
@@ -87,7 +87,7 @@ struct StopDictationIntent: AppIntent {
 
 struct ToggleDictationIntent: AppIntent {
     static var title: LocalizedStringResource = "切換語音輸入"
-    static var description = IntentDescription("切換 SpeakerTyper 語音輸入狀態（開始/停止）")
+    static var description = IntentDescription("切換 Saybit 語音輸入狀態（開始/停止）")
     static var openAppWhenRun: Bool = false
 
     func perform() async throws -> some IntentResult {
@@ -103,7 +103,7 @@ struct ToggleDictationIntent: AppIntent {
 
 struct SetToneStyleIntent: AppIntent {
     static var title: LocalizedStringResource = "設定語氣風格"
-    static var description = IntentDescription("設定 SpeakerTyper 的語氣風格")
+    static var description = IntentDescription("設定 Saybit 的語氣風格")
     static var openAppWhenRun: Bool = false
 
     @Parameter(title: "語氣風格")

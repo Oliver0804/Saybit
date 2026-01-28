@@ -16,6 +16,7 @@ enum PendingAction {
 class TranscriptionSession {
     enum State: Equatable {
         case idle
+        case listening
         case recording
         case processing
         case done

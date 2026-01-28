@@ -69,7 +69,7 @@ class GlobalHotKeyManager {
             userInfo: Unmanaged.passUnretained(self).toOpaque()
         ) else {
             isRegistered = false
-            print("[SpeakerTyper] Failed to create event tap. Accessibility permission required.")
+            print("[Saybit] Failed to create event tap. Accessibility permission required.")
             return
         }
 
@@ -78,7 +78,7 @@ class GlobalHotKeyManager {
         CFRunLoopAddSource(CFRunLoopGetMain(), runLoopSource, .commonModes)
         CGEvent.tapEnable(tap: tap, enable: true)
         isRegistered = true
-        print("[SpeakerTyper] Global hotkey registered: \(Self.hotkeyDescription(keyCode: keyCode, modifiers: modifiers))")
+        print("[Saybit] Global hotkey registered: \(Self.hotkeyDescription(keyCode: keyCode, modifiers: modifiers))")
     }
 
     func unregister() {
