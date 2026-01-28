@@ -14,6 +14,7 @@ class TranscriptionSession {
         case recording
         case processing
         case done
+        case previewing
         case confirming(remaining: Int)
         case error(String)
     }

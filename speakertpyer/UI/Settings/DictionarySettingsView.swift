@@ -106,13 +106,13 @@ struct DictionarySettingsView: View {
                     }
                 }
 
-                // MARK: - 新增 Snippet
+                // MARK: - 新增語音技能
                 GlassCard {
                     VStack(alignment: .leading, spacing: 10) {
-                        GlassSectionHeader(title: "新增 Snippet", icon: "doc.badge.plus")
+                        GlassSectionHeader(title: "新增語音技能", icon: "sparkles")
 
                         HStack(spacing: 8) {
-                            TextField("觸發詞", text: $newTrigger)
+                            TextField("觸發詞（例：寫信）", text: $newTrigger)
                                 .textFieldStyle(.roundedBorder)
                                 .frame(maxWidth: 200)
 
@@ -124,7 +124,7 @@ struct DictionarySettingsView: View {
                             .disabled(newTrigger.isEmpty || newSnippetContent.isEmpty)
                         }
 
-                        Text("Snippet 內容:")
+                        Text("Prompt 指令:")
                             .font(.caption)
                             .foregroundStyle(.secondary)
 
@@ -137,21 +137,33 @@ struct DictionarySettingsView: View {
                                     .strokeBorder(Color.primary.opacity(0.1), lineWidth: 1)
                             )
 
-                        Text("說出觸發詞時，LLM 會自動展開為完整內容")
+                        Text("說出觸發詞時，會載入對應的 Prompt 指令引導 LLM 處理後續語音內容")
                             .font(.caption2)
                             .foregroundStyle(.secondary)
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("範例：")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                            Text("觸發詞「寫信」→ Prompt「請用正式商業書信格式撰寫，包含問候語與結尾敬語」")
+                                .font(.caption2)
+                                .foregroundStyle(.tertiary)
+                            Text("觸發詞「摘要」→ Prompt「請將以下內容整理為 3-5 條重點摘要」")
+                                .font(.caption2)
+                                .foregroundStyle(.tertiary)
+                        }
                     }
                 }
 
-                // MARK: - Snippet 列表
+                // MARK: - 語音技能列表
                 GlassCard {
                     VStack(alignment: .leading, spacing: 8) {
-                        GlassSectionHeader(title: "Snippet 列表", icon: "doc.text")
+                        GlassSectionHeader(title: "語音技能列表", icon: "list.star")
 
                         if snippetEntries.isEmpty {
                             HStack {
                                 Spacer()
-                                Text("尚無 Snippet")
+                                Text("尚無語音技能")
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                                 Spacer()

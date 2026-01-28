@@ -20,6 +20,7 @@ class OverlayWindowController: NSObject {
     private var panel: NSPanel?
     private var session: TranscriptionSession?
     private(set) var settingsStore: SettingsStore?
+    private weak var pipeline: VoicePipeline?
     private var moveObserver: Any?
     private var rightClickMonitor: Any?
     private var settingsWindow: NSWindow?
@@ -27,9 +28,10 @@ class OverlayWindowController: NSObject {
     private let panelWidth: CGFloat = 840
     private let panelHeight: CGFloat = 160
 
-    func configure(session: TranscriptionSession, settingsStore: SettingsStore) {
+    func configure(session: TranscriptionSession, settingsStore: SettingsStore, pipeline: VoicePipeline) {
         self.session = session
         self.settingsStore = settingsStore
+        self.pipeline = pipeline
     }
 
     func show() {
@@ -63,9 +65,13 @@ class OverlayWindowController: NSObject {
         panel.isMovableByWindowBackground = true
         panel.hidesOnDeactivate = false
 
+        let pipelineRef = self.pipeline
         let capsuleView = CapsuleBarView(
             session: session ?? TranscriptionSession(),
-            settingsStore: settingsStore ?? SettingsStore()
+            settingsStore: settingsStore ?? SettingsStore(),
+            onConfirmInject: { pipelineRef?.confirmInject() },
+            onRegenerate: { pipelineRef?.regenerate() },
+            onCancelPreview: { pipelineRef?.cancelPreview() }
         )
         let hostingView = OverlayHostingView(rootView: capsuleView)
         hostingView.frame = NSRect(x: 0, y: 0, width: panelWidth, height: panelHeight)

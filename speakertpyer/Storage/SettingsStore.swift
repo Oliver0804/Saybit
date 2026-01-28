@@ -107,6 +107,22 @@ class SettingsStore: ObservableObject {
         didSet { UserDefaults.standard.set(enableAutoStop, forKey: "enableAutoStop") }
     }
 
+    // MARK: - STT Engine
+
+    @Published var sttEngine: STTEngine {
+        didSet { UserDefaults.standard.set(sttEngine.rawValue, forKey: "sttEngine") }
+    }
+
+    @Published var whisperModel: String {
+        didSet { UserDefaults.standard.set(whisperModel, forKey: "whisperModel") }
+    }
+
+    // MARK: - Preview Before Inject
+
+    @Published var enablePreviewBeforeInject: Bool {
+        didSet { UserDefaults.standard.set(enablePreviewBeforeInject, forKey: "enablePreviewBeforeInject") }
+    }
+
     // MARK: - Smart Send
 
     @Published var enableSmartSend: Bool {
@@ -181,6 +197,9 @@ class SettingsStore: ObservableObject {
         self.enableWhisperMode = defaults.object(forKey: "enableWhisperMode") as? Bool ?? false
         self.silenceTimeout = defaults.object(forKey: "silenceTimeout") as? Double ?? 2.0
         self.enableAutoStop = defaults.object(forKey: "enableAutoStop") as? Bool ?? true
+        self.sttEngine = STTEngine(rawValue: defaults.string(forKey: "sttEngine") ?? "") ?? .appleSpeech
+        self.whisperModel = defaults.string(forKey: "whisperModel") ?? "whisper-1"
+        self.enablePreviewBeforeInject = defaults.object(forKey: "enablePreviewBeforeInject") as? Bool ?? false
         self.enableSmartSend = defaults.object(forKey: "enableSmartSend") as? Bool ?? false
         self.smartSendDelay = defaults.object(forKey: "smartSendDelay") as? Double ?? 3.0
         self.capsuleScale = defaults.object(forKey: "capsuleScale") as? Double ?? 1.0

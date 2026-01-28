@@ -16,6 +16,12 @@ struct GeneralSettingsView: View {
     @State private var isMicTesting: Bool = false
     @StateObject private var micTester = MicLevelTester()
 
+    // Whisper API Key states
+    @State private var whisperAPIKeyInput: String = ""
+    @State private var showWhisperKey: Bool = false
+    @State private var isTestingWhisper: Bool = false
+    @State private var whisperTestStatus: String?
+
     var body: some View {
         ScrollView {
             VStack(spacing: 16) {
@@ -46,14 +52,6 @@ struct GeneralSettingsView: View {
 
                         Divider().opacity(0.3)
 
-                        Toggle("On-Device STT", isOn: $settingsStore.enableOnDeviceSTT)
-                        Text("使用本地語音辨識，不需網路")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                            .padding(.leading, 2)
-
-                        Divider().opacity(0.3)
-
                         Toggle("音效回饋", isOn: $settingsStore.enableSoundFeedback)
 
                         Divider().opacity(0.3)
@@ -63,6 +61,89 @@ struct GeneralSettingsView: View {
                             .font(.caption2)
                             .foregroundStyle(.secondary)
                             .padding(.leading, 2)
+                    }
+                }
+
+                // MARK: - 語音辨識引擎
+                GlassCard {
+                    VStack(alignment: .leading, spacing: 10) {
+                        GlassSectionHeader(title: "語音辨識引擎", icon: "waveform.circle")
+
+                        Picker("辨識引擎", selection: $settingsStore.sttEngine) {
+                            ForEach(STTEngine.allCases, id: \.self) { engine in
+                                Text(engine.displayName).tag(engine)
+                            }
+                        }
+                        .pickerStyle(.segmented)
+
+                        if settingsStore.sttEngine == .whisperAPI {
+                            VStack(alignment: .leading, spacing: 8) {
+                                HStack {
+                                    Text("Whisper API Key")
+                                    Spacer()
+                                    whisperAPIKeyStatus
+                                }
+
+                                HStack(spacing: 8) {
+                                    if showWhisperKey {
+                                        TextField("sk-...", text: $whisperAPIKeyInput)
+                                            .textFieldStyle(.roundedBorder)
+                                    } else {
+                                        SecureField("sk-...", text: $whisperAPIKeyInput)
+                                            .textFieldStyle(.roundedBorder)
+                                    }
+
+                                    Button {
+                                        showWhisperKey.toggle()
+                                    } label: {
+                                        Image(systemName: showWhisperKey ? "eye.slash" : "eye")
+                                    }
+                                    .buttonStyle(.borderless)
+
+                                    Button("儲存") {
+                                        saveWhisperAPIKey()
+                                    }
+                                    .controlSize(.small)
+                                    .buttonStyle(.bordered)
+                                    .disabled(whisperAPIKeyInput.isEmpty)
+                                }
+
+                                HStack(spacing: 8) {
+                                    Button {
+                                        testWhisperConnection()
+                                    } label: {
+                                        Label(
+                                            whisperTestStatus ?? "測試連線",
+                                            systemImage: whisperTestStatus == "連線成功" ? "checkmark.circle.fill" : "bolt.horizontal"
+                                        )
+                                    }
+                                    .controlSize(.small)
+                                    .buttonStyle(.bordered)
+                                    .tint(whisperTestStatus == "連線成功" ? .green : .accentColor)
+                                    .disabled(isTestingWhisper)
+
+                                    if isTestingWhisper {
+                                        ProgressView()
+                                            .scaleEffect(0.5)
+                                    }
+                                }
+
+                                Text("使用 OpenAI Whisper API 進行語音辨識，辨識準確度更高，但需網路連線且會產生 API 費用")
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                            }
+                            .padding(.leading, 2)
+                        }
+
+                        if settingsStore.sttEngine == .appleSpeech {
+                            Divider().opacity(0.3)
+
+                            Toggle("On-Device STT", isOn: $settingsStore.enableOnDeviceSTT)
+                            Text("使用本地語音辨識，不需網路")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                                .padding(.leading, 2)
+                        }
                     }
                 }
 
@@ -188,6 +269,19 @@ struct GeneralSettingsView: View {
                             }
                             .padding(.leading, 2)
                         }
+                    }
+                }
+
+                // MARK: - 注入前預覽
+                GlassCard {
+                    VStack(alignment: .leading, spacing: 10) {
+                        GlassSectionHeader(title: "注入前預覽", icon: "eye")
+
+                        Toggle("啟用注入前預覽", isOn: $settingsStore.enablePreviewBeforeInject)
+                        Text("LLM 處理完成後先顯示預覽，手動確認後再注入文字")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .padding(.leading, 2)
                     }
                 }
 
@@ -322,6 +416,10 @@ struct GeneralSettingsView: View {
         .onAppear {
             refreshPermissions()
             inputDevices = AudioSessionManager.listInputDevices()
+            // Load existing Whisper API key hint
+            if let existing = KeychainHelper.loadAPIKey(for: "whisper_api"), !existing.isEmpty {
+                whisperAPIKeyInput = ""  // Don't show actual key
+            }
         }
     }
 
@@ -338,5 +436,46 @@ struct GeneralSettingsView: View {
     private func refreshPermissions() {
         accessibilityAuthorized = AccessibilityManager.shared.isAuthorized
         micAuthorized = AudioSessionManager.isMicrophoneAuthorized
+    }
+
+    // MARK: - Whisper API Key
+
+    @ViewBuilder
+    private var whisperAPIKeyStatus: some View {
+        if KeychainHelper.loadAPIKey(for: "whisper_api") != nil {
+            Label("已設定", systemImage: "checkmark.circle.fill")
+                .font(.caption)
+                .foregroundStyle(.green)
+        } else {
+            Label("未設定", systemImage: "xmark.circle.fill")
+                .font(.caption)
+                .foregroundStyle(.red)
+        }
+    }
+
+    private func saveWhisperAPIKey() {
+        try? KeychainHelper.saveAPIKey(whisperAPIKeyInput, for: "whisper_api")
+        whisperAPIKeyInput = ""
+        whisperTestStatus = nil
+    }
+
+    private func testWhisperConnection() {
+        isTestingWhisper = true
+        whisperTestStatus = nil
+        Task {
+            do {
+                let client = WhisperSTTClient()
+                try await client.testConnection()
+                await MainActor.run {
+                    whisperTestStatus = "連線成功"
+                    isTestingWhisper = false
+                }
+            } catch {
+                await MainActor.run {
+                    whisperTestStatus = error.localizedDescription
+                    isTestingWhisper = false
+                }
+            }
+        }
     }
 }

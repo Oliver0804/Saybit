@@ -37,6 +37,11 @@ struct CapsuleBarView: View {
     let session: TranscriptionSession
     @ObservedObject var settingsStore: SettingsStore
 
+    // Preview action closures
+    var onConfirmInject: (() -> Void)?
+    var onRegenerate: (() -> Void)?
+    var onCancelPreview: (() -> Void)?
+
     @State private var capsuleWidth: CGFloat = 120
     @State private var capsuleHeight: CGFloat = 36
     @State private var pulseScale: CGFloat = 1.0
@@ -44,20 +49,47 @@ struct CapsuleBarView: View {
 
     private var scale: CGFloat { settingsStore.capsuleScale }
 
+    private var isPreviewing: Bool {
+        if case .previewing = session.state { return true }
+        return false
+    }
+
     var body: some View {
-        HStack(spacing: 8) {
-            stateIcon
-            stateContent
+        Group {
+            if isPreviewing {
+                previewLayout
+                    .scaleEffect(scale)
+                    .frame(minWidth: capsuleWidth * scale, minHeight: capsuleHeight * scale)
+                    .fixedSize()
+                    .background(
+                        RoundedRectangle(cornerRadius: 16)
+                            .fill(.ultraThinMaterial)
+                            .environment(\.colorScheme, .dark)
+                    )
+                    .clipShape(RoundedRectangle(cornerRadius: 16))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 16)
+                            .strokeBorder(borderGradient, lineWidth: 1.5)
+                    )
+                    .shadow(color: confirmingShadowColor, radius: confirmingShadowRadius, y: 3)
+            } else {
+                defaultLayout
+                    .scaleEffect(scale)
+                    .frame(minWidth: capsuleWidth * scale, minHeight: capsuleHeight * scale)
+                    .fixedSize()
+                    .background(
+                        Capsule()
+                            .fill(.ultraThinMaterial)
+                            .environment(\.colorScheme, .dark)
+                    )
+                    .clipShape(Capsule())
+                    .overlay(
+                        Capsule()
+                            .strokeBorder(borderGradient, lineWidth: 1.5)
+                    )
+                    .shadow(color: confirmingShadowColor, radius: confirmingShadowRadius, y: 3)
+            }
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 6)
-        .scaleEffect(scale)
-        .frame(minWidth: capsuleWidth * scale, minHeight: capsuleHeight * scale)
-        .fixedSize()
-        .background(capsuleBackground)
-        .clipShape(Capsule())
-        .overlay(capsuleBorder)
-        .shadow(color: confirmingShadowColor, radius: confirmingShadowRadius, y: 3)
         .animation(.easeInOut(duration: 0.2), value: settingsStore.capsuleScale)
         .onChange(of: session.state) { oldState, newState in
             withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
@@ -65,6 +97,70 @@ struct CapsuleBarView: View {
             }
             handleAnimations(from: oldState, to: newState)
         }
+    }
+
+    // MARK: - Layouts
+
+    private var defaultLayout: some View {
+        HStack(spacing: 8) {
+            stateIcon
+            stateContent
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 6)
+    }
+
+    private var previewLayout: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 6) {
+                Image(systemName: "eye.fill")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(.blue)
+                Text(session.processedText.isEmpty ? session.rawTranscript : session.processedText)
+                    .font(.system(size: 12, design: .rounded))
+                    .foregroundStyle(.white)
+                    .lineLimit(3)
+                    .truncationMode(.tail)
+            }
+
+            Divider().opacity(0.2)
+
+            HStack(spacing: 10) {
+                Spacer()
+                Button {
+                    onConfirmInject?()
+                } label: {
+                    Label("輸入", systemImage: "checkmark.circle.fill")
+                        .font(.system(size: 11, weight: .semibold))
+                }
+                .buttonStyle(.bordered)
+                .tint(.green)
+                .controlSize(.small)
+
+                Button {
+                    onRegenerate?()
+                } label: {
+                    Label("重新生成", systemImage: "arrow.clockwise")
+                        .font(.system(size: 11, weight: .medium))
+                }
+                .buttonStyle(.bordered)
+                .tint(.orange)
+                .controlSize(.small)
+
+                Button {
+                    onCancelPreview?()
+                } label: {
+                    Label("取消", systemImage: "xmark.circle")
+                        .font(.system(size: 11, weight: .medium))
+                }
+                .buttonStyle(.bordered)
+                .tint(.gray)
+                .controlSize(.small)
+                Spacer()
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
     }
 
     // MARK: - State Icon
@@ -89,6 +185,8 @@ struct CapsuleBarView: View {
             Image(systemName: "checkmark")
                 .font(.system(size: 12, weight: .bold))
                 .foregroundStyle(.green)
+        case .previewing:
+            EmptyView()
         case .confirming(let remaining):
             Text("\(remaining)")
                 .font(.system(size: 16, weight: .heavy, design: .rounded))
@@ -150,6 +248,8 @@ struct CapsuleBarView: View {
                     }
                 }
             }
+        case .previewing:
+            EmptyView()
         case .confirming:
             Text(session.processedText.isEmpty ? session.rawTranscript : session.processedText)
                 .font(.system(size: 12, design: .rounded))
@@ -166,17 +266,6 @@ struct CapsuleBarView: View {
 
     // MARK: - Background & Border
 
-    private var capsuleBackground: some View {
-        Capsule()
-            .fill(.ultraThinMaterial)
-            .environment(\.colorScheme, .dark)
-    }
-
-    private var capsuleBorder: some View {
-        Capsule()
-            .strokeBorder(borderGradient, lineWidth: 1.5)
-    }
-
     private var borderGradient: LinearGradient {
         let colors: [Color] = {
             switch session.state {
@@ -188,6 +277,8 @@ struct CapsuleBarView: View {
                 return [.orange.opacity(0.5), .orange.opacity(0.15)]
             case .done:
                 return [.green.opacity(0.5), .green.opacity(0.1)]
+            case .previewing:
+                return [.blue.opacity(0.5), .blue.opacity(0.15)]
             case .confirming:
                 return [.cyan.opacity(0.6), .blue.opacity(0.2)]
             case .error:
@@ -207,11 +298,17 @@ struct CapsuleBarView: View {
         if case .confirming = session.state {
             return .cyan.opacity(0.4 * breatheOpacity)
         }
+        if case .previewing = session.state {
+            return .blue.opacity(0.3)
+        }
         return .black.opacity(0.3)
     }
 
     private var confirmingShadowRadius: CGFloat {
         if case .confirming = session.state {
+            return 12
+        }
+        if case .previewing = session.state {
             return 12
         }
         return 10
@@ -237,6 +334,9 @@ struct CapsuleBarView: View {
             capsuleWidth = estimatedWidth
             let hasTokens = session.totalTokens > 0
             capsuleHeight = text.count > 25 ? (hasTokens ? 68 : 56) : (hasTokens ? 50 : 36)
+        case .previewing:
+            capsuleWidth = 340
+            capsuleHeight = 80
         case .confirming:
             let text = session.processedText.isEmpty ? session.rawTranscript : session.processedText
             let charWidth: CGFloat = text.unicodeScalars.allSatisfy({ $0.isASCII }) ? 7 : 13

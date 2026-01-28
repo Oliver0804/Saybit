@@ -13,6 +13,7 @@ import Foundation
 class VoicePipeline {
     let session = TranscriptionSession()
     let speechRecognizer = SpeechRecognizer()
+    let whisperClient = WhisperSTTClient()
 
     private let llmClient = OpenRouterClient()
     private let settingsStore: SettingsStore
@@ -32,7 +33,7 @@ class VoicePipeline {
     }
 
     private func configureOverlay() {
-        OverlayWindowController.shared.configure(session: session, settingsStore: settingsStore)
+        OverlayWindowController.shared.configure(session: session, settingsStore: settingsStore, pipeline: self)
         overlayConfigured = true
     }
 
@@ -45,6 +46,11 @@ class VoicePipeline {
             cleanupSmartSend()
         }
 
+        // 若預覽中，先取消
+        if case .previewing = session.state {
+            session.state = .idle
+        }
+
         // Check prerequisites
         let provider = settingsStore.selectedProvider
         if provider.requiresAPIKey, KeychainHelper.loadAPIKey(for: provider.id) == nil {
@@ -54,20 +60,37 @@ class VoicePipeline {
             return
         }
 
+        // Check Whisper API key if using Whisper engine
+        if settingsStore.sttEngine == .whisperAPI {
+            guard let key = KeychainHelper.loadAPIKey(for: "whisper_api"), !key.isEmpty else {
+                log.error("未設定 Whisper API Key", category: "Pipeline")
+                session.state = .error("未設定 Whisper API Key，請在設定中輸入")
+                autoResetState(after: 3.0)
+                return
+            }
+        }
+
         session.reset()
         session.state = .recording
         session.startTime = Date()
-        log.info("開始錄音", category: "STT")
+        log.info("開始錄音 (engine=\(settingsStore.sttEngine.rawValue))", category: "STT")
 
-        // Apply mic sensitivity
-        speechRecognizer.micGain = Float(settingsStore.micSensitivity)
+        let micGain = Float(settingsStore.micSensitivity)
 
         do {
-            try speechRecognizer.startListening(
-                onDeviceOnly: settingsStore.enableOnDeviceSTT,
-                inputDeviceUID: settingsStore.selectedInputDeviceUID
-            )
-            log.info("語音辨識啟動 (onDevice=\(settingsStore.enableOnDeviceSTT), device=\(settingsStore.selectedInputDeviceUID.isEmpty ? "系統預設" : settingsStore.selectedInputDeviceUID))", category: "STT")
+            switch settingsStore.sttEngine {
+            case .appleSpeech:
+                speechRecognizer.micGain = micGain
+                try speechRecognizer.startListening(
+                    onDeviceOnly: settingsStore.enableOnDeviceSTT,
+                    inputDeviceUID: settingsStore.selectedInputDeviceUID
+                )
+                log.info("Apple Speech 啟動 (onDevice=\(settingsStore.enableOnDeviceSTT), device=\(settingsStore.selectedInputDeviceUID.isEmpty ? "系統預設" : settingsStore.selectedInputDeviceUID))", category: "STT")
+            case .whisperAPI:
+                whisperClient.micGain = micGain
+                try whisperClient.startRecording(inputDeviceUID: settingsStore.selectedInputDeviceUID)
+                log.info("Whisper 錄音啟動 (device=\(settingsStore.selectedInputDeviceUID.isEmpty ? "系統預設" : settingsStore.selectedInputDeviceUID))", category: "STT")
+            }
         } catch {
             log.error("語音辨識啟動失敗: \(error.localizedDescription)", category: "STT")
             session.state = .error(error.localizedDescription)
@@ -91,13 +114,21 @@ class VoicePipeline {
             startRecording()
             // Enable silence detection for auto-stop
             if settingsStore.enableAutoStop {
-                speechRecognizer.silenceTimeoutDuration = settingsStore.silenceTimeout
-                speechRecognizer.onSilenceTimeout = { [weak self] in
+                let silenceHandler: () -> Void = { [weak self] in
                     DispatchQueue.main.async {
                         guard let self, case .recording = self.session.state else { return }
                         self.log.info("靜音偵測觸發自動停止 (\(self.settingsStore.silenceTimeout)s)", category: "Pipeline")
                         self.stopRecordingAndProcess()
                     }
+                }
+
+                switch settingsStore.sttEngine {
+                case .appleSpeech:
+                    speechRecognizer.silenceTimeoutDuration = settingsStore.silenceTimeout
+                    speechRecognizer.onSilenceTimeout = silenceHandler
+                case .whisperAPI:
+                    whisperClient.silenceTimeoutDuration = settingsStore.silenceTimeout
+                    whisperClient.onSilenceTimeout = silenceHandler
                 }
             }
         }
@@ -106,24 +137,75 @@ class VoicePipeline {
     func stopRecordingAndProcess() {
         guard case .recording = session.state else { return }
 
-        let transcript = speechRecognizer.stopListening()
-        session.rawTranscript = transcript
         session.endTime = Date()
         session.audioLevel = 0.0
-        log.info("錄音結束 (時長=\(String(format: "%.1f", session.duration))s)", category: "STT")
-        log.info("原始轉錄: \(transcript.isEmpty ? "(空)" : transcript)", category: "STT")
 
-        guard !transcript.isEmpty else {
-            log.info("轉錄為空，跳過 LLM", category: "Pipeline")
-            session.state = .idle
-            return
+        switch settingsStore.sttEngine {
+        case .appleSpeech:
+            let transcript = speechRecognizer.stopListening()
+            session.rawTranscript = transcript
+            log.info("錄音結束 (時長=\(String(format: "%.1f", session.duration))s)", category: "STT")
+            log.info("原始轉錄: \(transcript.isEmpty ? "(空)" : transcript)", category: "STT")
+
+            guard !transcript.isEmpty else {
+                log.info("轉錄為空，跳過 LLM", category: "Pipeline")
+                session.state = .idle
+                return
+            }
+
+            // Play end sound
+            if settingsStore.enableSoundFeedback {
+                NSSound(named: .init("Pop"))?.play()
+            }
+
+            proceedToLLM()
+
+        case .whisperAPI:
+            let audioData = whisperClient.stopRecording()
+            log.info("錄音結束 (時長=\(String(format: "%.1f", session.duration))s)", category: "STT")
+
+            guard let audioData, !audioData.isEmpty else {
+                log.info("錄音資料為空，跳過", category: "Pipeline")
+                session.state = .idle
+                return
+            }
+
+            // Play end sound
+            if settingsStore.enableSoundFeedback {
+                NSSound(named: .init("Pop"))?.play()
+            }
+
+            session.state = .processing
+
+            // Transcribe via Whisper API, then proceed to LLM
+            Task { @MainActor in
+                do {
+                    let whisperLang = whisperLanguageCode(from: settingsStore.languagePreference)
+                    let transcript = try await whisperClient.transcribe(
+                        audioData: audioData,
+                        model: settingsStore.whisperModel,
+                        language: whisperLang
+                    )
+                    guard !transcript.isEmpty else {
+                        log.info("Whisper 轉錄為空，跳過 LLM", category: "Pipeline")
+                        session.state = .idle
+                        return
+                    }
+                    session.rawTranscript = transcript
+                    log.info("Whisper 轉錄: \(transcript.prefix(100))", category: "STT")
+                    proceedToLLM()
+                } catch {
+                    let msg = error.localizedDescription
+                    log.error("Whisper 轉錄失敗: \(msg)", category: "STT")
+                    session.state = .error(msg)
+                    autoResetState(after: 3.0)
+                }
+            }
         }
+    }
 
-        // Play end sound
-        if settingsStore.enableSoundFeedback {
-            NSSound(named: .init("Pop"))?.play()
-        }
-
+    /// 轉錄完成後，進入 LLM 處理
+    private func proceedToLLM() {
         session.state = .processing
 
         // Get context
@@ -141,11 +223,16 @@ class VoicePipeline {
     // MARK: - Transcript Observation
 
     private func observeTranscript() {
-        // Poll speech recognizer for partial results and audio level
         Task { @MainActor in
             while case .recording = session.state {
-                session.rawTranscript = speechRecognizer.transcript
-                session.audioLevel = speechRecognizer.audioLevel
+                switch settingsStore.sttEngine {
+                case .appleSpeech:
+                    session.rawTranscript = speechRecognizer.transcript
+                    session.audioLevel = speechRecognizer.audioLevel
+                case .whisperAPI:
+                    // Whisper 不支援 partial results，只更新音量
+                    session.audioLevel = whisperClient.audioLevel
+                }
                 try? await Task.sleep(for: .milliseconds(100))
             }
         }
@@ -156,23 +243,45 @@ class VoicePipeline {
     @MainActor
     private func processWithLLM() async {
         let style = settingsStore.promptStyle
-        let systemPrompt = SystemPrompts.forStyle(style)
+        var systemPrompt = SystemPrompts.forStyle(style)
         let temperature = SystemPrompts.temperatureForStyle(style)
         let provider = settingsStore.selectedProvider
 
         log.info("LLM 處理開始 (provider=\(provider.name), model=\(settingsStore.selectedModel), style=\(style.rawValue), temp=\(temperature))", category: "LLM")
 
+        // 語音技能：偵測觸發詞，載入對應 Prompt 指令
+        var transcript = session.rawTranscript
+        let skills = loadSnippets() ?? [:]
+        var activatedSkill: String?
+
+        for (trigger, prompt) in skills {
+            if transcript.hasPrefix(trigger) || transcript.contains(trigger) {
+                activatedSkill = trigger
+                // 從 transcript 移除觸發詞，保留後續內容
+                transcript = transcript.replacingOccurrences(of: trigger, with: "").trimmingCharacters(in: .whitespaces)
+                // 將技能 Prompt 附加到 system prompt
+                systemPrompt += "\n\n## Active Skill: \(trigger)\n\(prompt)\n\nApply the above skill instruction to process the user's voice input."
+                log.info("語音技能啟動: \(trigger)", category: "LLM")
+                break
+            }
+        }
+
+        // 如果觸發詞後沒有其他內容，用原始 transcript
+        if transcript.isEmpty {
+            transcript = session.rawTranscript
+        }
+
         let selectedText = session.appContext.selectedText
         let hasSelectedText = selectedText != nil && !selectedText!.isEmpty
 
         let payload = LLMPayload(
-            transcript: session.rawTranscript,
+            transcript: transcript,
             context: session.appContext.contextIdentifier.isEmpty ? nil : session.appContext.contextIdentifier,
             mode: nil,
             tone: settingsStore.toneStyle == .auto ? nil : settingsStore.toneStyle.rawValue,
             languagePreference: settingsStore.languagePreference,
             personalDictionary: loadPersonalDictionary(),
-            snippets: loadSnippets(),
+            snippets: activatedSkill != nil ? nil : skills.isEmpty ? nil : skills,
             screenContext: nil,
             whisperMode: settingsStore.enableWhisperMode ? true : nil,
             existingText: hasSelectedText ? selectedText : nil
@@ -217,23 +326,13 @@ class VoicePipeline {
 
             log.info("LLM 結果: \(accumulated.prefix(100))\(accumulated.count > 100 ? "..." : "")", category: "LLM")
 
-            session.state = .done
-            TextInjector.inject(accumulated)
-            log.info("文字已注入", category: "Inject")
-
-            // Save to history
-            saveToHistory()
-
-            // Play done sound
-            if settingsStore.enableSoundFeedback {
-                NSSound(named: .init("Purr"))?.play()
-            }
-
-            // Smart Send 或一般 reset
-            if settingsStore.enableSmartSend {
-                startSmartSendCountdown()
+            if settingsStore.enablePreviewBeforeInject {
+                // 預覽模式：等待使用者確認
+                session.state = .previewing
+                log.info("進入預覽模式，等待使用者確認", category: "Pipeline")
             } else {
-                autoResetState(after: 2.0)
+                // 直接注入（原有行為）
+                performInject()
             }
         } catch {
             let msg = friendlyErrorMessage(error)
@@ -267,6 +366,52 @@ class VoicePipeline {
             }
         }
         return error.localizedDescription
+    }
+
+    // MARK: - Preview Actions
+
+    /// 使用者確認注入（預覽模式）
+    func confirmInject() {
+        guard case .previewing = session.state else { return }
+        log.info("使用者確認注入", category: "Pipeline")
+        performInject()
+    }
+
+    /// 使用者取消（預覽模式）
+    func cancelPreview() {
+        guard case .previewing = session.state else { return }
+        log.info("使用者取消預覽", category: "Pipeline")
+        session.state = .idle
+    }
+
+    /// 使用者要求重新生成（預覽模式）
+    func regenerate() {
+        guard case .previewing = session.state else { return }
+        log.info("使用者要求重新生成", category: "Pipeline")
+        session.processedText = ""
+        session.state = .processing
+        Task { @MainActor in
+            await processWithLLM()
+        }
+    }
+
+    /// 執行文字注入 + 後續流程（音效、歷史、Smart Send）
+    private func performInject() {
+        session.state = .done
+        TextInjector.inject(session.processedText)
+        log.info("文字已注入", category: "Inject")
+
+        saveToHistory()
+
+        if settingsStore.enableSoundFeedback {
+            NSSound(named: .init("Purr"))?.play()
+        }
+
+        if settingsStore.enableSmartSend {
+            startSmartSendCountdown()
+        } else {
+            autoResetState(after: 2.0)
+        }
     }
 
     // MARK: - Smart Send
@@ -380,6 +525,17 @@ class VoicePipeline {
             }
         }
         return snippets.isEmpty ? nil : snippets
+    }
+
+    // MARK: - Language Mapping
+
+    private func whisperLanguageCode(from preference: String) -> String {
+        switch preference {
+        case "zh-TW": return "zh"
+        case "en-US": return "en"
+        case "ja-JP": return "ja"
+        default: return "zh"
+        }
     }
 
     // MARK: - History

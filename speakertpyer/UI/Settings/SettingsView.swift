@@ -32,7 +32,7 @@ struct SettingsView: View {
 
             DictionarySettingsView()
                 .tabItem {
-                    Label("字典", systemImage: "book")
+                    Label("字典 / 技能", systemImage: "book")
                 }
 
             HistoryView()
