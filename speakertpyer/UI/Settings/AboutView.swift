@@ -76,32 +76,54 @@ struct AboutView: View {
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.horizontal, 16)
 
+            // Price info card
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Image(systemName: "dollarsign.circle.fill")
+                        .foregroundStyle(.green)
+                    Text(L10n.About.priceTitle)
+                        .fontWeight(.semibold)
+                }
+                .font(.system(size: 14))
+
+                Text(L10n.About.priceDesc)
+                    .font(.system(size: 13))
+                    .foregroundColor(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                RoundedRectangle(cornerRadius: 10)
+                    .fill(Color.green.opacity(0.08))
+            )
+            .padding(.horizontal, 16)
+
             Divider()
                 .padding(.horizontal, 40)
 
             // Developer & Website
-            VStack(spacing: 12) {
+            VStack(spacing: 10) {
                 HStack(spacing: 8) {
                     Text(L10n.Common.developer)
                         .foregroundColor(.secondary)
                     Text("bashcat")
                         .fontWeight(.semibold)
                 }
-                .font(.system(size: 16))
+                .font(.system(size: 15))
 
                 Link(L10n.Common.visitWebsite, destination: URL(string: "https://bashcat.net")!)
-                    .font(.system(size: 15))
+                    .font(.system(size: 14))
             }
-
-            Spacer()
 
             // Copyright
             Text("© 2026 bashcat. All rights reserved.")
-                .font(.system(size: 12))
+                .font(.system(size: 11))
                 .foregroundColor(.secondary)
+                .padding(.top, 8)
         }
-        .padding(.vertical, 28)
-        .padding(.horizontal, 24)
-        .frame(width: 420, height: 480)
+        .padding(.vertical, 20)
+        .padding(.horizontal, 20)
+        .frame(width: 420, height: 560)
     }
 }

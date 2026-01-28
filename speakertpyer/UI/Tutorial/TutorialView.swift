@@ -9,6 +9,7 @@ struct TutorialView: View {
     @ObservedObject var settingsStore: SettingsStore
     @State private var currentPage = 0
     @State private var practiceText = ""
+    @State private var apiKeyInput = ""
     @FocusState private var isTextFieldFocused: Bool
     var onDismiss: () -> Void
 
@@ -22,8 +23,8 @@ struct TutorialView: View {
     @State private var recordingTimeRemaining = 0
     private let recordingTimeout = 10
 
-    // Pages: 0=Hotkey, 1=Audio, 2=Features, 3-6=Practice 1-4
-    private let totalPages = 7
+    // Pages: 0=Hotkey, 1=API, 2=Audio, 3=Features, 4-7=Practice 1-4
+    private let totalPages = 8
 
     var body: some View {
         VStack(spacing: 0) {
@@ -31,12 +32,13 @@ struct TutorialView: View {
             Group {
                 switch currentPage {
                 case 0: hotkeyPage
-                case 1: audioPage
-                case 2: featuresPage
-                case 3: practicePage(step: 1)
-                case 4: practicePage(step: 2)
-                case 5: practicePage(step: 3)
-                case 6: practicePage(step: 4)
+                case 1: apiPage
+                case 2: audioPage
+                case 3: featuresPage
+                case 4: practicePage(step: 1)
+                case 5: practicePage(step: 2)
+                case 6: practicePage(step: 3)
+                case 7: practicePage(step: 4)
                 default: hotkeyPage
                 }
             }
@@ -204,7 +206,140 @@ struct TutorialView: View {
         .padding()
     }
 
-    // MARK: - Page 2: Audio Setup
+    // MARK: - Page 2: API Introduction
+
+    private var apiPage: some View {
+        VStack(spacing: 14) {
+            Image(systemName: "dollarsign.circle.fill")
+                .font(.system(size: 48))
+                .foregroundStyle(.green.gradient)
+
+            Text(L10n.Onboarding.apiTutorialTitle)
+                .font(.title)
+                .fontWeight(.bold)
+
+            Text(L10n.Onboarding.apiTutorialDesc)
+                .font(.body)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 40)
+
+            // Price comparison card
+            VStack(alignment: .leading, spacing: 8) {
+                Text(L10n.Onboarding.apiTutorialCompare)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+
+                HStack(spacing: 12) {
+                    priceRow(text: L10n.Onboarding.apiTutorialPrice1, highlight: true)
+                    priceRow(text: L10n.Onboarding.apiTutorialPrice2, highlight: false)
+                }
+                HStack(spacing: 12) {
+                    priceRow(text: L10n.Onboarding.apiTutorialPrice3, highlight: false)
+                    priceRow(text: L10n.Onboarding.apiTutorialPrice4, highlight: true)
+                }
+            }
+            .padding(12)
+            .background(
+                RoundedRectangle(cornerRadius: 10)
+                    .fill(Color.green.opacity(0.08))
+            )
+            .padding(.horizontal, 50)
+
+            Divider()
+                .padding(.horizontal, 80)
+
+            // API Key input section
+            VStack(spacing: 10) {
+                // Provider selection
+                HStack(spacing: 12) {
+                    Text(L10n.API.provider)
+                        .font(.body)
+                    Picker("", selection: $settingsStore.selectedProviderID) {
+                        Text("OpenRouter").tag("openrouter")
+                        Text("OpenAI").tag("openai")
+                        Text("Groq").tag("groq")
+                    }
+                    .pickerStyle(.segmented)
+                    .frame(width: 280)
+                }
+
+                // Get API Key link based on selection
+                HStack(spacing: 8) {
+                    if settingsStore.selectedProviderID == "openrouter" {
+                        Link(destination: URL(string: "https://openrouter.ai/keys")!) {
+                            Label(L10n.Onboarding.apiTutorialGetKey, systemImage: "link")
+                                .font(.callout)
+                        }
+                    } else if settingsStore.selectedProviderID == "openai" {
+                        Link(destination: URL(string: "https://platform.openai.com/api-keys")!) {
+                            Label(L10n.Onboarding.apiTutorialGetKey, systemImage: "link")
+                                .font(.callout)
+                        }
+                    } else {
+                        Link(destination: URL(string: "https://console.groq.com/keys")!) {
+                            Label(L10n.Onboarding.apiTutorialGetKey, systemImage: "link")
+                                .font(.callout)
+                        }
+                    }
+                }
+
+                // API Key input field
+                HStack {
+                    SecureField(settingsStore.selectedProvider.keyPlaceholder, text: $apiKeyInput)
+                        .textFieldStyle(.roundedBorder)
+                        .font(.body)
+
+                    Button(L10n.Common.save) {
+                        if !apiKeyInput.isEmpty {
+                            try? KeychainHelper.saveAPIKey(apiKeyInput)
+                            // Set default model based on provider
+                            if settingsStore.selectedProviderID == "openai" {
+                                settingsStore.selectedModel = "gpt-4.1-nano"
+                            } else if settingsStore.selectedProviderID == "openrouter" {
+                                settingsStore.selectedModel = "openai/gpt-4.1-nano"
+                            } else if settingsStore.selectedProviderID == "groq" {
+                                settingsStore.selectedModel = "llama-3.3-70b-versatile"
+                            }
+                        }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(apiKeyInput.isEmpty)
+                }
+                .padding(.horizontal, 50)
+
+                // Status
+                if KeychainHelper.loadAPIKey() != nil {
+                    HStack(spacing: 6) {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundColor(.green)
+                        Text(L10n.Onboarding.apiKeySaved)
+                            .foregroundColor(.green)
+                    }
+                    .font(.callout)
+                }
+
+                // Model hint
+                Text(settingsStore.selectedProvider.modelHint)
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+            }
+        }
+        .padding()
+    }
+
+    private func priceRow(text: String, highlight: Bool) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: highlight ? "star.fill" : "checkmark.circle.fill")
+                .font(.caption)
+                .foregroundStyle(highlight ? .yellow : .green)
+            Text(text)
+                .font(.callout)
+                .fontWeight(highlight ? .semibold : .regular)
+        }
+    }
+
+    // MARK: - Page 3: Audio Setup
 
     private var audioPage: some View {
         VStack(spacing: 20) {

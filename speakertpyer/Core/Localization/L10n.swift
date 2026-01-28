@@ -18,6 +18,8 @@ enum L10n {
 
     enum About {
         static var description: String { d("智慧語音輸入助手，將語音轉換為精準文字，支援聽寫、指令與編輯模式。", "智能语音输入助手，将语音转换为精准文字，支持听写、指令与编辑模式。", "Smart voice input assistant that converts speech to precise text. Supports dictation, command, and edit modes.", "スマート音声入力アシスタント。音声を正確なテキストに変換し、ディクテーション、コマンド、編集モードをサポートします。") }
+        static var priceTitle: String { d("超低成本，用多少算多少", "超低成本，用多少算多少", "Ultra-low cost, pay as you go", "超低コスト、使った分だけ") }
+        static var priceDesc: String { d("使用 GPT-4.1-nano，每次請求不到 1 分錢。相比訂閱制產品（$9-10/月），US$5 可用超久！", "使用 GPT-4.1-nano，每次请求不到 1 分钱。相比订阅制产品（$9-10/月），US$5 可用超久！", "Uses GPT-4.1-nano, ~$0.0002/request. Compared to subscriptions ($9-10/mo), $5 lasts forever!", "GPT-4.1-nano 使用、リクエストごとに 1 分以下。サブスク（$9-10/月）と比べ、US$5 で超長持ち！") }
     }
 
     // MARK: - Common
@@ -368,11 +370,21 @@ enum L10n {
         // Price comparison
         static var priceCompareTitle: String { d("💰 超划算的價格", "💰 超划算的价格", "💰 Super Affordable", "💰 超お得な価格") }
         static var priceCompareDesc: String { d("相比 Wispr Flow（每月 $300）或 Superwhisper（每月 $270），Saybit 使用 API 按量計費，成本極低：", "相比 Wispr Flow（每月 $300）或 Superwhisper（每月 $270），Saybit 使用 API 按量计费，成本极低：", "Compared to Wispr Flow ($10/mo) or Superwhisper ($9/mo), Saybit uses pay-per-use API with ultra-low cost:", "Wispr Flow（月額 $10）や Superwhisper（月額 $9）と比べて、Saybit は従量課金 API を使用し、コストが非常に低いです：") }
-        static var pricePerRequest: String { d("每次請求約 0.02 台幣（2 分錢）", "每次请求约 0.02 台币（2 分钱）", "~$0.0007 USD per request", "リクエストごとに約 0.02 台湾ドル") }
-        static var priceExample1: String { d("1 塊台幣 ≈ 48 次請求", "1 块台币 ≈ 48 次请求", "$1 USD ≈ 1,500 requests", "1 台湾ドル ≈ 48 リクエスト") }
-        static var priceExample2: String { d("100 塊台幣 ≈ 4,800 次請求", "100 块台币 ≈ 4,800 次请求", "$10 USD ≈ 15,000 requests", "100 台湾ドル ≈ 4,800 リクエスト") }
-        static var priceExample3: String { d("1,000 塊台幣可用約 48,000 次！", "1,000 块台币可用约 48,000 次！", "$100 USD ≈ 150,000 requests!", "1,000 台湾ドル ≈ 48,000 リクエスト！") }
+        static var pricePerRequest: String { d("每次請求不到 1 分錢", "每次请求不到 1 分钱", "~$0.0002 USD per request", "リクエストごとに 1 分以下") }
+        static var priceExample1: String { d("1 塊台幣 ≈ 200 次請求", "1 块台币 ≈ 200 次请求", "$1 USD ≈ 6,000 requests", "1 台湾ドル ≈ 200 リクエスト") }
+        static var priceExample2: String { d("100 塊台幣 ≈ 20,000 次請求", "100 块台币 ≈ 20,000 次请求", "$10 USD ≈ 60,000 requests", "100 台湾ドル ≈ 20,000 リクエスト") }
+        static var priceExample3: String { d("1,000 塊台幣可用約 200,000 次！", "1,000 块台币可用约 200,000 次！", "$100 USD ≈ 600,000 requests!", "1,000 台湾ドル ≈ 200,000 リクエスト！") }
         static var apiKeyHint: String { d("推薦使用 OpenRouter（支援多種模型）", "推荐使用 OpenRouter（支持多种模型）", "OpenRouter recommended (supports multiple models)", "OpenRouter を推奨（複数のモデルをサポート）") }
+
+        // API Tutorial page
+        static var apiTutorialTitle: String { d("超低成本 AI 語音輸入", "超低成本 AI 语音输入", "Ultra-Low Cost AI Voice Input", "超低コスト AI 音声入力") }
+        static var apiTutorialDesc: String { d("Saybit 使用 OpenAI GPT-4.1-nano 模型，按量計費，用多少算多少，費用完全自己掌控。", "Saybit 使用 OpenAI GPT-4.1-nano 模型，按量计费，用多少算多少，费用完全自己掌控。", "Saybit uses OpenAI GPT-4.1-nano model with pay-as-you-go pricing. You only pay for what you use.", "Saybit は OpenAI GPT-4.1-nano モデルを使用し、従量課金制で、使った分だけお支払い。") }
+        static var apiTutorialCompare: String { d("相比其他語音輸入產品（Wispr Flow $10/月、Superwhisper $9/月），Saybit 成本可低至：", "相比其他语音输入产品（Wispr Flow $10/月、Superwhisper $9/月），Saybit 成本可低至：", "Compared to other voice input products (Wispr Flow $10/mo, Superwhisper $9/mo), Saybit costs as low as:", "他の音声入力製品（Wispr Flow $10/月、Superwhisper $9/月）と比較して、Saybit のコストは：") }
+        static var apiTutorialPrice1: String { d("每次請求不到 1 分錢", "每次请求不到 1 分钱", "~$0.0002 USD per request", "リクエストごとに 1 分以下") }
+        static var apiTutorialPrice2: String { d("NT$1 ≈ 200 次請求", "NT$1 ≈ 200 次请求", "$1 USD ≈ 6,000 requests", "NT$1 ≈ 200 リクエスト") }
+        static var apiTutorialPrice3: String { d("NT$100 ≈ 20,000 次請求", "NT$100 ≈ 20,000 次请求", "$10 USD ≈ 60,000 requests", "NT$100 ≈ 20,000 リクエスト") }
+        static var apiTutorialPrice4: String { d("US$5 可以用超久！", "US$5 可以用超久！", "$5 USD lasts a very long time!", "US$5 で超長持ち！") }
+        static var apiTutorialGetKey: String { d("取得 API Key（免費註冊）", "获取 API Key（免费注册）", "Get API Key (Free signup)", "API Key を取得（無料登録）") }
 
         // Test step
         static var readyTitle: String { d("準備完成！", "准备完成！", "All Set!", "準備完了！") }

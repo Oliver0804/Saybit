@@ -26,8 +26,8 @@ enum PromptStyle: String, CaseIterable, Identifiable {
 
     var displayName: String {
         switch self {
-        case .typeless: return "Typeless"
-        case .wisprFlow: return "Wispr Flow"
+        case .typeless: return "智慧模式"
+        case .wisprFlow: return "工程師風格"
         }
     }
 }

@@ -188,7 +188,7 @@ class SettingsStore: ObservableObject {
         } else {
             self.customProviders = []
         }
-        self.selectedModel = defaults.string(forKey: "selectedModel") ?? "openai/gpt-4.1-mini"
+        self.selectedModel = defaults.string(forKey: "selectedModel") ?? "openai/gpt-4.1-nano"
         self.promptStyle = PromptStyle(rawValue: defaults.string(forKey: "promptStyle") ?? "") ?? .typeless
         self.languagePreference = defaults.string(forKey: "languagePreference") ?? "zh-TW"
         self.toneStyle = ToneStyle(rawValue: defaults.string(forKey: "toneStyle") ?? "") ?? .auto

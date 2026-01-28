@@ -60,11 +60,11 @@ struct LLMProvider: Codable, Identifiable, Hashable {
         name: "OpenRouter",
         baseURL: "https://openrouter.ai/api/v1/chat/completions",
         extraHeaders: [
-            "HTTP-Referer": "https://speakertyper.bashcat.net",
-            "X-Title": "SpeakerTyper",
+            "HTTP-Referer": "https://saybit.bashcat.net",
+            "X-Title": "Saybit",
         ],
         keyPlaceholder: "sk-or-v1-...",
-        modelHint: "openai/gpt-4.1-mini · anthropic/claude-sonnet-4 · google/gemini-2.5-flash",
+        modelHint: "openai/gpt-4.1-nano · anthropic/claude-sonnet-4 · google/gemini-2.5-flash",
         isBuiltIn: true
     )
 
@@ -74,7 +74,7 @@ struct LLMProvider: Codable, Identifiable, Hashable {
         baseURL: "https://api.openai.com/v1/chat/completions",
         extraHeaders: [:],
         keyPlaceholder: "sk-...",
-        modelHint: "gpt-4.1-mini · gpt-4.1 · gpt-4o",
+        modelHint: "gpt-4.1-nano · gpt-4.1-mini · gpt-4o",
         isBuiltIn: true
     )
 

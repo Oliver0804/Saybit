@@ -29,32 +29,43 @@ struct APISettingsView: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 16) {
-                // MARK: - Provider 選擇
-                if settingsMatchesSearch(["API", "provider", "模型", "model", "服務商", "服务商", "OpenRouter", "Ollama", "自訂", "custom"], searchText: searchState.searchText) {
+                // MARK: - API 設定（合併：服務商 + API Key + 模型）
+                if settingsMatchesSearch(["API", "provider", "模型", "model", "服務商", "服务商", "OpenRouter", "Ollama", "自訂", "custom", "key", "金鑰", "密钥"], searchText: searchState.searchText) {
                     GlassCard {
-                        VStack(alignment: .leading, spacing: 10) {
+                        VStack(alignment: .leading, spacing: 14) {
                             GlassSectionHeader(title: L10n.API.provider, icon: "server.rack")
 
-                            Picker(L10n.API.providerPicker, selection: $settingsStore.selectedProviderID) {
-                                ForEach(settingsStore.allProviders) { provider in
-                                    Text(provider.name).tag(provider.id)
+                            // Provider picker
+                            HStack {
+                                Picker(L10n.API.providerPicker, selection: $settingsStore.selectedProviderID) {
+                                    ForEach(settingsStore.allProviders) { provider in
+                                        Text(provider.name).tag(provider.id)
+                                    }
                                 }
-                            }
-                            .labelsHidden()
-                            .onChange(of: settingsStore.selectedProviderID) {
-                                loadKeyForCurrentProvider()
-                                testResult = ""
-                                saveStatus = ""
-                            }
+                                .labelsHidden()
+                                .frame(maxWidth: 200)
+                                .onChange(of: settingsStore.selectedProviderID) { _, newID in
+                                    loadKeyForCurrentProvider()
+                                    updateModelForProvider(newID)
+                                    testResult = ""
+                                    saveStatus = ""
+                                }
 
-                            if !settingsStore.customProviders.isEmpty {
-                                HStack(spacing: 6) {
+                                Button {
+                                    showAddCustom = true
+                                } label: {
+                                    Label(L10n.API.addCustomEndpoint, systemImage: "plus")
+                                }
+                                .controlSize(.small)
+                                .buttonStyle(.bordered)
+
+                                if !settingsStore.customProviders.isEmpty {
                                     ForEach(settingsStore.customProviders) { cp in
                                         if settingsStore.selectedProviderID == cp.id {
                                             Button {
                                                 removeCustomProvider(cp)
                                             } label: {
-                                                Label(L10n.API.removeProvider(cp.name), systemImage: "trash")
+                                                Image(systemName: "trash")
                                             }
                                             .controlSize(.small)
                                             .buttonStyle(.bordered)
@@ -64,151 +75,116 @@ struct APISettingsView: View {
                                 }
                             }
 
-                            Button {
-                                showAddCustom = true
-                            } label: {
-                                Label(L10n.API.addCustomEndpoint, systemImage: "plus")
-                            }
-                            .controlSize(.small)
-                            .buttonStyle(.bordered)
-                        }
-                    }
-                }
+                            Divider()
 
-                // MARK: - API Key / Ollama Status
-                if settingsMatchesSearch(["API key", "金鑰", "密钥", "Ollama", "本地", "local", "連線", "connection", "test", "測試"], searchText: searchState.searchText) {
-                  if currentProvider.requiresAPIKey {
-                    GlassCard {
-                        VStack(alignment: .leading, spacing: 10) {
-                            GlassSectionHeader(title: "\(currentProvider.name) API Key", icon: "key.fill")
+                            // API Key section (for providers that require key)
+                            if currentProvider.requiresAPIKey {
+                                HStack(spacing: 8) {
+                                    Group {
+                                        if showKey {
+                                            TextField(currentProvider.keyPlaceholder, text: $apiKey)
+                                        } else {
+                                            SecureField(currentProvider.keyPlaceholder, text: $apiKey)
+                                        }
+                                    }
+                                    .textFieldStyle(.roundedBorder)
 
-                            HStack(spacing: 8) {
-                                Group {
-                                    if showKey {
-                                        TextField(currentProvider.keyPlaceholder, text: $apiKey)
-                                    } else {
-                                        SecureField(currentProvider.keyPlaceholder, text: $apiKey)
+                                    Button(showKey ? L10n.Common.hide : L10n.Common.show) {
+                                        showKey.toggle()
+                                    }
+                                    .controlSize(.small)
+                                    .buttonStyle(.bordered)
+                                }
+
+                                HStack(spacing: 8) {
+                                    Button(L10n.Common.save) {
+                                        do {
+                                            try KeychainHelper.saveAPIKey(apiKey, for: currentProvider.id)
+                                            hasKey = true
+                                            showTemporaryStatus(L10n.Common.saved)
+                                        } catch {
+                                            showTemporaryStatus(L10n.Common.saveFailed)
+                                        }
+                                    }
+                                    .buttonStyle(.borderedProminent)
+                                    .controlSize(.small)
+
+                                    Button(L10n.API.clear) {
+                                        KeychainHelper.deleteAPIKey(for: currentProvider.id)
+                                        apiKey = ""
+                                        hasKey = false
+                                        showTemporaryStatus(L10n.Common.cleared)
+                                    }
+                                    .controlSize(.small)
+                                    .buttonStyle(.bordered)
+                                    .tint(.red)
+
+                                    Button {
+                                        testAPIConnection()
+                                    } label: {
+                                        if isTesting {
+                                            ProgressView()
+                                                .controlSize(.small)
+                                        } else {
+                                            Text(L10n.Common.testConnection)
+                                        }
+                                    }
+                                    .controlSize(.small)
+                                    .buttonStyle(.bordered)
+                                    .disabled(isTesting || !hasKey)
+
+                                    Spacer()
+
+                                    HStack(spacing: 4) {
+                                        Circle()
+                                            .fill(hasKey ? Color.green : Color.red)
+                                            .frame(width: 8, height: 8)
+                                        Text(L10n.API.apiKeySet(hasKey))
+                                            .font(.title3)
+                                            .foregroundStyle(.secondary)
                                     }
                                 }
-                                .textFieldStyle(.roundedBorder)
 
-                                Button(showKey ? L10n.Common.hide : L10n.Common.show) {
-                                    showKey.toggle()
+                                if !saveStatus.isEmpty {
+                                    Text(saveStatus)
+                                        .font(.title3)
+                                        .foregroundStyle(.secondary)
+                                        .transition(.opacity)
                                 }
-                                .controlSize(.small)
-                                .buttonStyle(.bordered)
-                            }
-
-                            HStack(spacing: 8) {
-                                Button(L10n.Common.save) {
-                                    do {
-                                        try KeychainHelper.saveAPIKey(apiKey, for: currentProvider.id)
-                                        hasKey = true
-                                        showTemporaryStatus(L10n.Common.saved)
-                                    } catch {
-                                        showTemporaryStatus(L10n.Common.saveFailed)
-                                    }
-                                }
-                                .buttonStyle(.borderedProminent)
-                                .controlSize(.small)
-
-                                Button(L10n.API.clear) {
-                                    KeychainHelper.deleteAPIKey(for: currentProvider.id)
-                                    apiKey = ""
-                                    hasKey = false
-                                    showTemporaryStatus(L10n.Common.cleared)
-                                }
-                                .controlSize(.small)
-                                .buttonStyle(.bordered)
-                                .tint(.red)
-
-                                Button {
-                                    testAPIConnection()
-                                } label: {
-                                    if isTesting {
-                                        ProgressView()
-                                            .controlSize(.small)
-                                    } else {
-                                        Text(L10n.Common.testConnection)
-                                    }
-                                }
-                                .controlSize(.small)
-                                .buttonStyle(.bordered)
-                                .disabled(isTesting || !hasKey)
-
-                                Spacer()
-
-                                HStack(spacing: 4) {
+                            } else {
+                                // Ollama status
+                                HStack(spacing: 8) {
                                     Circle()
-                                        .fill(hasKey ? Color.green : Color.red)
+                                        .fill(ollamaStatusColor)
                                         .frame(width: 8, height: 8)
-                                    Text(L10n.API.apiKeySet(hasKey))
-                                        .font(.title3)
-                                        .foregroundStyle(.secondary)
-                                }
-                            }
+                                    Text(ollamaStatusText)
+                                        .font(.body)
 
-                            if !saveStatus.isEmpty {
-                                Text(saveStatus)
-                                    .font(.title3)
-                                    .foregroundStyle(.secondary)
-                                    .transition(.opacity)
-                            }
+                                    Spacer()
 
-                            if !testResult.isEmpty {
-                                HStack(spacing: 4) {
-                                    Image(systemName: testResult.starts(with: "✓") ? "checkmark.circle.fill" : "xmark.circle.fill")
-                                        .foregroundStyle(testResult.starts(with: "✓") ? .green : .red)
-                                    Text(testResult)
-                                        .foregroundStyle(testResult.starts(with: "✓") ? .green : .red)
-                                }
-                                .font(.title3)
-                                .transition(.opacity)
-                            }
-                        }
-                    }
-                } else {
-                    // Ollama / no-key provider
-                    GlassCard {
-                        VStack(alignment: .leading, spacing: 10) {
-                            GlassSectionHeader(title: L10n.API.providerStatus(currentProvider.name), icon: "desktopcomputer")
-
-                            HStack(spacing: 8) {
-                                Circle()
-                                    .fill(ollamaStatusColor)
-                                    .frame(width: 8, height: 8)
-                                Text(ollamaStatusText)
-                                    .font(.body)
-
-                                Spacer()
-
-                                Button {
-                                    checkOllamaStatus()
-                                } label: {
-                                    Label(L10n.Common.recheck, systemImage: "arrow.clockwise")
-                                }
-                                .controlSize(.small)
-                                .buttonStyle(.bordered)
-
-                                Button {
-                                    testAPIConnection()
-                                } label: {
-                                    if isTesting {
-                                        ProgressView().controlSize(.small)
-                                    } else {
-                                        Text(L10n.Common.testConnection)
+                                    Button {
+                                        checkOllamaStatus()
+                                    } label: {
+                                        Label(L10n.Common.recheck, systemImage: "arrow.clockwise")
                                     }
-                                }
-                                .controlSize(.small)
-                                .buttonStyle(.bordered)
-                                .disabled(isTesting || ollamaRunning != true)
-                            }
+                                    .controlSize(.small)
+                                    .buttonStyle(.bordered)
 
-                            if !ollamaModels.isEmpty {
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text(L10n.API.availableModels)
-                                        .font(.title3)
-                                        .foregroundStyle(.secondary)
+                                    Button {
+                                        testAPIConnection()
+                                    } label: {
+                                        if isTesting {
+                                            ProgressView().controlSize(.small)
+                                        } else {
+                                            Text(L10n.Common.testConnection)
+                                        }
+                                    }
+                                    .controlSize(.small)
+                                    .buttonStyle(.bordered)
+                                    .disabled(isTesting || ollamaRunning != true)
+                                }
+
+                                if !ollamaModels.isEmpty {
                                     FlowLayout(spacing: 4) {
                                         ForEach(ollamaModels, id: \.self) { model in
                                             Button(model) {
@@ -220,11 +196,11 @@ struct APISettingsView: View {
                                         }
                                     }
                                 }
-                            }
 
-                            Text(L10n.API.ollamaHint)
-                                .font(.body)
-                                .foregroundStyle(.secondary)
+                                Text(L10n.API.ollamaHint)
+                                    .font(.body)
+                                    .foregroundStyle(.secondary)
+                            }
 
                             if !testResult.isEmpty {
                                 HStack(spacing: 4) {
@@ -236,16 +212,12 @@ struct APISettingsView: View {
                                 .font(.title3)
                                 .transition(.opacity)
                             }
-                        }
-                    }
-                  }
-                }
 
-                // MARK: - 模型選擇
-                if settingsMatchesSearch(["模型", "model", "CPU", "選擇", "select"], searchText: searchState.searchText) {
-                    GlassCard {
-                        VStack(alignment: .leading, spacing: 10) {
-                            GlassSectionHeader(title: L10n.API.model, icon: "cpu")
+                            Divider()
+
+                            // Model section
+                            Text(L10n.API.model)
+                                .font(.headline)
 
                             TextField("Model ID", text: $settingsStore.selectedModel)
                                 .textFieldStyle(.roundedBorder)
@@ -406,6 +378,39 @@ struct APISettingsView: View {
             hasKey = true
             apiKey = ""
             checkOllamaStatus()
+        }
+    }
+
+    private func updateModelForProvider(_ providerID: String) {
+        // Auto-update model name when switching providers
+        switch providerID {
+        case "openrouter":
+            // OpenRouter uses prefixed model names
+            if !settingsStore.selectedModel.contains("/") {
+                settingsStore.selectedModel = "openai/gpt-4.1-nano"
+            }
+        case "openai":
+            // OpenAI uses plain model names
+            if settingsStore.selectedModel.contains("/") {
+                // Convert "openai/gpt-4.1-nano" to "gpt-4.1-nano"
+                let parts = settingsStore.selectedModel.split(separator: "/")
+                if parts.count > 1 {
+                    settingsStore.selectedModel = String(parts.last!)
+                }
+            }
+            // Ensure valid OpenAI model
+            if settingsStore.selectedModel.isEmpty || settingsStore.selectedModel.contains("/") {
+                settingsStore.selectedModel = "gpt-4.1-nano"
+            }
+        case "groq":
+            settingsStore.selectedModel = "llama-3.3-70b-versatile"
+        case "together":
+            settingsStore.selectedModel = "meta-llama/Llama-3.3-70B-Instruct-Turbo"
+        case "ollama":
+            // Will be auto-selected from available models
+            break
+        default:
+            break
         }
     }
 
