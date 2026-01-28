@@ -43,14 +43,35 @@ enum SystemPrompts {
     - "Send it to John, no wait, send it to Mary instead" → "Send it to Mary."
     - "我覺得用Python比較好，不對，還是用Go吧" → "還是用 Go 比較好。"
 
-    **⚠️ IMPORTANT: Distinguish self-correction from negative instructions:**
-    - Self-correction cues: 「不對」「不是」「等等」「wait」「no actually」「我說錯了」→ speaker changing their mind, keep ONLY the corrected version
-    - Negative instructions: 「不要」「別」「don't」「不用」「不可以」→ speaker expressing deliberate negation, PRESERVE the full meaning
+    **⚠️ CRITICAL: Three distinct patterns — handle each differently:**
 
-    Examples of NEGATIVE INSTRUCTIONS (keep the full sentence):
-    - "約下午兩點開會不要改成四點" → "約下午兩點開會，不要改成四點。" (NOT "約下午兩點開會。")
-    - "記得帶傘但不要帶外套" → "記得帶傘，但不要帶外套。"
-    - "don't forget to email John but don't cc Mary" → "Don't forget to email John, but don't CC Mary."
+    **A. Self-correction (自我糾正)**: Speaker FIRST says something WRONG, THEN corrects it.
+    - Pattern: [wrong value] + correction marker + [correct value]
+    - Cues: 「不對」「等等」「wait」「no actually」「我說錯了」「sorry I meant」
+    - Action: Keep ONLY the corrected version
+    - Examples:
+      - "我的電話是 456，不對，是 123" → "我的電話是 123。" (said wrong number first, then corrected)
+      - "Send it to John, no wait, send it to Mary" → "Send it to Mary."
+
+    **B. Negation clarification (否定澄清)**: Speaker FIRST says the CORRECT value, THEN denies a wrong one.
+    - Pattern: [correct value] + 「不是」/「is not」/「isn't」 + [wrong value being denied]
+    - Action: PRESERVE the full meaning (both the correct value AND the negation)
+    - Examples:
+      - "我的電話是 123，不是 456" → "我的電話是 123，不是 456。" (clarifying what it ISN'T)
+      - "我的名字是 Oliver，不是 Oliver" → "我的名字是 Oliver，不是 Oliver。"
+      - "The meeting is at 2pm, not 3pm" → "The meeting is at 2pm, not 3pm."
+      - "我的電話號碼是 123456789，不是 456789123" → "我的電話號碼是 123456789，不是 456789123。"
+
+    **C. Negative instructions (否定指令)**: Speaker expressing what NOT to do.
+    - Cues: 「不要」「別」「don't」「不用」「不可以」
+    - Action: PRESERVE the full meaning
+    - Examples:
+      - "約下午兩點開會不要改成四點" → "約下午兩點開會，不要改成四點。"
+      - "記得帶傘但不要帶外套" → "記得帶傘，但不要帶外套。"
+
+    **Key distinction for「不是」:**
+    - If「不是」appears AFTER the correct value → Negation clarification (keep both)
+    - If「不是」appears BEFORE the correct value → Self-correction (keep only what follows)
 
     ### 4. Auto-Punctuation
     - Periods/commas/question marks based on semantic meaning
@@ -351,13 +372,31 @@ enum SystemPrompts {
     - False starts: Keep only the final complete thought
 
     ### 2. Repetition & Self-Correction
-    Detect and resolve repeated or self-corrected speech. Keep only the final intent.
+    Detect and resolve repeated or self-corrected speech.
 
-    **⚠️ IMPORTANT: Distinguish self-correction from negative instructions:**
-    - Self-correction cues: 「不對」「不是」「等等」「wait」「no actually」「我說錯了」→ speaker changing their mind, keep ONLY the corrected version
-    - Negative instructions: 「不要」「別」「don't」「不用」「不可以」→ speaker expressing deliberate negation, PRESERVE the full meaning
-    - "約兩點開會不要改成四點" → "約兩點開會，不要改成四點。" (negative instruction, keep all)
-    - "約兩點開會，不對，改四點" → "約四點開會。" (self-correction, keep corrected version)
+    **⚠️ CRITICAL: Three distinct patterns — handle each differently:**
+
+    **A. Self-correction (自我糾正)**: Speaker FIRST says something WRONG, THEN corrects it.
+    - Pattern: [wrong value] + correction marker + [correct value]
+    - Cues: 「不對」「等等」「wait」「no actually」「我說錯了」
+    - Action: Keep ONLY the corrected version
+    - "約兩點開會，不對，改四點" → "約四點開會。"
+    - "我的電話是 456，不對，是 123" → "我的電話是 123。"
+
+    **B. Negation clarification (否定澄清)**: Speaker FIRST says the CORRECT value, THEN denies a wrong one.
+    - Pattern: [correct value] + 「不是」/「is not」 + [wrong value being denied]
+    - Action: PRESERVE the full meaning
+    - "我的電話是 123，不是 456" → "我的電話是 123，不是 456。"
+    - "我的電話號碼是 123456789，不是 456789123" → "我的電話號碼是 123456789，不是 456789123。"
+    - "The meeting is at 2pm, not 3pm" → "The meeting is at 2pm, not 3pm."
+
+    **C. Negative instructions (否定指令)**: Speaker expressing what NOT to do.
+    - Cues: 「不要」「別」「don't」「不用」「不可以」
+    - "約兩點開會不要改成四點" → "約兩點開會，不要改成四點。"
+
+    **Key distinction for「不是」:**
+    - 「不是」AFTER the correct value → Negation clarification (keep both)
+    - 「不是」BEFORE the correct value → Self-correction (keep only what follows)
 
     ### 3. Auto-Punctuation & Formatting
     Add punctuation and paragraph breaks based on semantic structure.

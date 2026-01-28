@@ -72,12 +72,17 @@ class MicLevelTester: ObservableObject {
         audioEngine.stop()
         audioEngine.inputNode.removeTap(onBus: 0)
         isRunning = false
-        DispatchQueue.main.async {
-            self.level = 0
+        DispatchQueue.main.async { [weak self] in
+            self?.level = 0
         }
     }
 
     deinit {
-        stop()
+        // Don't call stop() here — it has async code that references self
+        // Just clean up the audio engine directly
+        if isRunning {
+            audioEngine.stop()
+            audioEngine.inputNode.removeTap(onBus: 0)
+        }
     }
 }

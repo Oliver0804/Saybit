@@ -60,9 +60,15 @@ class SpeechRecognizer {
             throw RecognizerError.notAvailable
         }
 
-        // Cancel any ongoing task
+        // Cancel any ongoing task and stop engine first
         recognitionTask?.cancel()
         recognitionTask = nil
+
+        // CRITICAL: Stop engine before removing tap to prevent crash
+        if audioEngine.isRunning {
+            audioEngine.stop()
+        }
+        audioEngine.inputNode.removeTap(onBus: 0)
 
         let request = SFSpeechAudioBufferRecognitionRequest()
         request.shouldReportPartialResults = true
@@ -72,9 +78,6 @@ class SpeechRecognizer {
         self.recognitionRequest = request
 
         let inputNode = audioEngine.inputNode
-
-        // Remove any existing tap
-        inputNode.removeTap(onBus: 0)
 
         // Set specific input device if requested
         if let uid = inputDeviceUID, !uid.isEmpty,
