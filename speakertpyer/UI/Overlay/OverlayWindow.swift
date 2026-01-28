@@ -227,6 +227,11 @@ class OverlayWindowController: NSObject {
         settingsItem.target = self
         menu.addItem(settingsItem)
 
+        // About - use zero-width space to prevent system auto-icon
+        let aboutItem = NSMenuItem(title: "\u{200B}\(L10n.Common.about)", action: #selector(showAbout(_:)), keyEquivalent: "")
+        aboutItem.target = self
+        menu.addItem(aboutItem)
+
         menu.addItem(.separator())
 
         // Quit
@@ -290,7 +295,7 @@ class OverlayWindowController: NSObject {
         let hostingView = NSHostingView(rootView: settingsView)
 
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 700, height: 720),
+            contentRect: NSRect(x: 0, y: 0, width: 820, height: 800),
             styleMask: [.titled, .closable, .resizable],
             backing: .buffered,
             defer: false
@@ -298,13 +303,13 @@ class OverlayWindowController: NSObject {
         window.isReleasedWhenClosed = false
         window.title = L10n.Overlay.settingsWindowTitle
         window.contentView = hostingView
-        window.minSize = NSSize(width: 700, height: 500)
+        window.minSize = NSSize(width: 820, height: 600)
 
         // Auto-size window to fit content
         let fittingSize = hostingView.fittingSize
         window.setContentSize(NSSize(
-            width: max(fittingSize.width, 700),
-            height: max(fittingSize.height, 500)
+            width: max(fittingSize.width, 820),
+            height: max(fittingSize.height, 600)
         ))
         window.center()
 
@@ -313,6 +318,26 @@ class OverlayWindowController: NSObject {
         NSApp.activate(ignoringOtherApps: true)
 
         settingsWindow = window
+    }
+
+    @objc private func showAbout(_ sender: NSMenuItem) {
+        let aboutView = AboutView()
+        let hostingView = NSHostingView(rootView: aboutView)
+
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 420, height: 480),
+            styleMask: [.titled, .closable],
+            backing: .buffered,
+            defer: false
+        )
+        window.isReleasedWhenClosed = false
+        window.title = L10n.Common.about
+        window.contentView = hostingView
+        window.center()
+
+        NSApp.setActivationPolicy(.regular)
+        window.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
     }
 
     @objc private func quitApp(_ sender: NSMenuItem) {

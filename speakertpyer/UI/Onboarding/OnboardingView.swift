@@ -28,7 +28,7 @@ struct OnboardingView: View {
         VStack(spacing: 0) {
             // Header
             HStack {
-                Text(currentStep == 0 ? "SpeakerTyper" : L10n.Onboarding.title)
+                Text(currentStep == 0 ? "Saybit" : L10n.Onboarding.title)
                     .font(.title2)
                     .fontWeight(.semibold)
                 Spacer()
@@ -265,36 +265,77 @@ struct OnboardingView: View {
     // MARK: - Step 2: API Key
 
     private var apiKeyStep: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text(L10n.Onboarding.apiKeyTitle)
-                .font(.headline)
+        ScrollView {
+            VStack(alignment: .leading, spacing: 14) {
+                Text(L10n.Onboarding.apiKeyTitle)
+                    .font(.headline)
 
-            Text(L10n.Onboarding.apiKeyDesc)
-                .foregroundColor(.secondary)
+                Text(L10n.Onboarding.apiKeyDesc)
+                    .font(.callout)
+                    .foregroundColor(.secondary)
 
-            SecureField("sk-or-...", text: $apiKey)
-                .textFieldStyle(.roundedBorder)
+                // Price comparison section
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(L10n.Onboarding.priceCompareTitle)
+                        .font(.subheadline)
+                        .fontWeight(.medium)
 
-            Button(L10n.Common.save) {
-                if !apiKey.isEmpty {
-                    try? KeychainHelper.saveAPIKey(apiKey)
-                }
-            }
-            .disabled(apiKey.isEmpty)
-
-            if KeychainHelper.loadAPIKey() != nil {
-                HStack {
-                    Image(systemName: "checkmark.circle.fill")
-                        .foregroundColor(.green)
-                    Text(L10n.Onboarding.apiKeySaved)
+                    Text(L10n.Onboarding.priceCompareDesc)
                         .font(.caption)
                         .foregroundColor(.secondary)
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("• \(L10n.Onboarding.pricePerRequest)")
+                        Text("• \(L10n.Onboarding.priceExample1)")
+                        Text("• \(L10n.Onboarding.priceExample2)")
+                        Text("• \(L10n.Onboarding.priceExample3)")
+                    }
+                    .font(.caption)
+                    .foregroundColor(.primary.opacity(0.8))
+                }
+                .padding(10)
+                .background(RoundedRectangle(cornerRadius: 8).fill(Color.green.opacity(0.1)))
+
+                Divider()
+
+                // API Key input
+                Text(L10n.Onboarding.apiKeyHint)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+
+                SecureField("sk-or-... / sk-...", text: $apiKey)
+                    .textFieldStyle(.roundedBorder)
+
+                HStack {
+                    Button(L10n.Common.save) {
+                        if !apiKey.isEmpty {
+                            try? KeychainHelper.saveAPIKey(apiKey)
+                        }
+                    }
+                    .disabled(apiKey.isEmpty)
+
+                    if KeychainHelper.loadAPIKey() != nil {
+                        HStack(spacing: 4) {
+                            Image(systemName: "checkmark.circle.fill")
+                                .foregroundColor(.green)
+                            Text(L10n.Onboarding.apiKeySaved)
+                                .font(.caption)
+                                .foregroundColor(.green)
+                        }
+                    }
+                }
+
+                // Links to get API keys
+                HStack(spacing: 16) {
+                    Link(L10n.Onboarding.getOpenRouterKey,
+                         destination: URL(string: "https://openrouter.ai/keys")!)
+                        .font(.caption)
+
+                    Link(L10n.Onboarding.getOpenAIKey,
+                         destination: URL(string: "https://platform.openai.com/api-keys")!)
+                        .font(.caption)
                 }
             }
-
-            Link(L10n.Onboarding.getAPIKey,
-                 destination: URL(string: "https://openrouter.ai/keys")!)
-                .font(.caption)
         }
     }
 

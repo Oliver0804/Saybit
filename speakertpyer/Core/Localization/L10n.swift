@@ -14,6 +14,12 @@ enum L10n {
         SettingsStore.shared?.appLanguage ?? .zhTW
     }
 
+    // MARK: - About
+
+    enum About {
+        static var description: String { d("智慧語音輸入助手，將語音轉換為精準文字，支援聽寫、指令與編輯模式。", "智能语音输入助手，将语音转换为精准文字，支持听写、指令与编辑模式。", "Smart voice input assistant that converts speech to precise text. Supports dictation, command, and edit modes.", "スマート音声入力アシスタント。音声を正確なテキストに変換し、ディクテーション、コマンド、編集モードをサポートします。") }
+    }
+
     // MARK: - Common
 
     enum Common {
@@ -33,6 +39,10 @@ enum L10n {
         static var skip: String { d("跳過", "跳过", "Skip", "スキップ") }
         static var confirm: String { d("確認", "确认", "Confirm", "確認") }
         static var quit: String { d("結束 Saybit", "退出 Saybit", "Quit Saybit", "Saybit を終了") }
+        static var about: String { d("關於 Saybit", "关于 Saybit", "About Saybit", "Saybit について") }
+        static var developer: String { d("開發者", "开发者", "Developer", "開発者") }
+        static var website: String { d("官方網站", "官方网站", "Website", "ウェブサイト") }
+        static var visitWebsite: String { d("造訪網站 →", "访问网站 →", "Visit Website →", "ウェブサイトを見る →") }
         static var recheck: String { d("重新檢查", "重新检查", "Recheck", "再確認") }
         static var openSettings: String { d("開啟設定", "打开设置", "Open Settings", "設定を開く") }
         static var saved: String { d("已儲存", "已保存", "Saved", "保存済み") }
@@ -351,9 +361,18 @@ enum L10n {
 
         // API Key step
         static var apiKeyTitle: String { d("設定 API Key", "设置 API Key", "Set Up API Key", "API Key を設定") }
-        static var apiKeyDesc: String { d("請輸入您的 OpenRouter API Key，用於 LLM 文字處理。", "请输入您的 OpenRouter API Key，用于 LLM 文字处理。", "Enter your OpenRouter API Key for LLM text processing.", "LLM テキスト処理用の OpenRouter API Key を入力してください。") }
+        static var apiKeyDesc: String { d("Saybit 使用 AI 處理語音轉文字，需要 API Key 才能運作。", "Saybit 使用 AI 处理语音转文字，需要 API Key 才能运作。", "Saybit uses AI to process speech-to-text and requires an API Key to work.", "Saybit は音声からテキストへの処理に AI を使用し、API Key が必要です。") }
         static var apiKeySaved: String { d("API Key 已儲存", "API Key 已保存", "API Key Saved", "API Key 保存済み") }
-        static var getAPIKey: String { d("取得 OpenRouter API Key →", "获取 OpenRouter API Key →", "Get OpenRouter API Key →", "OpenRouter API Key を取得 →") }
+        static var getOpenRouterKey: String { d("取得 OpenRouter API Key →", "获取 OpenRouter API Key →", "Get OpenRouter API Key →", "OpenRouter API Key を取得 →") }
+        static var getOpenAIKey: String { d("取得 OpenAI API Key →", "获取 OpenAI API Key →", "Get OpenAI API Key →", "OpenAI API Key を取得 →") }
+        // Price comparison
+        static var priceCompareTitle: String { d("💰 超划算的價格", "💰 超划算的价格", "💰 Super Affordable", "💰 超お得な価格") }
+        static var priceCompareDesc: String { d("相比 Wispr Flow（每月 $300）或 Superwhisper（每月 $270），Saybit 使用 API 按量計費，成本極低：", "相比 Wispr Flow（每月 $300）或 Superwhisper（每月 $270），Saybit 使用 API 按量计费，成本极低：", "Compared to Wispr Flow ($10/mo) or Superwhisper ($9/mo), Saybit uses pay-per-use API with ultra-low cost:", "Wispr Flow（月額 $10）や Superwhisper（月額 $9）と比べて、Saybit は従量課金 API を使用し、コストが非常に低いです：") }
+        static var pricePerRequest: String { d("每次請求約 0.02 台幣（2 分錢）", "每次请求约 0.02 台币（2 分钱）", "~$0.0007 USD per request", "リクエストごとに約 0.02 台湾ドル") }
+        static var priceExample1: String { d("1 塊台幣 ≈ 48 次請求", "1 块台币 ≈ 48 次请求", "$1 USD ≈ 1,500 requests", "1 台湾ドル ≈ 48 リクエスト") }
+        static var priceExample2: String { d("100 塊台幣 ≈ 4,800 次請求", "100 块台币 ≈ 4,800 次请求", "$10 USD ≈ 15,000 requests", "100 台湾ドル ≈ 4,800 リクエスト") }
+        static var priceExample3: String { d("1,000 塊台幣可用約 48,000 次！", "1,000 块台币可用约 48,000 次！", "$100 USD ≈ 150,000 requests!", "1,000 台湾ドル ≈ 48,000 リクエスト！") }
+        static var apiKeyHint: String { d("推薦使用 OpenRouter（支援多種模型）", "推荐使用 OpenRouter（支持多种模型）", "OpenRouter recommended (supports multiple models)", "OpenRouter を推奨（複数のモデルをサポート）") }
 
         // Test step
         static var readyTitle: String { d("準備完成！", "准备完成！", "All Set!", "準備完了！") }
