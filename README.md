@@ -1,6 +1,19 @@
-# SpeakerTyper
+<p align="center">
+  <img src="logo.png" alt="Saybit Logo" width="128" height="128">
+</p>
 
-macOS 選單列語音輸入工具。按下快捷鍵說話，AI 即時潤稿後自動貼入任何應用程式。
+<h1 align="center">Saybit</h1>
+
+<p align="center">
+  <strong>macOS 選單列語音輸入工具</strong><br>
+  按下快捷鍵說話，AI 即時潤稿後自動貼入任何應用程式。
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/platform-macOS%2015.2+-blue" alt="Platform">
+  <img src="https://img.shields.io/badge/license-MIT-green" alt="License">
+  <img src="https://img.shields.io/badge/swift-6.0-orange" alt="Swift">
+</p>
 
 ## 功能特色
 
@@ -146,9 +159,9 @@ xcodebuild -scheme speakertpyer -configuration Debug build
 ```
 speakertpyer/
 ├── App/                          # 應用程式進入點
-│   ├── SpeakerTyperApp.swift     # @main MenuBarExtra
+│   ├── SaybitApp.swift     # @main MenuBarExtra
 │   ├── AppDelegate.swift         # 權限、快捷鍵、Onboarding
-│   └── SpeakerTyperShortcuts.swift # Shortcuts 整合
+│   └── SaybitShortcuts.swift # Shortcuts 整合
 │
 ├── Core/
 │   ├── Pipeline/
@@ -241,7 +254,7 @@ speakertpyer/
 日誌儲存於：
 
 ```
-~/Library/Application Support/SpeakerTyper/logs/
+~/Library/Application Support/Saybit/logs/
 ```
 
 格式為 JSONL，包含 timestamp、level、category、message。7 天自動清理。
