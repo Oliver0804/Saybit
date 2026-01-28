@@ -24,7 +24,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
-		A703DEC12F289E5200CAB3F9 /* speakertpyer.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = speakertpyer.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		A703DEC12F289E5200CAB3F9 /* speakertpyer.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; name = speakertpyer.app; path = Saybit.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A703DED32F289E5300CAB3F9 /* speakertpyerTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = speakertpyerTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		A703DEDD2F289E5300CAB3F9 /* speakertpyerUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = speakertpyerUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
@@ -403,17 +403,25 @@
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = Saybit;
+				INFOPLIST_KEY_CFBundleName = Saybit;
 				INFOPLIST_KEY_LSUIElement = YES;
+				INFOPLIST_KEY_NSAppleEventsUsageDescription = "Saybit 需要自動化權限來擷取選取的文字。";
+				INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = "Saybit 需要行事曆權限來建立行程。";
+				INFOPLIST_KEY_NSCalendarsUsageDescription = "Saybit 需要行事曆權限來建立行程。";
+				INFOPLIST_KEY_NSCalendarsWriteOnlyAccessUsageDescription = "Saybit 需要行事曆權限來建立行程。";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
-				INFOPLIST_KEY_NSMicrophoneUsageDescription = "SpeakerTyper 需要麥克風來進行語音輸入。";
-				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "SpeakerTyper 使用語音辨識將您的語音轉換為文字。";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Saybit 需要麥克風來進行語音輸入。";
+				INFOPLIST_KEY_NSRemindersFullAccessUsageDescription = "Saybit 需要備忘錄權限來建立提醒事項。";
+				INFOPLIST_KEY_NSRemindersUsageDescription = "Saybit 需要備忘錄權限來建立提醒事項。";
+				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Saybit 使用語音辨識將您的語音轉換為文字。";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
 				MARKETING_VERSION = 1.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.bashcat.speakertpyer;
-				PRODUCT_NAME = "$(TARGET_NAME)";
+				PRODUCT_NAME = Saybit;
 				REGISTER_APP_GROUPS = YES;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
@@ -438,17 +446,25 @@
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = Saybit;
+				INFOPLIST_KEY_CFBundleName = Saybit;
 				INFOPLIST_KEY_LSUIElement = YES;
+				INFOPLIST_KEY_NSAppleEventsUsageDescription = "Saybit 需要自動化權限來擷取選取的文字。";
+				INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = "Saybit 需要行事曆權限來建立行程。";
+				INFOPLIST_KEY_NSCalendarsUsageDescription = "Saybit 需要行事曆權限來建立行程。";
+				INFOPLIST_KEY_NSCalendarsWriteOnlyAccessUsageDescription = "Saybit 需要行事曆權限來建立行程。";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
-				INFOPLIST_KEY_NSMicrophoneUsageDescription = "SpeakerTyper 需要麥克風來進行語音輸入。";
-				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "SpeakerTyper 使用語音辨識將您的語音轉換為文字。";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Saybit 需要麥克風來進行語音輸入。";
+				INFOPLIST_KEY_NSRemindersFullAccessUsageDescription = "Saybit 需要備忘錄權限來建立提醒事項。";
+				INFOPLIST_KEY_NSRemindersUsageDescription = "Saybit 需要備忘錄權限來建立提醒事項。";
+				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Saybit 使用語音辨識將您的語音轉換為文字。";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
 				MARKETING_VERSION = 1.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.bashcat.speakertpyer;
-				PRODUCT_NAME = "$(TARGET_NAME)";
+				PRODUCT_NAME = Saybit;
 				REGISTER_APP_GROUPS = YES;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;

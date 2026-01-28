@@ -7,6 +7,11 @@
 
 import Foundation
 
+enum PendingAction {
+    case createEvent(LLMEventResponse)
+    case createReminder(LLMReminderResponse)
+}
+
 @Observable
 class TranscriptionSession {
     enum State: Equatable {
@@ -23,6 +28,7 @@ class TranscriptionSession {
     var rawTranscript: String = ""
     var processedText: String = ""
     var appContext: AppContext = .empty
+    var pendingAction: PendingAction?
     var startTime: Date?
     var endTime: Date?
     var audioLevel: Float = 0.0
@@ -43,6 +49,7 @@ class TranscriptionSession {
         rawTranscript = ""
         processedText = ""
         appContext = .empty
+        pendingAction = nil
         startTime = nil
         endTime = nil
         audioLevel = 0.0

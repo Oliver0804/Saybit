@@ -9,6 +9,7 @@ import SwiftUI
 
 struct APISettingsView: View {
     @EnvironmentObject var settingsStore: SettingsStore
+    @EnvironmentObject var searchState: SettingsSearchState
     @State private var apiKey: String = ""
     @State private var hasKey: Bool = false
     @State private var showKey: Bool = false
@@ -29,51 +30,54 @@ struct APISettingsView: View {
         ScrollView {
             VStack(spacing: 16) {
                 // MARK: - Provider 選擇
-                GlassCard {
-                    VStack(alignment: .leading, spacing: 10) {
-                        GlassSectionHeader(title: L10n.API.provider, icon: "server.rack")
+                if settingsMatchesSearch(["API", "provider", "模型", "model", "服務商", "服务商", "OpenRouter", "Ollama", "自訂", "custom"], searchText: searchState.searchText) {
+                    GlassCard {
+                        VStack(alignment: .leading, spacing: 10) {
+                            GlassSectionHeader(title: L10n.API.provider, icon: "server.rack")
 
-                        Picker(L10n.API.providerPicker, selection: $settingsStore.selectedProviderID) {
-                            ForEach(settingsStore.allProviders) { provider in
-                                Text(provider.name).tag(provider.id)
+                            Picker(L10n.API.providerPicker, selection: $settingsStore.selectedProviderID) {
+                                ForEach(settingsStore.allProviders) { provider in
+                                    Text(provider.name).tag(provider.id)
+                                }
                             }
-                        }
-                        .labelsHidden()
-                        .onChange(of: settingsStore.selectedProviderID) {
-                            loadKeyForCurrentProvider()
-                            testResult = ""
-                            saveStatus = ""
-                        }
+                            .labelsHidden()
+                            .onChange(of: settingsStore.selectedProviderID) {
+                                loadKeyForCurrentProvider()
+                                testResult = ""
+                                saveStatus = ""
+                            }
 
-                        if !settingsStore.customProviders.isEmpty {
-                            HStack(spacing: 6) {
-                                ForEach(settingsStore.customProviders) { cp in
-                                    if settingsStore.selectedProviderID == cp.id {
-                                        Button {
-                                            removeCustomProvider(cp)
-                                        } label: {
-                                            Label(L10n.API.removeProvider(cp.name), systemImage: "trash")
+                            if !settingsStore.customProviders.isEmpty {
+                                HStack(spacing: 6) {
+                                    ForEach(settingsStore.customProviders) { cp in
+                                        if settingsStore.selectedProviderID == cp.id {
+                                            Button {
+                                                removeCustomProvider(cp)
+                                            } label: {
+                                                Label(L10n.API.removeProvider(cp.name), systemImage: "trash")
+                                            }
+                                            .controlSize(.small)
+                                            .buttonStyle(.bordered)
+                                            .tint(.red)
                                         }
-                                        .controlSize(.small)
-                                        .buttonStyle(.bordered)
-                                        .tint(.red)
                                     }
                                 }
                             }
-                        }
 
-                        Button {
-                            showAddCustom = true
-                        } label: {
-                            Label(L10n.API.addCustomEndpoint, systemImage: "plus")
+                            Button {
+                                showAddCustom = true
+                            } label: {
+                                Label(L10n.API.addCustomEndpoint, systemImage: "plus")
+                            }
+                            .controlSize(.small)
+                            .buttonStyle(.bordered)
                         }
-                        .controlSize(.small)
-                        .buttonStyle(.bordered)
                     }
                 }
 
                 // MARK: - API Key / Ollama Status
-                if currentProvider.requiresAPIKey {
+                if settingsMatchesSearch(["API key", "金鑰", "密钥", "Ollama", "本地", "local", "連線", "connection", "test", "測試"], searchText: searchState.searchText) {
+                  if currentProvider.requiresAPIKey {
                     GlassCard {
                         VStack(alignment: .leading, spacing: 10) {
                             GlassSectionHeader(title: "\(currentProvider.name) API Key", icon: "key.fill")
@@ -139,14 +143,14 @@ struct APISettingsView: View {
                                         .fill(hasKey ? Color.green : Color.red)
                                         .frame(width: 8, height: 8)
                                     Text(L10n.API.apiKeySet(hasKey))
-                                        .font(.caption)
+                                        .font(.title3)
                                         .foregroundStyle(.secondary)
                                 }
                             }
 
                             if !saveStatus.isEmpty {
                                 Text(saveStatus)
-                                    .font(.caption)
+                                    .font(.title3)
                                     .foregroundStyle(.secondary)
                                     .transition(.opacity)
                             }
@@ -158,7 +162,7 @@ struct APISettingsView: View {
                                     Text(testResult)
                                         .foregroundStyle(testResult.starts(with: "✓") ? .green : .red)
                                 }
-                                .font(.caption)
+                                .font(.title3)
                                 .transition(.opacity)
                             }
                         }
@@ -203,7 +207,7 @@ struct APISettingsView: View {
                             if !ollamaModels.isEmpty {
                                 VStack(alignment: .leading, spacing: 4) {
                                     Text(L10n.API.availableModels)
-                                        .font(.caption)
+                                        .font(.title3)
                                         .foregroundStyle(.secondary)
                                     FlowLayout(spacing: 4) {
                                         ForEach(ollamaModels, id: \.self) { model in
@@ -219,7 +223,7 @@ struct APISettingsView: View {
                             }
 
                             Text(L10n.API.ollamaHint)
-                                .font(.caption2)
+                                .font(.body)
                                 .foregroundStyle(.secondary)
 
                             if !testResult.isEmpty {
@@ -229,27 +233,86 @@ struct APISettingsView: View {
                                     Text(testResult)
                                         .foregroundStyle(testResult.starts(with: "✓") ? .green : .red)
                                 }
-                                .font(.caption)
+                                .font(.title3)
                                 .transition(.opacity)
+                            }
+                        }
+                    }
+                  }
+                }
+
+                // MARK: - 模型選擇
+                if settingsMatchesSearch(["模型", "model", "CPU", "選擇", "select"], searchText: searchState.searchText) {
+                    GlassCard {
+                        VStack(alignment: .leading, spacing: 10) {
+                            GlassSectionHeader(title: L10n.API.model, icon: "cpu")
+
+                            TextField("Model ID", text: $settingsStore.selectedModel)
+                                .textFieldStyle(.roundedBorder)
+
+                            if !currentProvider.modelHint.isEmpty {
+                                Text(L10n.API.commonModels(currentProvider.modelHint))
+                                    .font(.body)
+                                    .foregroundStyle(.secondary)
                             }
                         }
                     }
                 }
 
-                // MARK: - 模型選擇
-                GlassCard {
-                    VStack(alignment: .leading, spacing: 10) {
-                        GlassSectionHeader(title: L10n.API.model, icon: "cpu")
+                // MARK: - Prompt 風格
+                if settingsMatchesSearch(["prompt", "風格", "style", "提示詞", "提示词", "模式"], searchText: searchState.searchText) {
+                    GlassCard {
+                        VStack(alignment: .leading, spacing: 10) {
+                            GlassSectionHeader(title: L10n.Prompt.promptStyle, icon: "text.bubble")
 
-                        TextField("Model ID", text: $settingsStore.selectedModel)
-                            .textFieldStyle(.roundedBorder)
+                            Picker("", selection: $settingsStore.promptStyle) {
+                                ForEach(PromptStyle.allCases) { style in
+                                    Text(style.displayName).tag(style)
+                                }
+                            }
+                            .pickerStyle(.radioGroup)
 
-                        if !currentProvider.modelHint.isEmpty {
-                            Text(L10n.API.commonModels(currentProvider.modelHint))
-                                .font(.caption2)
+                            promptDescription
+                                .font(.title3)
                                 .foregroundStyle(.secondary)
+                                .padding(.top, 2)
                         }
                     }
+                }
+
+                // MARK: - 語調
+                if settingsMatchesSearch(["語氣", "tone", "語調", "语气"], searchText: searchState.searchText) {
+                    GlassCard {
+                        VStack(alignment: .leading, spacing: 10) {
+                            GlassSectionHeader(title: L10n.Prompt.tone, icon: "theatermasks")
+
+                            Picker("", selection: $settingsStore.toneStyle) {
+                                ForEach(ToneStyle.allCases) { tone in
+                                    Text(tone.displayName).tag(tone)
+                                }
+                            }
+                            .pickerStyle(.radioGroup)
+
+                            Text(L10n.Prompt.toneAutoDesc)
+                                .font(.title3)
+                                .foregroundStyle(.secondary)
+                                .padding(.top, 2)
+                        }
+                    }
+                }
+
+                // No results
+                if !searchState.searchText.isEmpty
+                    && !settingsMatchesSearch(["API", "provider", "模型", "model", "服務商", "服务商", "OpenRouter", "Ollama", "自訂", "custom"], searchText: searchState.searchText)
+                    && !settingsMatchesSearch(["API key", "金鑰", "密钥", "Ollama", "本地", "local", "連線", "connection", "test", "測試"], searchText: searchState.searchText)
+                    && !settingsMatchesSearch(["模型", "model", "CPU", "選擇", "select"], searchText: searchState.searchText)
+                    && !settingsMatchesSearch(["prompt", "風格", "style", "提示詞", "提示词", "模式"], searchText: searchState.searchText)
+                    && !settingsMatchesSearch(["語氣", "tone", "語調", "语气"], searchText: searchState.searchText)
+                {
+                    Text(L10n.Common.noResults)
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity)
+                        .padding(.top, 40)
                 }
             }
             .padding(20)
@@ -402,6 +465,18 @@ struct APISettingsView: View {
     private func clearTestResult() {
         DispatchQueue.main.asyncAfter(deadline: .now() + 5) {
             testResult = ""
+        }
+    }
+
+    // MARK: - Prompt Description
+
+    @ViewBuilder
+    private var promptDescription: some View {
+        switch settingsStore.promptStyle {
+        case .typeless:
+            Text(L10n.Prompt.typelessDesc)
+        case .wisprFlow:
+            Text(L10n.Prompt.wisprFlowDesc)
         }
     }
 }

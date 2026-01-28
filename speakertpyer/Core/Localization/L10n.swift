@@ -32,7 +32,7 @@ enum L10n {
         static var previous: String { d("上一步", "上一步", "Back", "戻る") }
         static var skip: String { d("跳過", "跳过", "Skip", "スキップ") }
         static var confirm: String { d("確認", "确认", "Confirm", "確認") }
-        static var quit: String { d("結束 SpeakerTyper", "退出 SpeakerTyper", "Quit SpeakerTyper", "SpeakerTyper を終了") }
+        static var quit: String { d("結束 Saybit", "退出 Saybit", "Quit Saybit", "Saybit を終了") }
         static var recheck: String { d("重新檢查", "重新检查", "Recheck", "再確認") }
         static var openSettings: String { d("開啟設定", "打开设置", "Open Settings", "設定を開く") }
         static var saved: String { d("已儲存", "已保存", "Saved", "保存済み") }
@@ -41,17 +41,20 @@ enum L10n {
         static var set: String { d("已設定", "已设置", "Set", "設定済み") }
         static var notSet: String { d("未設定", "未设置", "Not Set", "未設定") }
         static var authorized: String { d("已授權", "已授权", "Authorized", "許可済み") }
+        static var notAuthorized: String { d("未授權", "未授权", "Not Authorized", "未許可") }
+        static var requestAccess: String { d("請求授權", "请求授权", "Request Access", "アクセスを要求") }
         static var testConnection: String { d("測試連線", "测试连接", "Test Connection", "接続テスト") }
         static var connectionSuccess: String { d("連線成功", "连接成功", "Connected", "接続成功") }
         static var startUsing: String { d("開始使用", "开始使用", "Get Started", "使い始める") }
+        static var searchSettings: String { d("搜尋設定…", "搜索设置…", "Search settings…", "設定を検索…") }
+        static var noResults: String { d("找不到符合的設定", "找不到匹配的设置", "No matching settings", "一致する設定が見つかりません") }
     }
 
     // MARK: - Tabs
 
     enum Tabs {
         static var general: String { d("一般", "通用", "General", "一般") }
-        static var api: String { "API" }
-        static var prompt: String { "Prompt" }
+        static var ai: String { d("AI 引擎", "AI 引擎", "AI Engine", "AIエンジン") }
         static var hotkey: String { d("快捷鍵", "快捷键", "Hotkey", "ショートカット") }
         static var dictionary: String { d("字典 / 技能", "字典 / 技能", "Dictionary / Skills", "辞書 / スキル") }
         static var history: String { d("歷史", "历史", "History", "履歴") }
@@ -126,6 +129,9 @@ enum L10n {
         static var permissionStatus: String { d("權限狀態", "权限状态", "Permission Status", "権限状態") }
         static var accessibility: String { "Accessibility" }
         static var microphone: String { d("麥克風", "麦克风", "Microphone", "マイク") }
+        static var automation: String { d("自動化", "自动化", "Automation", "オートメーション") }
+        static var reminders: String { d("備忘錄", "提醒事项", "Reminders", "リマインダー") }
+        static var calendar: String { d("行事曆", "日历", "Calendar", "カレンダー") }
 
         // Tutorial
         static var tutorial: String { d("教學", "教程", "Tutorial", "チュートリアル") }
@@ -319,13 +325,13 @@ enum L10n {
         static var promptStyleMenu: String { d("Prompt 風格", "Prompt 风格", "Prompt Style", "プロンプトスタイル") }
         static var toneMenu: String { d("語調", "语调", "Tone", "トーン") }
         static var resetPosition: String { d("重置位置", "重置位置", "Reset Position", "位置をリセット") }
-        static var settingsWindowTitle: String { d("SpeakerTyper 設定", "SpeakerTyper 设置", "SpeakerTyper Settings", "SpeakerTyper 設定") }
+        static var settingsWindowTitle: String { d("Saybit 設定", "Saybit 设置", "Saybit Settings", "Saybit 設定") }
     }
 
     // MARK: - Onboarding
 
     enum Onboarding {
-        static var title: String { d("SpeakerTyper 設定引導", "SpeakerTyper 设置引导", "SpeakerTyper Setup", "SpeakerTyper セットアップ") }
+        static var title: String { d("Saybit 設定引導", "Saybit 设置引导", "Saybit Setup", "Saybit セットアップ") }
         static func stepOf(_ current: Int, _ total: Int) -> String {
             d("步驟 \(current) / \(total)", "步骤 \(current) / \(total)", "Step \(current) / \(total)", "ステップ \(current) / \(total)")
         }
@@ -334,7 +340,7 @@ enum L10n {
 
         // Permissions step
         static var permissionsTitle: String { d("權限設定", "权限设置", "Permissions", "権限設定") }
-        static var permissionsDesc: String { d("SpeakerTyper 需要以下權限才能正常運作。\n點擊「開啟設定」後，請在系統設定中允許 SpeakerTyper。", "SpeakerTyper 需要以下权限才能正常运作。\n点击「打开设置」后，请在系统设置中允许 SpeakerTyper。", "SpeakerTyper needs the following permissions to work properly.\nClick \"Open Settings\" to grant permissions in System Settings.", "SpeakerTyper が正常に動作するには以下の権限が必要です。\n「設定を開く」をクリックしてシステム設定で許可してください。") }
+        static var permissionsDesc: String { d("Saybit 需要以下權限才能正常運作。\n點擊「開啟設定」後，請在系統設定中允許 Saybit。", "Saybit 需要以下权限才能正常运作。\n点击「打开设置」后，请在系统设置中允许 Saybit。", "Saybit needs the following permissions to work properly.\nClick \"Open Settings\" to grant permissions in System Settings.", "Saybit が正常に動作するには以下の権限が必要です。\n「設定を開く」をクリックしてシステム設定で許可してください。") }
         static var micTitle: String { d("麥克風", "麦克风", "Microphone", "マイク") }
         static var micDesc: String { d("用於錄製語音", "用于录制语音", "For recording your voice", "音声を録音するために使用") }
         static var speechTitle: String { d("語音辨識", "语音识别", "Speech Recognition", "音声認識") }
@@ -361,7 +367,7 @@ enum L10n {
     // MARK: - Tutorial
 
     enum Tutorial {
-        static var title: String { d("如何使用 SpeakerTyper", "如何使用 SpeakerTyper", "How to Use SpeakerTyper", "SpeakerTyper の使い方") }
+        static var title: String { d("如何使用 Saybit", "如何使用 Saybit", "How to Use Saybit", "Saybit の使い方") }
 
         // Page 1: Hotkey
         static var hotkeyTitle: String { d("語音輸入快捷鍵", "语音输入快捷键", "Voice Input Hotkey", "音声入力ショートカット") }
@@ -381,7 +387,7 @@ enum L10n {
         // Page 3: Context & Preview
         static var contextTitle: String { d("智慧功能", "智慧功能", "Smart Features", "スマート機能") }
         static var contextFeature: String { d("上下文感知", "上下文感知", "Context Awareness", "コンテキスト認識") }
-        static var contextFeatureDesc: String { d("在任何 App 選取文字，SpeakerTyper 會自動讀取作為上下文", "在任何 App 选取文字，SpeakerTyper 会自动读取作为上下文", "Select text in any app — SpeakerTyper reads it as context", "任意のアプリでテキストを選択すると、SpeakerTyper がコンテキストとして読み取ります") }
+        static var contextFeatureDesc: String { d("在任何 App 選取文字，Saybit 會自動讀取作為上下文", "在任何 App 选取文字，Saybit 会自动读取作为上下文", "Select text in any app — Saybit reads it as context", "任意のアプリでテキストを選択すると、Saybit がコンテキストとして読み取ります") }
         static var previewFeature: String { d("注入前預覽", "注入前预览", "Preview Before Inject", "注入前プレビュー") }
         static var previewFeatureDesc: String { d("啟用後，處理完成的文字會先顯示預覽，確認後再注入", "启用后，处理完成的文字会先显示预览，确认后再注入", "When enabled, processed text is previewed before injection", "有効にすると、処理済みテキストが注入前にプレビューされます") }
 
@@ -392,13 +398,49 @@ enum L10n {
         static var voiceSkills: String { d("語音技能", "语音技能", "Voice Skills", "ボイススキル") }
         static var voiceSkillsDesc: String { d("設定觸發詞來載入自訂 Prompt，例如說「寫信」自動切換到書信格式。", "设定触发词来载入自定义 Prompt，例如说「写信」自动切换到书信格式。", "Set trigger words to load custom prompts. Say \"write email\" to auto-switch to letter format.", "トリガーワードでカスタムプロンプトを読み込みます。「メール作成」と言うとレター形式に自動切り替え。") }
 
+        // Action Intents
+        static var actionIntents: String { d("行事曆 / 備忘錄", "日历 / 提醒", "Calendar / Reminders", "カレンダー / リマインダー") }
+        static var actionIntentsDesc: String { d("說「幫我排明天下午3點的會議」直接建立行程，或「提醒我下週一交報告」建立提醒事項。", "说「帮我排明天下午3点的会议」直接创建日程，或「提醒我下周一交报告」创建提醒事项。", "Say \"Schedule a meeting tomorrow at 3pm\" to create an event, or \"Remind me to submit report next Monday\" for reminders.", "「明日午後3時に会議を入れて」でイベント作成、「月曜にレポート提出をリマインド」でリマインダー作成。") }
+
         // Page 5: Quick Reference
         static var quickRefTitle: String { d("快速參考", "快速参考", "Quick Reference", "クイックリファレンス") }
-        static var quickRefDesc: String { d("記住這些要點，馬上開始使用 SpeakerTyper！", "记住这些要点，马上开始使用 SpeakerTyper！", "Remember these key points and start using SpeakerTyper!", "これらのポイントを覚えて、SpeakerTyper を使い始めましょう！") }
+        static var quickRefDesc: String { d("記住這些要點，馬上開始使用 Saybit！", "记住这些要点，马上开始使用 Saybit！", "Remember these key points and start using Saybit!", "これらのポイントを覚えて、Saybit を使い始めましょう！") }
         static var tipHotkey: String { d("按快捷鍵開始語音輸入", "按快捷键开始语音输入", "Press hotkey to start voice input", "ショートカットで音声入力開始") }
         static var tipModes: String { d("三種模式：聽寫、指令、編輯", "三种模式：听写、指令、编辑", "Three modes: Dictation, Command, Edit", "3つのモード：ディクテーション、コマンド、編集") }
         static var tipContext: String { d("選取文字可作為 AI 上下文", "选取文字可作为 AI 上下文", "Select text to use as AI context", "テキストを選択して AI コンテキストに") }
         static var tipOverlay: String { d("右鍵點擊膠囊可快速切換設定", "右键点击胶囊可快速切换设置", "Right-click the capsule for quick settings", "カプセルを右クリックで素早く設定変更") }
+        static var tipActionIntents: String { d("語音建立行事曆和備忘錄", "语音创建日历和提醒", "Create calendar events & reminders by voice", "音声でカレンダーとリマインダーを作成") }
+
+        // Page: Practice
+        static var practiceTitle: String { d("實際操作練習", "实际操作练习", "Hands-on Practice", "実践練習") }
+        static var practiceDesc: String { d("跟著以下稿子念，體驗 Saybit 的核心功能。按下快捷鍵後開始說話！", "跟着以下稿子念，体验 Saybit 的核心功能。按下快捷键后开始说话！", "Follow the scripts below to experience Saybit's core features. Press the hotkey and start speaking!", "以下のスクリプトに沿って話し、Saybit のコア機能を体験しましょう。ショートカットを押して話し始めてください！") }
+        static var practiceStep: String { d("練習", "练习", "Practice", "練習") }
+
+        // Practice scripts
+        static var practice1Title: String { d("基本聽寫", "基本听写", "Basic Dictation", "基本ディクテーション") }
+        static var practice1Script: String { d("「今天天氣真好，我想出去走走。」", "「今天天气真好，我想出去走走。」", "\"The weather is nice today, I want to go for a walk.\"", "「今日はいい天気ですね、散歩に行きたいです。」") }
+        static var practice1Hint: String { d("直接說話，Saybit 會自動去除贅詞並整理文字", "直接说话，Saybit 会自动去除赘词并整理文字", "Just speak naturally, Saybit will clean up filler words", "自然に話すだけで、Saybit が冗長な言葉を削除します") }
+
+        static var practice2Title: String { d("翻譯指令", "翻译指令", "Translation Command", "翻訳コマンド") }
+        static var practice2Script: String { d("「翻譯成英文」", "「翻译成英文」", "\"Translate to English\"", "「英語に翻訳」") }
+        static var practice2Hint: String { d("⚠️ 先用滑鼠框選下方「歡迎使用 Saybit」文字，再按快捷鍵說話", "⚠️ 先用鼠标框选下方「欢迎使用 Saybit」文字，再按快捷键说话", "⚠️ First select \"Welcome to Saybit\" below, then press hotkey and speak", "⚠️ まず下の「Saybit へようこそ」を選択し、ショートカットを押して話してください") }
+        static var practice2DefaultText: String { d("歡迎使用 Saybit", "欢迎使用 Saybit", "Welcome to Saybit", "Saybit へようこそ") }
+        static var practice2SelectHint: String { d("👆 請先框選上方文字", "👆 请先框选上方文字", "👆 Select the text above first", "👆 上のテキストを選択してください") }
+
+        static var practice3Title: String { d("建立行程", "创建日程", "Create Event", "イベント作成") }
+        static var practice3Script: String { d("「幫我排明天下午三點開會」", "「帮我排明天下午三点开会」", "\"Schedule a meeting tomorrow at 3pm\"", "「明日午後3時に会議を入れて」") }
+        static var practice3Hint: String { d("Saybit 會自動建立行事曆事件", "Saybit 会自动创建日历事件", "Saybit will create a calendar event automatically", "Saybit が自動でカレンダーイベントを作成します") }
+
+        static var practice4Title: String { d("建立提醒", "创建提醒", "Create Reminder", "リマインダー作成") }
+        static var practice4Script: String { d("「提醒我明天早上九點吃藥」", "「提醒我明天早上九点吃药」", "\"Remind me to take medicine at 9am tomorrow\"", "「明日朝9時に薬を飲むのをリマインドして」") }
+        static var practice4Hint: String { d("Saybit 會自動建立備忘錄提醒", "Saybit 会自动创建提醒事项", "Saybit will create a reminder automatically", "Saybit が自動でリマインダーを作成します") }
+
+        static var practiceReady: String { d("準備好了嗎？", "准备好了吗？", "Ready?", "準備はいいですか？") }
+        static var practiceTryIt: String { d("按下快捷鍵試試看！", "按下快捷键试试看！", "Press the hotkey and try it!", "ショートカットを押して試してみましょう！") }
+        static var practiceSuccess: String { d("太棒了！你已經學會使用 Saybit 了 🎉", "太棒了！你已经学会使用 Saybit 了 🎉", "Awesome! You've learned how to use Saybit 🎉", "素晴らしい！Saybit の使い方を学びました 🎉") }
+        static var practiceInputPlaceholder: String { d("點擊此處，然後按快捷鍵說話，結果會顯示在這裡...", "点击此处，然后按快捷键说话，结果会显示在这里...", "Click here, press the hotkey and speak. Results will appear here...", "ここをクリックし、ショートカットを押して話してください。結果がここに表示されます...") }
+        static var practiceInputHint: String { d("👆 先點擊上方輸入框，再按快捷鍵開始說話", "👆 先点击上方输入框，再按快捷键开始说话", "👆 Click the input box above, then press the hotkey to speak", "👆 上の入力欄をクリックしてから、ショートカットを押して話してください") }
+        static var practiceInputClear: String { d("清除", "清除", "Clear", "クリア") }
     }
 
     // MARK: - Errors (used in VoicePipeline)
@@ -418,6 +460,19 @@ enum L10n {
         static var networkError: String { d("網路連線失敗", "网络连接失败", "Network connection failed", "ネットワーク接続に失敗しました") }
         static func retriesExhausted(_ attempts: Int, _ code: Int) -> String {
             d("重試 \(attempts) 次仍失敗 (HTTP \(code))", "重试 \(attempts) 次仍失败 (HTTP \(code))", "Failed after \(attempts) retries (HTTP \(code))", "\(attempts)回リトライしても失敗 (HTTP \(code))")
+        }
+
+        // Action Intents
+        static var actionJsonParseFailed: String { d("動作資料解析失敗", "动作数据解析失败", "Failed to parse action data", "アクションデータの解析に失敗しました") }
+        static var invalidDateFormat: String { d("日期格式錯誤", "日期格式错误", "Invalid date format", "日付フォーマットが無効です") }
+        static func actionPermissionDenied(_ type: String) -> String {
+            d("\(type)權限未授權", "\(type)权限未授权", "\(type) permission not authorized", "\(type)の権限が未許可です")
+        }
+        static func actionCreationFailed(_ msg: String) -> String {
+            d("建立失敗：\(msg)", "创建失败：\(msg)", "Creation failed: \(msg)", "作成に失敗：\(msg)")
+        }
+        static func actionExecutionFailed(_ msg: String) -> String {
+            d("動作執行失敗：\(msg)", "动作执行失败：\(msg)", "Action failed: \(msg)", "アクション実行に失敗：\(msg)")
         }
     }
 

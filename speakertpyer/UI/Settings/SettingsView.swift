@@ -5,50 +5,94 @@
 //  Created by 顏國明 on 2026/1/27.
 //
 
+import Combine
 import SwiftUI
+
+// MARK: - Search State
+
+class SettingsSearchState: ObservableObject {
+    @Published var searchText = ""
+}
+
+// MARK: - Search Helper
+
+func settingsMatchesSearch(_ keywords: [String], searchText: String) -> Bool {
+    guard !searchText.isEmpty else { return true }
+    let query = searchText.lowercased()
+    return keywords.contains { $0.lowercased().contains(query) }
+}
+
+// MARK: - Settings View
 
 struct SettingsView: View {
     @EnvironmentObject var settingsStore: SettingsStore
+    @StateObject private var searchState = SettingsSearchState()
 
     var body: some View {
-        TabView {
-            GeneralSettingsView()
-                .tabItem {
-                    Label(L10n.Tabs.general, systemImage: "gear")
+        VStack(spacing: 0) {
+            // Search bar
+            HStack {
+                Image(systemName: "magnifyingglass")
+                    .foregroundStyle(.secondary)
+                TextField(L10n.Common.searchSettings, text: $searchState.searchText)
+                    .textFieldStyle(.plain)
+                if !searchState.searchText.isEmpty {
+                    Button {
+                        searchState.searchText = ""
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
                 }
+            }
+            .padding(8)
+            .background(
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(Color.primary.opacity(0.06))
+            )
+            .padding(.horizontal, 16)
+            .padding(.top, 12)
+            .padding(.bottom, 4)
 
-            APISettingsView()
-                .tabItem {
-                    Label(L10n.Tabs.api, systemImage: "key.fill")
-                }
+            TabView {
+                GeneralSettingsView()
+                    .environmentObject(searchState)
+                    .tabItem {
+                        Label(L10n.Tabs.general, systemImage: "gear")
+                    }
 
-            PromptSettingsView()
-                .tabItem {
-                    Label(L10n.Tabs.prompt, systemImage: "text.bubble")
-                }
+                APISettingsView()
+                    .environmentObject(searchState)
+                    .tabItem {
+                        Label(L10n.Tabs.ai, systemImage: "cpu")
+                    }
 
-            HotKeySettingsView()
-                .tabItem {
-                    Label(L10n.Tabs.hotkey, systemImage: "keyboard")
-                }
+                HotKeySettingsView()
+                    .environmentObject(searchState)
+                    .tabItem {
+                        Label(L10n.Tabs.hotkey, systemImage: "keyboard")
+                    }
 
-            DictionarySettingsView()
-                .tabItem {
-                    Label(L10n.Tabs.dictionary, systemImage: "book")
-                }
+                DictionarySettingsView()
+                    .environmentObject(searchState)
+                    .tabItem {
+                        Label(L10n.Tabs.dictionary, systemImage: "book")
+                    }
 
-            HistoryView()
-                .tabItem {
-                    Label(L10n.Tabs.history, systemImage: "clock")
-                }
+                HistoryView()
+                    .tabItem {
+                        Label(L10n.Tabs.history, systemImage: "clock")
+                    }
 
-            StatisticsView()
-                .tabItem {
-                    Label(L10n.Tabs.statistics, systemImage: "chart.bar.fill")
-                }
+                StatisticsView()
+                    .tabItem {
+                        Label(L10n.Tabs.statistics, systemImage: "chart.bar.fill")
+                    }
+            }
         }
-        .frame(minWidth: 680, idealWidth: 680, maxWidth: .infinity,
-               minHeight: 500, idealHeight: 720, maxHeight: .infinity)
+        .frame(minWidth: 800, idealWidth: 800, maxWidth: .infinity,
+               minHeight: 600, idealHeight: 800, maxHeight: .infinity)
         .id(settingsStore.languagePreference)
     }
 }
@@ -90,15 +134,15 @@ struct GlassSectionHeader: View {
     let icon: String
 
     var body: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: 10) {
             Image(systemName: icon)
-                .font(.caption)
+                .font(.title3)
                 .foregroundStyle(.secondary)
             Text(title)
-                .font(.subheadline)
+                .font(.title2)
                 .fontWeight(.semibold)
                 .foregroundStyle(.primary)
         }
-        .padding(.bottom, 4)
+        .padding(.bottom, 8)
     }
 }
