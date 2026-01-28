@@ -12,21 +12,34 @@ struct TutorialView: View {
     @FocusState private var isTextFieldFocused: Bool
     var onDismiss: () -> Void
 
-    // Pages: 0=Hotkey, 1=Features, 2-5=Practice 1-4
-    private let totalPages = 6
+    // Mic testing states
+    @State private var inputDevices: [AudioInputDevice] = []
+    @StateObject private var micTester = MicLevelTester()
+    @State private var isMicTesting = false
+
+    // Hotkey recording states
+    @State private var isRecordingHotkey = false
+    @State private var recordingTimeRemaining = 0
+    private let recordingTimeout = 10
+
+    // Pages: 0=Hotkey, 1=Audio, 2=Features, 3-6=Practice 1-4
+    private let totalPages = 7
 
     var body: some View {
         VStack(spacing: 0) {
-            // Content
-            TabView(selection: $currentPage) {
-                hotkeyPage.tag(0)
-                featuresPage.tag(1)
-                practicePage(step: 1).tag(2)
-                practicePage(step: 2).tag(3)
-                practicePage(step: 3).tag(4)
-                practicePage(step: 4).tag(5)
+            // Content - 使用 Group + switch 取代 TabView 以隱藏標籤列
+            Group {
+                switch currentPage {
+                case 0: hotkeyPage
+                case 1: audioPage
+                case 2: featuresPage
+                case 3: practicePage(step: 1)
+                case 4: practicePage(step: 2)
+                case 5: practicePage(step: 3)
+                case 6: practicePage(step: 4)
+                default: hotkeyPage
+                }
             }
-            .tabViewStyle(.automatic)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
 
             Divider()
@@ -90,7 +103,7 @@ struct TutorialView: View {
             Spacer()
 
             Image(systemName: "keyboard.fill")
-                .font(.system(size: 72))
+                .font(.system(size: 64))
                 .foregroundStyle(.blue.gradient)
 
             Text(L10n.Tutorial.hotkeyTitle)
@@ -98,44 +111,89 @@ struct TutorialView: View {
                 .fontWeight(.bold)
 
             Text(L10n.Tutorial.hotkeyDesc)
-                .font(.title2)
+                .font(.title3)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
-                .padding(.horizontal, 60)
+                .padding(.horizontal, 40)
 
-            // Current hotkey badge
-            VStack(spacing: 8) {
+            // Current hotkey badge with record button
+            VStack(spacing: 12) {
                 Text(L10n.Tutorial.currentHotkey)
                     .font(.title3)
                     .foregroundStyle(.secondary)
-                Text(GlobalHotKeyManager.hotkeyDescription(
-                    keyCode: UInt16(settingsStore.hotkeyKeyCode),
-                    modifiers: CGEventFlags(rawValue: UInt64(settingsStore.hotkeyModifiers))
-                ))
-                .font(.system(.largeTitle, design: .rounded))
-                .fontWeight(.bold)
-                .padding(.horizontal, 32)
-                .padding(.vertical, 16)
-                .background(
-                    RoundedRectangle(cornerRadius: 12)
-                        .fill(Color.accentColor.opacity(0.1))
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 12)
-                        .strokeBorder(Color.accentColor.opacity(0.4), lineWidth: 1.5)
-                )
+
+                HStack(spacing: 16) {
+                    Text(isRecordingHotkey ? L10n.HotKey.recording : GlobalHotKeyManager.hotkeyDescription(
+                        keyCode: UInt16(settingsStore.hotkeyKeyCode),
+                        modifiers: CGEventFlags(rawValue: UInt64(settingsStore.hotkeyModifiers))
+                    ))
+                    .font(.system(.largeTitle, design: .rounded))
+                    .fontWeight(.bold)
+                    .padding(.horizontal, 28)
+                    .padding(.vertical, 14)
+                    .background(
+                        RoundedRectangle(cornerRadius: 12)
+                            .fill(isRecordingHotkey ? Color.orange.opacity(0.15) : Color.accentColor.opacity(0.1))
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12)
+                            .strokeBorder(isRecordingHotkey ? Color.orange.opacity(0.6) : Color.accentColor.opacity(0.4), lineWidth: 1.5)
+                    )
+
+                    if isRecordingHotkey {
+                        VStack {
+                            Text("\(recordingTimeRemaining)s")
+                                .font(.title2)
+                                .foregroundStyle(.orange)
+                                .monospacedDigit()
+                            Button(L10n.Common.cancel) {
+                                cancelRecording()
+                            }
+                            .font(.subheadline)
+                        }
+                    } else {
+                        Button {
+                            startRecording()
+                        } label: {
+                            Label(L10n.HotKey.recordNew, systemImage: "record.circle")
+                                .font(.title3)
+                        }
+                        .buttonStyle(.bordered)
+                    }
+                }
+
+                if isRecordingHotkey {
+                    Text(L10n.HotKey.recordingHint)
+                        .font(.body)
+                        .foregroundStyle(.orange)
+                } else {
+                    Text(L10n.HotKey.requirement)
+                        .font(.body)
+                        .foregroundStyle(.secondary)
+                }
             }
 
-            // Trigger mode explanation
-            VStack(spacing: 6) {
+            // Trigger mode picker
+            VStack(spacing: 8) {
                 Text(L10n.HotKey.triggerMode)
                     .font(.title3)
                     .foregroundStyle(.secondary)
-                Text(L10n.hotkeyTriggerMode(settingsStore.hotkeyTriggerMode))
-                    .font(.title3)
-                    .fontWeight(.medium)
+
+                Picker("", selection: $settingsStore.hotkeyTriggerMode) {
+                    ForEach(HotkeyTriggerMode.allCases) { mode in
+                        Text(mode.displayName).tag(mode)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .frame(maxWidth: 400)
+                .onChange(of: settingsStore.hotkeyTriggerMode) { _, _ in
+                    if let appDelegate = NSApp.delegate as? AppDelegate {
+                        appDelegate.setupHotKey()
+                    }
+                }
+
                 Text(L10n.hotkeyTriggerModeDesc(settingsStore.hotkeyTriggerMode))
-                    .font(.title3)
+                    .font(.body)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 40)
@@ -144,6 +202,159 @@ struct TutorialView: View {
             Spacer()
         }
         .padding()
+    }
+
+    // MARK: - Page 2: Audio Setup
+
+    private var audioPage: some View {
+        VStack(spacing: 20) {
+            Spacer()
+
+            Image(systemName: "mic.fill")
+                .font(.system(size: 64))
+                .foregroundStyle(.green.gradient)
+
+            Text(L10n.General.inputDevice)
+                .font(.largeTitle)
+                .fontWeight(.bold)
+
+            Text(L10n.General.selectMicDesc)
+                .font(.title3)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 40)
+
+            // Input device picker
+            VStack(spacing: 12) {
+                Picker(L10n.General.inputDevice, selection: $settingsStore.selectedInputDeviceUID) {
+                    Text(L10n.General.systemDefault).tag("")
+                    ForEach(inputDevices) { device in
+                        Text(device.name).tag(device.uid)
+                    }
+                }
+                .labelsHidden()
+                .frame(maxWidth: 400)
+
+                // Volume indicator
+                HStack(spacing: 12) {
+                    Button {
+                        toggleMicTest()
+                    } label: {
+                        Label(
+                            isMicTesting ? L10n.General.stopTest : L10n.General.testMic,
+                            systemImage: isMicTesting ? "stop.fill" : "waveform"
+                        )
+                        .font(.title3)
+                    }
+                    .buttonStyle(.bordered)
+                    .tint(isMicTesting ? .red : .accentColor)
+
+                    // Volume bar
+                    GeometryReader { geo in
+                        ZStack(alignment: .leading) {
+                            RoundedRectangle(cornerRadius: 5)
+                                .fill(Color.primary.opacity(0.1))
+                            RoundedRectangle(cornerRadius: 5)
+                                .fill(micTester.level > 0.6 ? Color.green : micTester.level > 0.3 ? Color.yellow : Color.green.opacity(0.7))
+                                .frame(width: geo.size.width * CGFloat(micTester.level))
+                                .animation(.linear(duration: 0.05), value: micTester.level)
+                        }
+                    }
+                    .frame(width: 200, height: 16)
+
+                    Text(String(format: "%.0f%%", micTester.level * 100))
+                        .font(.system(.title3, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 60, alignment: .trailing)
+                }
+
+                // Gain slider
+                VStack(spacing: 6) {
+                    HStack {
+                        Text(L10n.General.micSensitivity)
+                            .font(.title3)
+                        Spacer()
+                        Text(String(format: "%.1fx", settingsStore.micSensitivity))
+                            .font(.system(.title3, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                    }
+                    Slider(value: $settingsStore.micSensitivity, in: 0.5...5.0, step: 0.5)
+                    Text(L10n.General.micSensitivityDesc)
+                        .font(.body)
+                        .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: 400)
+            }
+            .padding(20)
+            .background(
+                RoundedRectangle(cornerRadius: 14)
+                    .fill(Color.primary.opacity(0.04))
+            )
+            .padding(.horizontal, 40)
+
+            Spacer()
+        }
+        .padding()
+        .onAppear {
+            inputDevices = AudioSessionManager.listInputDevices()
+            if !isMicTesting {
+                toggleMicTest()
+            }
+        }
+        .onDisappear {
+            if isMicTesting {
+                micTester.stop()
+                isMicTesting = false
+            }
+        }
+    }
+
+    // MARK: - Hotkey Recording
+
+    private func startRecording() {
+        isRecordingHotkey = true
+        recordingTimeRemaining = recordingTimeout
+
+        GlobalHotKeyManager.shared.startRecording { keyCode, modifiers in
+            settingsStore.hotkeyKeyCode = Int(keyCode)
+            settingsStore.hotkeyModifiers = Int(modifiers.rawValue)
+            isRecordingHotkey = false
+            GlobalHotKeyManager.shared.register(
+                keyCode: keyCode,
+                modifiers: modifiers
+            )
+        }
+        startCountdown()
+    }
+
+    private func startCountdown() {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+            guard isRecordingHotkey else { return }
+            recordingTimeRemaining -= 1
+            if recordingTimeRemaining <= 0 {
+                cancelRecording()
+            } else {
+                startCountdown()
+            }
+        }
+    }
+
+    private func cancelRecording() {
+        GlobalHotKeyManager.shared.cancelRecording()
+        isRecordingHotkey = false
+        recordingTimeRemaining = 0
+    }
+
+    // MARK: - Mic Testing
+
+    private func toggleMicTest() {
+        if isMicTesting {
+            micTester.stop()
+            isMicTesting = false
+        } else {
+            micTester.start(inputDeviceUID: settingsStore.selectedInputDeviceUID)
+            isMicTesting = true
+        }
     }
 
     // MARK: - Page 2: Features Overview
