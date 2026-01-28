@@ -95,18 +95,26 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func configureHotkeyCallbacks() {
+        // Reset all callbacks
+        hotKeyManager?.onKeyDown = nil
+        hotKeyManager?.onKeyUp = nil
+        hotKeyManager?.onDoubleTap = nil
+
         switch settingsStore.hotkeyTriggerMode {
         case .toggle:
             hotKeyManager?.onKeyDown = { [weak self] in
                 self?.voicePipeline?.toggleRecording()
             }
-            hotKeyManager?.onKeyUp = nil
         case .hold:
             hotKeyManager?.onKeyDown = { [weak self] in
                 self?.voicePipeline?.startRecording()
             }
             hotKeyManager?.onKeyUp = { [weak self] in
                 self?.voicePipeline?.stopRecordingAndProcess()
+            }
+        case .doubleTap:
+            hotKeyManager?.onDoubleTap = { [weak self] in
+                self?.voicePipeline?.toggleRecording()
             }
         }
     }

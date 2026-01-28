@@ -118,6 +118,11 @@ struct CapsuleBarView: View {
                 Text(formattedDuration)
                     .font(.system(size: 11, design: .monospaced))
                     .foregroundStyle(.white.opacity(0.5))
+                if !session.rawTranscript.isEmpty {
+                    Text("\(session.rawTranscript.count) 字")
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundStyle(.white.opacity(0.35))
+                }
             }
         case .processing:
             HStack(spacing: 4) {
@@ -132,11 +137,18 @@ struct CapsuleBarView: View {
                     .font(.system(size: 12, weight: .medium, design: .rounded))
                     .foregroundStyle(.orange)
             } else {
-                Text(session.processedText.isEmpty ? session.rawTranscript : session.processedText)
-                    .font(.system(size: 12, design: .rounded))
-                    .foregroundStyle(.white)
-                    .lineLimit(2)
-                    .truncationMode(.tail)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(session.processedText.isEmpty ? session.rawTranscript : session.processedText)
+                        .font(.system(size: 12, design: .rounded))
+                        .foregroundStyle(.white)
+                        .lineLimit(2)
+                        .truncationMode(.tail)
+                    if session.totalTokens > 0 {
+                        Text("\(session.totalTokens) tokens")
+                            .font(.system(size: 9, design: .monospaced))
+                            .foregroundStyle(.white.opacity(0.3))
+                    }
+                }
             }
         case .confirming:
             Text(session.processedText.isEmpty ? session.rawTranscript : session.processedText)
@@ -213,7 +225,7 @@ struct CapsuleBarView: View {
             capsuleWidth = 120
             capsuleHeight = 36
         case .recording:
-            capsuleWidth = 200
+            capsuleWidth = session.rawTranscript.isEmpty ? 200 : 240
             capsuleHeight = 36
         case .processing:
             capsuleWidth = 160
@@ -223,7 +235,8 @@ struct CapsuleBarView: View {
             let charWidth: CGFloat = text.unicodeScalars.allSatisfy({ $0.isASCII }) ? 7 : 13
             let estimatedWidth = min(400, max(160, CGFloat(text.count) * charWidth + 60))
             capsuleWidth = estimatedWidth
-            capsuleHeight = text.count > 25 ? 56 : 36
+            let hasTokens = session.totalTokens > 0
+            capsuleHeight = text.count > 25 ? (hasTokens ? 68 : 56) : (hasTokens ? 50 : 36)
         case .confirming:
             let text = session.processedText.isEmpty ? session.rawTranscript : session.processedText
             let charWidth: CGFloat = text.unicodeScalars.allSatisfy({ $0.isASCII }) ? 7 : 13

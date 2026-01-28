@@ -13,6 +13,7 @@ class GlobalHotKeyManager {
 
     var onKeyDown: (() -> Void)?
     var onKeyUp: (() -> Void)?
+    var onDoubleTap: (() -> Void)?
 
     private var registeredKeyCode: UInt16 = 49 // Space
     private var registeredModifiers: CGEventFlags = .maskAlternate // Option
@@ -20,6 +21,11 @@ class GlobalHotKeyManager {
     private var runLoopSource: CFRunLoopSource?
 
     private(set) var isRegistered = false
+
+    // MARK: - Double Tap Detection
+    private var lastKeyDownTime: TimeInterval = 0
+    private let doubleTapInterval: TimeInterval = 0.3
+    private var pendingSingleTapWork: DispatchWorkItem?
 
     // MARK: - Hotkey Recording
 
@@ -145,16 +151,36 @@ class GlobalHotKeyManager {
 
         if type == .keyDown && keyCode == registeredKeyCode && modifierMatch && !isHotkeyDown {
             isHotkeyDown = true
-            DispatchQueue.main.async { [weak self] in
-                self?.onKeyDown?()
+
+            if onDoubleTap != nil {
+                // Double-tap mode: detect rapid successive presses
+                let now = ProcessInfo.processInfo.systemUptime
+                let elapsed = now - lastKeyDownTime
+                lastKeyDownTime = now
+
+                if elapsed <= doubleTapInterval {
+                    // Second tap within window → fire double tap
+                    pendingSingleTapWork?.cancel()
+                    pendingSingleTapWork = nil
+                    DispatchQueue.main.async { [weak self] in
+                        self?.onDoubleTap?()
+                    }
+                }
+                // No single-tap fallback needed; we just wait for the double
+            } else {
+                DispatchQueue.main.async { [weak self] in
+                    self?.onKeyDown?()
+                }
             }
             return nil // Consume the event
         }
 
         if type == .keyUp && keyCode == registeredKeyCode && isHotkeyDown {
             isHotkeyDown = false
-            DispatchQueue.main.async { [weak self] in
-                self?.onKeyUp?()
+            if onDoubleTap == nil {
+                DispatchQueue.main.async { [weak self] in
+                    self?.onKeyUp?()
+                }
             }
             return nil // Consume the event
         }

@@ -47,7 +47,7 @@ class VoicePipeline {
 
         // Check prerequisites
         let provider = settingsStore.selectedProvider
-        guard KeychainHelper.loadAPIKey(for: provider.id) != nil else {
+        if provider.requiresAPIKey, KeychainHelper.loadAPIKey(for: provider.id) == nil {
             log.error("未設定 \(provider.name) API Key", category: "Pipeline")
             session.state = .error("未設定 \(provider.name) API Key，請在設定中輸入")
             autoResetState(after: 3.0)
@@ -262,6 +262,8 @@ class VoicePipeline {
                 return "回應解析失敗"
             case .networkError:
                 return "網路連線失敗"
+            case .retriesExhausted(let code, let attempts):
+                return "重試 \(attempts) 次仍失敗 (HTTP \(code))"
             }
         }
         return error.localizedDescription

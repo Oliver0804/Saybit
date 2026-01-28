@@ -129,6 +129,16 @@ class SettingsStore: ObservableObject {
         didSet { UserDefaults.standard.set(micSensitivity, forKey: "micSensitivity") }
     }
 
+    // MARK: - History Auto Cleanup
+
+    @Published var historyRetentionDays: Int {
+        didSet { UserDefaults.standard.set(historyRetentionDays, forKey: "historyRetentionDays") }
+    }
+
+    @Published var enableHistoryAutoCleanup: Bool {
+        didSet { UserDefaults.standard.set(enableHistoryAutoCleanup, forKey: "enableHistoryAutoCleanup") }
+    }
+
     // MARK: - Overlay Position
 
     @Published var overlayPositionX: Double {
@@ -178,5 +188,7 @@ class SettingsStore: ObservableObject {
         self.overlayPositionX = defaults.object(forKey: "overlayPositionX") as? Double ?? 0
         self.overlayPositionY = defaults.object(forKey: "overlayPositionY") as? Double ?? 0
         self.hasCustomOverlayPosition = defaults.bool(forKey: "hasCustomOverlayPosition")
+        self.historyRetentionDays = defaults.object(forKey: "historyRetentionDays") as? Int ?? 30
+        self.enableHistoryAutoCleanup = defaults.object(forKey: "enableHistoryAutoCleanup") as? Bool ?? false
     }
 }

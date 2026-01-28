@@ -39,8 +39,13 @@ struct SettingsView: View {
                 .tabItem {
                     Label("歷史", systemImage: "clock")
                 }
+
+            StatisticsView()
+                .tabItem {
+                    Label("統計", systemImage: "chart.bar.fill")
+                }
         }
-        .frame(width: 580, height: 520)
+        .frame(width: 680, height: 640)
     }
 }
 

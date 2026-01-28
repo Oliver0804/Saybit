@@ -12,11 +12,17 @@ actor OpenRouterClient {
     private let jsonEncoder = JSONEncoder()
     private let jsonDecoder = JSONDecoder()
 
+    // MARK: - Retry Configuration
+    private let maxRetries = 3
+    private let baseDelay: TimeInterval = 1.0  // 1s → 2s → 4s
+    private let retryableStatusCodes: Set<Int> = [429, 500, 502, 503, 504]
+
     enum ClientError: LocalizedError {
         case noAPIKey(String)
         case invalidResponse(Int)
         case decodingError(Error)
         case networkError(Error)
+        case retriesExhausted(lastStatusCode: Int, attempts: Int)
 
         var errorDescription: String? {
             switch self {
@@ -24,8 +30,17 @@ actor OpenRouterClient {
             case .invalidResponse(let code): return "API 回應錯誤: \(code)"
             case .decodingError(let error): return "解碼錯誤: \(error.localizedDescription)"
             case .networkError(let error): return "網路錯誤: \(error.localizedDescription)"
+            case .retriesExhausted(let code, let attempts):
+                return "重試 \(attempts) 次後仍失敗 (HTTP \(code))"
             }
         }
+    }
+
+    /// Calculate delay with exponential backoff + jitter
+    private func retryDelay(attempt: Int) -> TimeInterval {
+        let exponential = baseDelay * pow(2.0, Double(attempt))
+        let jitter = Double.random(in: 0...0.5)
+        return exponential + jitter
     }
 
     func sendStreaming(
@@ -38,7 +53,11 @@ actor OpenRouterClient {
         AsyncThrowingStream { continuation in
             Task {
                 do {
-                    guard let apiKey = KeychainHelper.loadAPIKey(for: provider.id) else {
+                    let apiKey: String? = provider.requiresAPIKey
+                        ? KeychainHelper.loadAPIKey(for: provider.id)
+                        : (KeychainHelper.loadAPIKey(for: provider.id) ?? "")
+
+                    guard let apiKey, (apiKey.isEmpty == false || !provider.requiresAPIKey) else {
                         continuation.finish(throwing: ClientError.noAPIKey(provider.name))
                         return
                     }
@@ -66,45 +85,77 @@ actor OpenRouterClient {
 
                     var request = URLRequest(url: endpointURL)
                     request.httpMethod = "POST"
-                    request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+                    if !apiKey.isEmpty {
+                        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+                    }
                     request.setValue("application/json", forHTTPHeaderField: "Content-Type")
                     for (key, value) in provider.extraHeaders {
                         request.setValue(value, forHTTPHeaderField: key)
                     }
                     request.httpBody = try jsonEncoder.encode(chatRequest)
 
-                    let (bytes, response) = try await session.bytes(for: request)
-
-                    guard let httpResponse = response as? HTTPURLResponse else {
-                        continuation.finish(throwing: ClientError.invalidResponse(0))
-                        return
-                    }
-
-                    guard httpResponse.statusCode == 200 else {
-                        continuation.finish(throwing: ClientError.invalidResponse(httpResponse.statusCode))
-                        return
-                    }
-
-                    for try await line in bytes.lines {
-                        guard line.hasPrefix("data: ") else { continue }
-                        let jsonString = String(line.dropFirst(6))
-                        if jsonString == "[DONE]" { break }
-
-                        guard let jsonData = jsonString.data(using: .utf8) else { continue }
-                        do {
-                            let chunk = try jsonDecoder.decode(OpenRouterStreamChunk.self, from: jsonData)
-                            if let content = chunk.choices?.first?.delta?.content {
-                                continuation.yield(.text(content))
-                            }
-                            if let usage = chunk.usage {
-                                continuation.yield(.usage(usage))
-                            }
-                        } catch {
-                            // Skip malformed chunks
-                            continue
+                    // Retry loop with exponential backoff for connection phase
+                    var lastStatusCode = 0
+                    for attempt in 0...maxRetries {
+                        if attempt > 0 {
+                            let delay = retryDelay(attempt: attempt - 1)
+                            try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
                         }
+
+                        let (bytes, response) = try await session.bytes(for: request)
+
+                        guard let httpResponse = response as? HTTPURLResponse else {
+                            continuation.finish(throwing: ClientError.invalidResponse(0))
+                            return
+                        }
+
+                        lastStatusCode = httpResponse.statusCode
+
+                        // Non-retryable error → fail immediately
+                        if httpResponse.statusCode != 200 && !retryableStatusCodes.contains(httpResponse.statusCode) {
+                            continuation.finish(throwing: ClientError.invalidResponse(httpResponse.statusCode))
+                            return
+                        }
+
+                        // Retryable error → try again (unless last attempt)
+                        if retryableStatusCodes.contains(httpResponse.statusCode) {
+                            if attempt < maxRetries { continue }
+                            continuation.finish(throwing: ClientError.retriesExhausted(
+                                lastStatusCode: httpResponse.statusCode, attempts: maxRetries + 1
+                            ))
+                            return
+                        }
+
+                        // Success (200) → stream response
+                        for try await line in bytes.lines {
+                            guard line.hasPrefix("data: ") else { continue }
+                            let jsonString = String(line.dropFirst(6))
+                            if jsonString == "[DONE]" { break }
+
+                            guard let jsonData = jsonString.data(using: .utf8) else { continue }
+                            do {
+                                let chunk = try jsonDecoder.decode(OpenRouterStreamChunk.self, from: jsonData)
+                                if let content = chunk.choices?.first?.delta?.content {
+                                    continuation.yield(.text(content))
+                                }
+                                if let usage = chunk.usage {
+                                    continuation.yield(.usage(usage))
+                                }
+                            } catch {
+                                // Skip malformed chunks
+                                continue
+                            }
+                        }
+
+                        continuation.finish()
+                        return
                     }
 
+                    // Should not reach here, but safety net
+                    continuation.finish(throwing: ClientError.retriesExhausted(
+                        lastStatusCode: lastStatusCode, attempts: maxRetries + 1
+                    ))
+                } catch is CancellationError {
                     continuation.finish()
                 } catch {
                     continuation.finish(throwing: ClientError.networkError(error))
@@ -113,9 +164,13 @@ actor OpenRouterClient {
         }
     }
 
-    /// Quick API key validation with a minimal request
+    /// Quick API key validation with a minimal request (with retry)
     func testConnection(model: String, provider: LLMProvider) async throws {
-        guard let apiKey = KeychainHelper.loadAPIKey(for: provider.id) else {
+        let apiKey = provider.requiresAPIKey
+            ? KeychainHelper.loadAPIKey(for: provider.id)
+            : (KeychainHelper.loadAPIKey(for: provider.id) ?? "")
+
+        guard let apiKey, (apiKey.isEmpty == false || !provider.requiresAPIKey) else {
             throw ClientError.noAPIKey(provider.name)
         }
 
@@ -135,7 +190,9 @@ actor OpenRouterClient {
 
         var request = URLRequest(url: endpointURL)
         request.httpMethod = "POST"
-        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        if !apiKey.isEmpty {
+            request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        }
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         for (key, value) in provider.extraHeaders {
             request.setValue(value, forHTTPHeaderField: key)
@@ -143,13 +200,27 @@ actor OpenRouterClient {
         request.httpBody = try jsonEncoder.encode(chatRequest)
         request.timeoutInterval = 10
 
-        let (_, response) = try await session.data(for: request)
+        for attempt in 0...maxRetries {
+            if attempt > 0 {
+                let delay = retryDelay(attempt: attempt - 1)
+                try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+            }
 
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw ClientError.invalidResponse(0)
-        }
+            let (_, response) = try await session.data(for: request)
 
-        guard httpResponse.statusCode == 200 else {
+            guard let httpResponse = response as? HTTPURLResponse else {
+                throw ClientError.invalidResponse(0)
+            }
+
+            if httpResponse.statusCode == 200 { return }
+
+            if retryableStatusCodes.contains(httpResponse.statusCode) {
+                if attempt < maxRetries { continue }
+                throw ClientError.retriesExhausted(
+                    lastStatusCode: httpResponse.statusCode, attempts: maxRetries + 1
+                )
+            }
+
             throw ClientError.invalidResponse(httpResponse.statusCode)
         }
     }

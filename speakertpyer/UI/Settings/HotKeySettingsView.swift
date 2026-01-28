@@ -103,18 +103,26 @@ struct HotKeySettingsView: View {
                     VStack(alignment: .leading, spacing: 10) {
                         GlassSectionHeader(title: "使用方式", icon: "questionmark.circle")
 
-                        if settingsStore.hotkeyTriggerMode == .toggle {
+                        switch settingsStore.hotkeyTriggerMode {
+                        case .toggle:
                             VStack(alignment: .leading, spacing: 8) {
                                 StepRow(step: 1, text: "按一下快捷鍵開始錄音")
                                 StepRow(step: 2, text: "說出想要輸入的文字")
                                 StepRow(step: 3, text: "說完後自動停止，AI 處理並輸入")
                                 StepRow(step: 4, text: "也可再按一次手動停止")
                             }
-                        } else {
+                        case .hold:
                             VStack(alignment: .leading, spacing: 8) {
                                 StepRow(step: 1, text: "按住快捷鍵開始錄音")
                                 StepRow(step: 2, text: "說出想要輸入的文字")
                                 StepRow(step: 3, text: "放開按鍵，AI 自動處理並輸入")
+                            }
+                        case .doubleTap:
+                            VStack(alignment: .leading, spacing: 8) {
+                                StepRow(step: 1, text: "快速雙擊快捷鍵開始錄音")
+                                StepRow(step: 2, text: "說出想要輸入的文字")
+                                StepRow(step: 3, text: "說完後自動停止，AI 處理並輸入")
+                                StepRow(step: 4, text: "也可再次雙擊手動停止")
                             }
                         }
                     }

@@ -46,6 +46,46 @@ struct PersistenceController {
 
     let container: NSPersistentContainer
 
+    // MARK: - Batch Operations
+
+    /// Delete all transcription records
+    func deleteAllRecords() throws {
+        let context = container.viewContext
+        let fetchRequest: NSFetchRequest<NSFetchRequestResult> = TranscriptionRecord.fetchRequest()
+        let batchDelete = NSBatchDeleteRequest(fetchRequest: fetchRequest)
+        batchDelete.resultType = .resultTypeObjectIDs
+        let result = try context.execute(batchDelete) as? NSBatchDeleteResult
+        if let objectIDs = result?.result as? [NSManagedObjectID] {
+            NSManagedObjectContext.mergeChanges(
+                fromRemoteContextSave: [NSDeletedObjectsKey: objectIDs],
+                into: [context]
+            )
+        }
+    }
+
+    /// Delete records older than a given date
+    func deleteRecords(olderThan date: Date) throws {
+        let context = container.viewContext
+        let fetchRequest: NSFetchRequest<NSFetchRequestResult> = TranscriptionRecord.fetchRequest()
+        fetchRequest.predicate = NSPredicate(format: "timestamp < %@", date as NSDate)
+        let batchDelete = NSBatchDeleteRequest(fetchRequest: fetchRequest)
+        batchDelete.resultType = .resultTypeObjectIDs
+        let result = try context.execute(batchDelete) as? NSBatchDeleteResult
+        if let objectIDs = result?.result as? [NSManagedObjectID] {
+            NSManagedObjectContext.mergeChanges(
+                fromRemoteContextSave: [NSDeletedObjectsKey: objectIDs],
+                into: [context]
+            )
+        }
+    }
+
+    /// Count total transcription records
+    func recordCount() -> Int {
+        let context = container.viewContext
+        let fetchRequest: NSFetchRequest<TranscriptionRecord> = TranscriptionRecord.fetchRequest()
+        return (try? context.count(for: fetchRequest)) ?? 0
+    }
+
     init(inMemory: Bool = false) {
         container = NSPersistentContainer(name: "speakertpyer")
         if inMemory {

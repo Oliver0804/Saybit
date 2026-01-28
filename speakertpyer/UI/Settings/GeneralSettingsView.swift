@@ -221,6 +221,39 @@ struct GeneralSettingsView: View {
                     }
                 }
 
+                // MARK: - 歷史記錄清理
+                GlassCard {
+                    VStack(alignment: .leading, spacing: 10) {
+                        GlassSectionHeader(title: "歷史記錄清理", icon: "clock.arrow.circlepath")
+
+                        Toggle("自動清理舊紀錄", isOn: $settingsStore.enableHistoryAutoCleanup)
+
+                        if settingsStore.enableHistoryAutoCleanup {
+                            VStack(alignment: .leading, spacing: 4) {
+                                HStack {
+                                    Text("保留天數")
+                                    Spacer()
+                                    Text("\(settingsStore.historyRetentionDays) 天")
+                                        .font(.system(.body, design: .monospaced))
+                                        .foregroundStyle(.secondary)
+                                }
+                                Slider(
+                                    value: Binding(
+                                        get: { Double(settingsStore.historyRetentionDays) },
+                                        set: { settingsStore.historyRetentionDays = Int($0) }
+                                    ),
+                                    in: 7...90,
+                                    step: 1
+                                )
+                                Text("超過此天數的歷史紀錄會在開啟時自動清除")
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                            }
+                            .padding(.leading, 2)
+                        }
+                    }
+                }
+
                 // MARK: - 權限狀態
                 GlassCard {
                     VStack(alignment: .leading, spacing: 10) {
