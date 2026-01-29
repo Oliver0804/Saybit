@@ -39,20 +39,26 @@ class SharedAudioEngine {
         let inputNode = audioEngine.inputNode
         inputNode.removeTap(onBus: 0)
 
+        // Phase 1: prepare 讓 audioUnit 可用，再設定裝置
         audioEngine.prepare()
-
         configureInputDevice(uid: inputDeviceUID)
 
+        // Phase 2: 裝置變更後 reset + re-prepare 讓 engine 重新取得正確格式
+        if !inputDeviceUID.isEmpty {
+            audioEngine.reset()
+            audioEngine.prepare()
+            configureInputDevice(uid: inputDeviceUID)
+        }
+
         let recordingFormat = inputNode.outputFormat(forBus: 0)
-        let tapFormat = recordingFormat.channelCount > 0 ? recordingFormat : nil
-        inputFormat = tapFormat ?? recordingFormat
 
         guard recordingFormat.sampleRate > 0, recordingFormat.channelCount > 0 else {
             log.error("SharedAudioEngine 無效音訊格式，放棄啟動", category: "Audio")
             return
         }
 
-        inputNode.installTap(onBus: 0, bufferSize: 1024, format: tapFormat) { [weak self] buffer, time in
+        // 用 nil format 讓系統自動匹配裝置原生格式，避免格式不匹配
+        inputNode.installTap(onBus: 0, bufferSize: 1024, format: nil) { [weak self] buffer, time in
             guard let self else { return }
             self.consumersLock.lock()
             let snapshot = self.consumers
@@ -67,7 +73,9 @@ class SharedAudioEngine {
             try audioEngine.start()
             isRunning = true
             currentInputDeviceUID = inputDeviceUID
-            log.info("SharedAudioEngine 啟動 (\(recordingFormat.sampleRate)Hz, \(recordingFormat.channelCount)ch)", category: "Audio")
+            // 啟動後讀取實際格式（供 WhisperSTTClient WAV 轉換用）
+            inputFormat = inputNode.outputFormat(forBus: 0)
+            log.info("SharedAudioEngine 啟動 (\(inputFormat?.sampleRate ?? 0)Hz, \(inputFormat?.channelCount ?? 0)ch)", category: "Audio")
         } catch {
             log.error("SharedAudioEngine 啟動失敗: \(error.localizedDescription)", category: "Audio")
         }
@@ -85,9 +93,10 @@ class SharedAudioEngine {
 
     func switchInputDevice(uid: String) {
         guard uid != currentInputDeviceUID else { return }
-        configureInputDevice(uid: uid)
-        currentInputDeviceUID = uid
         log.info("SharedAudioEngine 切換輸入裝置: \(uid.isEmpty ? "系統預設" : uid)", category: "Audio")
+        // 熱切換 AudioUnitSetProperty 後 tap 會失效，必須完整重啟
+        stop()
+        start(inputDeviceUID: uid)
     }
 
     private func configureInputDevice(uid: String) {

@@ -198,6 +198,15 @@ enum L10n {
         static func connectionSuccessModel(_ model: String) -> String {
             "✓ \(d("連線成功", "连接成功", "Connected", "接続成功")) (\(model))"
         }
+
+        // Advanced LLM Parameters
+        static var advancedParams: String { d("進階參數", "高级参数", "Advanced Parameters", "詳細パラメータ") }
+        static var useCustomParams: String { d("使用自訂 LLM 參數", "使用自定义 LLM 参数", "Use Custom LLM Parameters", "カスタム LLM パラメータを使用") }
+        static var maxTokens: String { d("最大 Token 數", "最大 Token 数", "Max Tokens", "最大トークン数") }
+        static var frequencyPenalty: String { d("頻率懲罰", "频率惩罚", "Frequency Penalty", "頻度ペナルティ") }
+        static var presencePenalty: String { d("存在懲罰", "存在惩罚", "Presence Penalty", "存在ペナルティ") }
+        static var topP: String { "Top P" }
+        static var advancedParamsDesc: String { d("調整 LLM 生成行為，關閉時使用服務商預設值", "调整 LLM 生成行为，关闭时使用服务商默认值", "Fine-tune LLM generation. When off, provider defaults are used.", "LLM 生成を微調整。オフの場合はプロバイダーのデフォルト値を使用。") }
     }
 
     // MARK: - HotKey Settings

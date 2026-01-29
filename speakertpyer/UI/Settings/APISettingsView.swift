@@ -231,6 +231,67 @@ struct APISettingsView: View {
                     }
                 }
 
+                // MARK: - 進階參數
+                if settingsMatchesSearch(["進階", "advanced", "max_tokens", "penalty", "top_p", "參數", "参数", "高级"], searchText: searchState.searchText) {
+                    GlassCard {
+                        VStack(alignment: .leading, spacing: 10) {
+                            GlassSectionHeader(title: L10n.API.advancedParams, icon: "slider.horizontal.3")
+
+                            Toggle(L10n.API.useCustomParams, isOn: $settingsStore.useCustomLLMParams)
+                                .toggleStyle(.switch)
+
+                            Text(L10n.API.advancedParamsDesc)
+                                .font(.body)
+                                .foregroundStyle(.secondary)
+
+                            if settingsStore.useCustomLLMParams {
+                                Divider()
+
+                                // Max Tokens
+                                HStack {
+                                    Text(L10n.API.maxTokens)
+                                        .frame(width: 120, alignment: .leading)
+                                    Stepper(value: $settingsStore.llmMaxTokens, in: 256...16384, step: 256) {
+                                        Text("\(settingsStore.llmMaxTokens)")
+                                            .monospacedDigit()
+                                            .frame(width: 60, alignment: .trailing)
+                                    }
+                                }
+
+                                // Frequency Penalty
+                                HStack {
+                                    Text(L10n.API.frequencyPenalty)
+                                        .frame(width: 120, alignment: .leading)
+                                    Slider(value: $settingsStore.llmFrequencyPenalty, in: -2.0...2.0, step: 0.1)
+                                    Text(String(format: "%.1f", settingsStore.llmFrequencyPenalty))
+                                        .monospacedDigit()
+                                        .frame(width: 40, alignment: .trailing)
+                                }
+
+                                // Presence Penalty
+                                HStack {
+                                    Text(L10n.API.presencePenalty)
+                                        .frame(width: 120, alignment: .leading)
+                                    Slider(value: $settingsStore.llmPresencePenalty, in: -2.0...2.0, step: 0.1)
+                                    Text(String(format: "%.1f", settingsStore.llmPresencePenalty))
+                                        .monospacedDigit()
+                                        .frame(width: 40, alignment: .trailing)
+                                }
+
+                                // Top P
+                                HStack {
+                                    Text(L10n.API.topP)
+                                        .frame(width: 120, alignment: .leading)
+                                    Slider(value: $settingsStore.llmTopP, in: 0.0...1.0, step: 0.05)
+                                    Text(String(format: "%.2f", settingsStore.llmTopP))
+                                        .monospacedDigit()
+                                        .frame(width: 40, alignment: .trailing)
+                                }
+                            }
+                        }
+                    }
+                }
+
                 // MARK: - Prompt 風格
                 if settingsMatchesSearch(["prompt", "風格", "style", "提示詞", "提示词", "模式"], searchText: searchState.searchText) {
                     GlassCard {
@@ -278,6 +339,7 @@ struct APISettingsView: View {
                     && !settingsMatchesSearch(["API", "provider", "模型", "model", "服務商", "服务商", "OpenRouter", "Ollama", "自訂", "custom"], searchText: searchState.searchText)
                     && !settingsMatchesSearch(["API key", "金鑰", "密钥", "Ollama", "本地", "local", "連線", "connection", "test", "測試"], searchText: searchState.searchText)
                     && !settingsMatchesSearch(["模型", "model", "CPU", "選擇", "select"], searchText: searchState.searchText)
+                    && !settingsMatchesSearch(["進階", "advanced", "max_tokens", "penalty", "top_p", "參數", "参数", "高级"], searchText: searchState.searchText)
                     && !settingsMatchesSearch(["prompt", "風格", "style", "提示詞", "提示词", "模式"], searchText: searchState.searchText)
                     && !settingsMatchesSearch(["語氣", "tone", "語調", "语气"], searchText: searchState.searchText)
                 {
@@ -402,6 +464,8 @@ struct APISettingsView: View {
             if settingsStore.selectedModel.isEmpty || settingsStore.selectedModel.contains("/") {
                 settingsStore.selectedModel = "gpt-4.1-nano"
             }
+        case "deepseek":
+            settingsStore.selectedModel = "deepseek-chat"
         case "groq":
             settingsStore.selectedModel = "llama-3.3-70b-versatile"
         case "together":

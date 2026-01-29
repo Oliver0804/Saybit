@@ -61,6 +61,10 @@ struct OpenRouterChatRequest: Encodable {
     let stream: Bool
     let temperature: Double
     let streamOptions: StreamOptions?
+    let maxTokens: Int?
+    let frequencyPenalty: Double?
+    let presencePenalty: Double?
+    let topP: Double?
 
     struct ChatMessage: Encodable {
         let role: String
@@ -78,6 +82,23 @@ struct OpenRouterChatRequest: Encodable {
     enum CodingKeys: String, CodingKey {
         case model, messages, stream, temperature
         case streamOptions = "stream_options"
+        case maxTokens = "max_tokens"
+        case frequencyPenalty = "frequency_penalty"
+        case presencePenalty = "presence_penalty"
+        case topP = "top_p"
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(model, forKey: .model)
+        try container.encode(messages, forKey: .messages)
+        try container.encode(stream, forKey: .stream)
+        try container.encode(temperature, forKey: .temperature)
+        try container.encodeIfPresent(streamOptions, forKey: .streamOptions)
+        try container.encodeIfPresent(maxTokens, forKey: .maxTokens)
+        try container.encodeIfPresent(frequencyPenalty, forKey: .frequencyPenalty)
+        try container.encodeIfPresent(presencePenalty, forKey: .presencePenalty)
+        try container.encodeIfPresent(topP, forKey: .topP)
     }
 }
 

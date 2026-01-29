@@ -42,6 +42,28 @@ class SettingsStore: ObservableObject {
         didSet { UserDefaults.standard.set(selectedModel, forKey: "selectedModel") }
     }
 
+    // MARK: - Advanced LLM Parameters
+
+    @Published var useCustomLLMParams: Bool {
+        didSet { UserDefaults.standard.set(useCustomLLMParams, forKey: "useCustomLLMParams") }
+    }
+
+    @Published var llmMaxTokens: Int {
+        didSet { UserDefaults.standard.set(llmMaxTokens, forKey: "llmMaxTokens") }
+    }
+
+    @Published var llmFrequencyPenalty: Double {
+        didSet { UserDefaults.standard.set(llmFrequencyPenalty, forKey: "llmFrequencyPenalty") }
+    }
+
+    @Published var llmPresencePenalty: Double {
+        didSet { UserDefaults.standard.set(llmPresencePenalty, forKey: "llmPresencePenalty") }
+    }
+
+    @Published var llmTopP: Double {
+        didSet { UserDefaults.standard.set(llmTopP, forKey: "llmTopP") }
+    }
+
     // MARK: - Prompt
 
     @Published var promptStyle: PromptStyle {
@@ -202,6 +224,11 @@ class SettingsStore: ObservableObject {
             self.customProviders = []
         }
         self.selectedModel = defaults.string(forKey: "selectedModel") ?? "openai/gpt-4.1-nano"
+        self.useCustomLLMParams = defaults.object(forKey: "useCustomLLMParams") as? Bool ?? false
+        self.llmMaxTokens = defaults.object(forKey: "llmMaxTokens") as? Int ?? 4096
+        self.llmFrequencyPenalty = defaults.object(forKey: "llmFrequencyPenalty") as? Double ?? 0.0
+        self.llmPresencePenalty = defaults.object(forKey: "llmPresencePenalty") as? Double ?? 0.0
+        self.llmTopP = defaults.object(forKey: "llmTopP") as? Double ?? 1.0
         self.promptStyle = PromptStyle(rawValue: defaults.string(forKey: "promptStyle") ?? "") ?? .typeless
         self.languagePreference = defaults.string(forKey: "languagePreference") ?? "zh-TW"
         self.toneStyle = ToneStyle(rawValue: defaults.string(forKey: "toneStyle") ?? "") ?? .auto

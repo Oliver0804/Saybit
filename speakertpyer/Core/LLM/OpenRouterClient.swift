@@ -48,7 +48,11 @@ actor OpenRouterClient {
         payload: LLMPayload,
         model: String,
         temperature: Double,
-        provider: LLMProvider
+        provider: LLMProvider,
+        maxTokens: Int? = nil,
+        frequencyPenalty: Double? = nil,
+        presencePenalty: Double? = nil,
+        topP: Double? = nil
     ) -> AsyncThrowingStream<StreamEvent, Error> {
         AsyncThrowingStream { continuation in
             Task {
@@ -97,7 +101,11 @@ actor OpenRouterClient {
                         ],
                         stream: true,
                         temperature: temperature,
-                        streamOptions: .init(includeUsage: true)
+                        streamOptions: .init(includeUsage: true),
+                        maxTokens: maxTokens,
+                        frequencyPenalty: frequencyPenalty,
+                        presencePenalty: presencePenalty,
+                        topP: topP
                     )
 
                     var request = URLRequest(url: endpointURL)
@@ -202,7 +210,11 @@ actor OpenRouterClient {
             messages: [.init(role: "user", content: "Hi")],
             stream: false,
             temperature: 0,
-            streamOptions: nil
+            streamOptions: nil,
+            maxTokens: nil,
+            frequencyPenalty: nil,
+            presencePenalty: nil,
+            topP: nil
         )
 
         var request = URLRequest(url: endpointURL)
@@ -248,7 +260,11 @@ actor OpenRouterClient {
         payload: LLMPayload,
         model: String,
         temperature: Double,
-        provider: LLMProvider
+        provider: LLMProvider,
+        maxTokens: Int? = nil,
+        frequencyPenalty: Double? = nil,
+        presencePenalty: Double? = nil,
+        topP: Double? = nil
     ) async throws -> String {
         var result = ""
         for try await event in sendStreaming(
@@ -256,7 +272,11 @@ actor OpenRouterClient {
             payload: payload,
             model: model,
             temperature: temperature,
-            provider: provider
+            provider: provider,
+            maxTokens: maxTokens,
+            frequencyPenalty: frequencyPenalty,
+            presencePenalty: presencePenalty,
+            topP: topP
         ) {
             if case .text(let chunk) = event {
                 result += chunk

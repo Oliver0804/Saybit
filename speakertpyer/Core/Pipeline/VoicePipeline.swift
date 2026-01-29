@@ -429,7 +429,11 @@ class VoicePipeline {
                 payload: payload,
                 model: model,
                 temperature: temperature,
-                provider: provider
+                provider: provider,
+                maxTokens: settingsStore.useCustomLLMParams ? settingsStore.llmMaxTokens : nil,
+                frequencyPenalty: settingsStore.useCustomLLMParams ? settingsStore.llmFrequencyPenalty : nil,
+                presencePenalty: settingsStore.useCustomLLMParams ? settingsStore.llmPresencePenalty : nil,
+                topP: settingsStore.useCustomLLMParams ? settingsStore.llmTopP : nil
             )
             for try await event in stream {
                 switch event {

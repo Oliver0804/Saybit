@@ -98,6 +98,16 @@ struct LLMProvider: Codable, Identifiable, Hashable {
         isBuiltIn: true
     )
 
+    static let deepSeek = LLMProvider(
+        id: "deepseek",
+        name: "DeepSeek",
+        baseURL: "https://api.deepseek.com/chat/completions",
+        extraHeaders: [:],
+        keyPlaceholder: "sk-...",
+        modelHint: "deepseek-chat · deepseek-reasoner",
+        isBuiltIn: true
+    )
+
     static let ollama = LLMProvider(
         id: "ollama",
         name: "Ollama (本地)",
@@ -109,7 +119,7 @@ struct LLMProvider: Codable, Identifiable, Hashable {
         requiresAPIKey: false
     )
 
-    static let builtInProviders: [LLMProvider] = [.openRouter, .openAI, .groq, .togetherAI, .ollama]
+    static let builtInProviders: [LLMProvider] = [.openRouter, .openAI, .deepSeek, .groq, .togetherAI, .ollama]
 
     // MARK: - Custom Provider Factory
 

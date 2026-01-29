@@ -229,7 +229,8 @@ struct CapsuleBarView: View {
         case .listening:
             HStack(spacing: 6) {
                 WaveformView(audioLevel: session.audioLevel)
-                    .frame(width: 60, height: 16)
+                    .frame(width: 40, height: 16)
+                    .clipped()
                 Text(L10n.Overlay.listening)
                     .font(.system(size: 11, design: .rounded))
                     .foregroundStyle(.orange.opacity(0.8))
@@ -353,12 +354,17 @@ struct CapsuleBarView: View {
             capsuleWidth = 160
             capsuleHeight = 36
         case .done:
-            let text = session.processedText.isEmpty ? session.rawTranscript : session.processedText
-            let charWidth: CGFloat = text.unicodeScalars.allSatisfy({ $0.isASCII }) ? 7 : 13
-            let estimatedWidth = min(400, max(160, CGFloat(text.count) * charWidth + 60))
-            capsuleWidth = estimatedWidth
-            let hasTokens = session.totalTokens > 0
-            capsuleHeight = text.count > 25 ? (hasTokens ? 68 : 56) : (hasTokens ? 50 : 36)
+            if session.smartSendCancelled {
+                capsuleWidth = 160
+                capsuleHeight = 36
+            } else {
+                let text = session.processedText.isEmpty ? session.rawTranscript : session.processedText
+                let charWidth: CGFloat = text.unicodeScalars.allSatisfy({ $0.isASCII }) ? 7 : 13
+                let estimatedWidth = min(400, max(160, CGFloat(text.count) * charWidth + 60))
+                capsuleWidth = estimatedWidth
+                let hasTokens = session.totalTokens > 0
+                capsuleHeight = text.count > 25 ? (hasTokens ? 68 : 56) : (hasTokens ? 50 : 36)
+            }
         case .previewing:
             capsuleWidth = 340
             capsuleHeight = 80
