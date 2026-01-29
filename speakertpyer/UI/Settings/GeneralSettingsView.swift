@@ -30,6 +30,21 @@ struct GeneralSettingsView: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 16) {
+                // MARK: - 開機自動啟動
+                if settingsMatchesSearch(["開機", "啟動", "登入", "launch", "login", "自動啟動", "startup", "开机", "启动"], searchText: searchState.searchText) {
+                    GlassCard {
+                        VStack(alignment: .leading, spacing: 10) {
+                            GlassSectionHeader(title: L10n.General.launchAtLogin, icon: "power")
+
+                            Toggle(L10n.General.enableLaunchAtLogin, isOn: $settingsStore.launchAtLogin)
+                            Text(L10n.General.launchAtLoginDesc)
+                                .font(.body)
+                                .foregroundStyle(.secondary)
+                                .padding(.leading, 2)
+                        }
+                    }
+                }
+
                 // MARK: - 語言
                 if settingsMatchesSearch(["語言", "语言", "language", "言語", "介面"], searchText: searchState.searchText) {
                     GlassCard {
@@ -181,8 +196,8 @@ struct GeneralSettingsView: View {
                     }
                 }
 
-                // MARK: - 輸入裝置
-                if settingsMatchesSearch(["輸入裝置", "输入设备", "input", "device", "麥克風", "麦克风", "microphone", "mic"], searchText: searchState.searchText) {
+                // MARK: - 輸入裝置與麥克風靈敏度
+                if settingsMatchesSearch(["輸入裝置", "输入设备", "input", "device", "麥克風", "麦克风", "microphone", "mic", "靈敏度", "灵敏度", "sensitivity", "gain"], searchText: searchState.searchText) {
                     GlassCard {
                         VStack(alignment: .leading, spacing: 10) {
                             GlassSectionHeader(title: L10n.General.inputDevice, icon: "mic.badge.xmark")
@@ -236,16 +251,10 @@ struct GeneralSettingsView: View {
                                     .font(.body)
                                     .foregroundStyle(.secondary)
                             }
-                        }
-                    }
-                }
 
-                // MARK: - 麥克風靈敏度
-                if settingsMatchesSearch(["靈敏度", "灵敏度", "sensitivity", "gain", "麥克風", "mic"], searchText: searchState.searchText) {
-                    GlassCard {
-                        VStack(alignment: .leading, spacing: 10) {
-                            GlassSectionHeader(title: L10n.General.micSensitivity, icon: "mic.fill")
+                            Divider().opacity(0.3)
 
+                            // 麥克風靈敏度
                             VStack(alignment: .leading, spacing: 4) {
                                 HStack {
                                     Text(L10n.General.gainMultiplier)
@@ -291,26 +300,19 @@ struct GeneralSettingsView: View {
                     }
                 }
 
-                // MARK: - 注入前預覽
-                if settingsMatchesSearch(["預覽", "preview", "注入", "inject", "预览"], searchText: searchState.searchText) {
+                // MARK: - 預覽與送出
+                if settingsMatchesSearch(["預覽", "preview", "注入", "inject", "预览", "smart send", "倒數", "countdown", "自動送出", "自动发送"], searchText: searchState.searchText) {
                     GlassCard {
                         VStack(alignment: .leading, spacing: 10) {
-                            GlassSectionHeader(title: L10n.General.previewBeforeInject, icon: "eye")
+                            GlassSectionHeader(title: L10n.General.previewAndSend, icon: "text.badge.checkmark")
 
                             Toggle(L10n.General.enablePreview, isOn: $settingsStore.enablePreviewBeforeInject)
                             Text(L10n.General.previewDesc)
                                 .font(.body)
                                 .foregroundStyle(.secondary)
                                 .padding(.leading, 2)
-                        }
-                    }
-                }
 
-                // MARK: - Smart Send
-                if settingsMatchesSearch(["smart send", "倒數", "countdown", "自動送出", "自动发送"], searchText: searchState.searchText) {
-                    GlassCard {
-                        VStack(alignment: .leading, spacing: 10) {
-                            GlassSectionHeader(title: L10n.General.smartSend, icon: "paperplane.fill")
+                            Divider().opacity(0.3)
 
                             Toggle(L10n.General.enableSmartSend, isOn: $settingsStore.enableSmartSend)
                             Text(L10n.General.smartSendDesc)
@@ -521,15 +523,14 @@ struct GeneralSettingsView: View {
                 // MARK: - No Results
                 if !searchState.searchText.isEmpty {
                     let hasAny =
+                        settingsMatchesSearch(["開機", "啟動", "登入", "launch", "login", "自動啟動", "startup", "开机", "启动"], searchText: searchState.searchText) ||
                         settingsMatchesSearch(["語言", "语言", "language", "言語", "介面"], searchText: searchState.searchText) ||
                         settingsMatchesSearch(["功能", "features", "context", "上下文", "音效", "sound", "whisper"], searchText: searchState.searchText) ||
                         settingsMatchesSearch(["語音辨識", "语音识别", "speech", "STT", "engine", "whisper", "引擎"], searchText: searchState.searchText) ||
                         settingsMatchesSearch(["膠囊", "胶囊", "capsule", "大小", "size", "縮放", "scale"], searchText: searchState.searchText) ||
-                        settingsMatchesSearch(["輸入裝置", "输入设备", "input", "device", "麥克風", "麦克风", "microphone", "mic"], searchText: searchState.searchText) ||
-                        settingsMatchesSearch(["靈敏度", "灵敏度", "sensitivity", "gain", "麥克風", "mic"], searchText: searchState.searchText) ||
+                        settingsMatchesSearch(["輸入裝置", "输入设备", "input", "device", "麥克風", "麦克风", "microphone", "mic", "靈敏度", "灵敏度", "sensitivity", "gain"], searchText: searchState.searchText) ||
                         settingsMatchesSearch(["自動停止", "auto stop", "靜音", "silence", "自动停止"], searchText: searchState.searchText) ||
-                        settingsMatchesSearch(["預覽", "preview", "注入", "inject", "预览"], searchText: searchState.searchText) ||
-                        settingsMatchesSearch(["smart send", "倒數", "countdown", "自動送出", "自动发送"], searchText: searchState.searchText) ||
+                        settingsMatchesSearch(["預覽", "preview", "注入", "inject", "预览", "smart send", "倒數", "countdown", "自動送出", "自动发送"], searchText: searchState.searchText) ||
                         settingsMatchesSearch(["歷史", "history", "清理", "cleanup", "保留", "retention", "历史"], searchText: searchState.searchText) ||
                         settingsMatchesSearch(["教學", "tutorial", "教程", "使用指南"], searchText: searchState.searchText) ||
                         settingsMatchesSearch(["權限", "permission", "accessibility", "麥克風", "microphone", "权限"], searchText: searchState.searchText)
@@ -558,7 +559,7 @@ struct GeneralSettingsView: View {
             micTester.stop()
             isMicTesting = false
         } else {
-            micTester.start(inputDeviceUID: settingsStore.selectedInputDeviceUID)
+            micTester.start()
             isMicTesting = true
         }
     }

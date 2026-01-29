@@ -7,6 +7,7 @@
 
 import Combine
 import Foundation
+import ServiceManagement
 
 class SettingsStore: ObservableObject {
     static var shared: SettingsStore?
@@ -161,6 +162,18 @@ class SettingsStore: ObservableObject {
         didSet { UserDefaults.standard.set(enableHistoryAutoCleanup, forKey: "enableHistoryAutoCleanup") }
     }
 
+    // MARK: - Launch at Login
+
+    @Published var launchAtLogin: Bool {
+        didSet {
+            if launchAtLogin {
+                try? SMAppService.mainApp.register()
+            } else {
+                try? SMAppService.mainApp.unregister()
+            }
+        }
+    }
+
     // MARK: - Overlay Position
 
     @Published var overlayPositionX: Double {
@@ -210,6 +223,7 @@ class SettingsStore: ObservableObject {
         self.smartSendDelay = defaults.object(forKey: "smartSendDelay") as? Double ?? 3.0
         self.capsuleScale = defaults.object(forKey: "capsuleScale") as? Double ?? 1.0
         self.micSensitivity = defaults.object(forKey: "micSensitivity") as? Double ?? 2.0
+        self.launchAtLogin = SMAppService.mainApp.status == .enabled
         self.overlayPositionX = defaults.object(forKey: "overlayPositionX") as? Double ?? 0
         self.overlayPositionY = defaults.object(forKey: "overlayPositionY") as? Double ?? 0
         self.hasCustomOverlayPosition = defaults.bool(forKey: "hasCustomOverlayPosition")

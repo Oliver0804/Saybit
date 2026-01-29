@@ -5,12 +5,13 @@
 //  Created by 顏國明 on 2026/1/27.
 //
 
-import AudioToolbox
 import AVFoundation
 import Speech
 
 @Observable
-class SpeechRecognizer {
+class SpeechRecognizer: AudioBufferConsumer {
+    let consumerID = "SpeechRecognizer"
+
     enum RecognizerError: LocalizedError {
         case notAuthorized
         case notAvailable
@@ -32,18 +33,17 @@ class SpeechRecognizer {
     var micGain: Float = 2.0
 
     // Silence detection
-    var onSilenceTimeout: (() -> Void)?
-    private var silenceStartTime: Date?
-    private var recordingStartTime: Date?
-    private let silenceThreshold: Float = 0.08
-    private let speechThreshold: Float = 0.15
-    var silenceTimeoutDuration: TimeInterval = 2.0
-    private let noSpeechTimeout: TimeInterval = 3.0
-    private var silenceTimeoutFired = false
-    private var hasDetectedSpeech = false
+    var onSilenceTimeout: (() -> Void)? {
+        get { silenceDetector.onSilenceTimeout }
+        set { silenceDetector.onSilenceTimeout = newValue }
+    }
+    var silenceTimeoutDuration: TimeInterval {
+        get { silenceDetector.silenceTimeoutDuration }
+        set { silenceDetector.silenceTimeoutDuration = newValue }
+    }
+    private let silenceDetector = SilenceDetector()
 
     private let speechRecognizer: SFSpeechRecognizer?
-    private let audioEngine = AVAudioEngine()
     private var recognitionRequest: SFSpeechAudioBufferRecognitionRequest?
     private var recognitionTask: SFSpeechRecognitionTask?
 
@@ -51,7 +51,7 @@ class SpeechRecognizer {
         speechRecognizer = SFSpeechRecognizer(locale: locale)
     }
 
-    func startListening(onDeviceOnly: Bool = true, inputDeviceUID: String? = nil) throws {
+    func startListening(onDeviceOnly: Bool = true) throws {
         guard SFSpeechRecognizer.authorizationStatus() == .authorized else {
             throw RecognizerError.notAuthorized
         }
@@ -60,15 +60,9 @@ class SpeechRecognizer {
             throw RecognizerError.notAvailable
         }
 
-        // Cancel any ongoing task and stop engine first
+        // Cancel any ongoing task
         recognitionTask?.cancel()
         recognitionTask = nil
-
-        // CRITICAL: Stop engine before removing tap to prevent crash
-        if audioEngine.isRunning {
-            audioEngine.stop()
-        }
-        audioEngine.inputNode.removeTap(onBus: 0)
 
         let request = SFSpeechAudioBufferRecognitionRequest()
         request.shouldReportPartialResults = true
@@ -77,89 +71,12 @@ class SpeechRecognizer {
         }
         self.recognitionRequest = request
 
-        let inputNode = audioEngine.inputNode
-
-        // Set specific input device if requested
-        if let uid = inputDeviceUID, !uid.isEmpty,
-           let deviceID = AudioSessionManager.deviceID(forUID: uid),
-           let audioUnit = inputNode.audioUnit {
-            var devID = deviceID
-            AudioUnitSetProperty(
-                audioUnit,
-                kAudioOutputUnitProperty_CurrentDevice,
-                kAudioUnitScope_Global,
-                0,
-                &devID,
-                UInt32(MemoryLayout<AudioDeviceID>.size)
-            )
-        }
-
-        let recordingFormat = inputNode.outputFormat(forBus: 0)
-        let tapFormat = recordingFormat.channelCount > 0 ? recordingFormat : nil
-
-        inputNode.installTap(onBus: 0, bufferSize: 1024, format: tapFormat) { [weak self] buffer, _ in
-            request.append(buffer)
-
-            // Calculate audio level (RMS)
-            guard let channelData = buffer.floatChannelData?[0] else { return }
-            let frameLength = Int(buffer.frameLength)
-            guard frameLength > 0 else { return }
-            var sum: Float = 0
-            for i in 0..<frameLength {
-                sum += channelData[i] * channelData[i]
-            }
-            let rms = sqrtf(sum / Float(frameLength))
-            let gain = self?.micGain ?? 2.0
-            let displayLevel = max(0, min(1, rms * 5 * gain)) // UI display (amplified)
-            let rawLevel = max(0, min(1, rms * 5)) // Raw level for silence detection (no gain)
-            DispatchQueue.main.async {
-                self?.audioLevel = displayLevel
-            }
-
-            // Silence detection using rawLevel (unaffected by gain)
-            if rawLevel >= self?.speechThreshold ?? 0.15 {
-                self?.hasDetectedSpeech = true
-                self?.silenceStartTime = nil
-                self?.silenceTimeoutFired = false
-            } else if self?.hasDetectedSpeech == true,
-                      rawLevel < self?.silenceThreshold ?? 0.08 {
-                // Speech was detected before, now silence
-                if self?.silenceStartTime == nil {
-                    self?.silenceStartTime = Date()
-                }
-                if let start = self?.silenceStartTime,
-                   let timeout = self?.silenceTimeoutDuration,
-                   Date().timeIntervalSince(start) >= timeout,
-                   self?.silenceTimeoutFired == false {
-                    self?.silenceTimeoutFired = true
-                    DispatchQueue.main.async {
-                        self?.onSilenceTimeout?()
-                    }
-                }
-            } else if self?.hasDetectedSpeech == false,
-                      rawLevel < self?.silenceThreshold ?? 0.08 {
-                // No speech ever detected — auto-cancel after noSpeechTimeout
-                if let recStart = self?.recordingStartTime,
-                   let noSpeechLimit = self?.noSpeechTimeout,
-                   Date().timeIntervalSince(recStart) >= noSpeechLimit,
-                   self?.silenceTimeoutFired == false {
-                    self?.silenceTimeoutFired = true
-                    DispatchQueue.main.async {
-                        self?.onSilenceTimeout?()
-                    }
-                }
-            }
-        }
-
-        audioEngine.prepare()
-        try audioEngine.start()
+        // 向共享 engine 註冊，開始接收 buffer
+        SharedAudioEngine.shared.addConsumer(self)
 
         isListening = true
         transcript = ""
-        silenceStartTime = nil
-        recordingStartTime = Date()
-        silenceTimeoutFired = false
-        hasDetectedSpeech = false
+        silenceDetector.start()
 
         recognitionTask = speechRecognizer.recognitionTask(with: request) { [weak self] result, error in
             guard let self else { return }
@@ -180,17 +97,34 @@ class SpeechRecognizer {
     }
 
     func stopListening() -> String {
-        audioEngine.stop()
-        audioEngine.inputNode.removeTap(onBus: 0)
+        SharedAudioEngine.shared.removeConsumer(self)
         recognitionRequest?.endAudio()
         recognitionRequest = nil
         recognitionTask?.cancel()
         recognitionTask = nil
         isListening = false
-        silenceStartTime = nil
-        recordingStartTime = nil
-        silenceTimeoutFired = false
-        onSilenceTimeout = nil
+        silenceDetector.reset()
         return transcript
+    }
+
+    // MARK: - AudioBufferConsumer
+
+    func handleAudioBuffer(_ buffer: AVAudioPCMBuffer, time: AVAudioTime) {
+        guard isListening else { return }
+
+        // 餵給 Speech framework
+        recognitionRequest?.append(buffer)
+
+        // RMS 計算
+        guard let rms = AudioUtils.rms(from: buffer) else { return }
+        let displayLevel = AudioUtils.normalizedLevel(rms: rms, multiplier: 5.0 * micGain)
+        let rawLevel = AudioUtils.normalizedLevel(rms: rms)
+
+        DispatchQueue.main.async { [weak self] in
+            self?.audioLevel = displayLevel
+        }
+
+        // 靜音偵測
+        silenceDetector.update(rawLevel: rawLevel)
     }
 }

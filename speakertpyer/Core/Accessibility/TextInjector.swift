@@ -18,6 +18,7 @@ enum TextInjector {
         // Set new content
         pasteboard.clearContents()
         pasteboard.setString(text, forType: .string)
+        let ourChangeCount = pasteboard.changeCount
 
         // Small delay to ensure pasteboard is ready
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
@@ -25,6 +26,8 @@ enum TextInjector {
 
             // Restore previous pasteboard content after a delay
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                // Only restore if no other app has modified the pasteboard since our paste
+                guard pasteboard.changeCount == ourChangeCount else { return }
                 if let previous = previousContent {
                     pasteboard.clearContents()
                     pasteboard.setString(previous, forType: .string)

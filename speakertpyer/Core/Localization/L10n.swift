@@ -119,7 +119,8 @@ enum L10n {
         static var silenceTimeout: String { d("靜音等待時間", "静音等待时间", "Silence Timeout", "無音待機時間") }
         static var silenceAutoStopDesc: String { d("說完話後等待此時間未偵測到聲音即自動結束錄音", "说完话后等待此时间未检测到声音即自动结束录音", "Automatically stops recording after this duration of silence", "この時間無音が続くと自動的に録音を停止します") }
 
-        // Preview
+        // Preview & Send
+        static var previewAndSend: String { d("預覽與送出", "预览与发送", "Preview & Send", "プレビューと送信") }
         static var previewBeforeInject: String { d("注入前預覽", "注入前预览", "Preview Before Inject", "注入前プレビュー") }
         static var enablePreview: String { d("啟用注入前預覽", "启用注入前预览", "Enable Preview Before Inject", "注入前プレビューを有効化") }
         static var previewDesc: String { d("LLM 處理完成後先顯示預覽，手動確認後再注入文字", "LLM 处理完成后先显示预览，手动确认后再注入文字", "Shows a preview after LLM processing. Manually confirm before injecting text.", "LLM 処理完了後にプレビューを表示し、手動確認後にテキストを注入します。") }
@@ -144,6 +145,11 @@ enum L10n {
         static var automation: String { d("自動化", "自动化", "Automation", "オートメーション") }
         static var reminders: String { d("備忘錄", "提醒事项", "Reminders", "リマインダー") }
         static var calendar: String { d("行事曆", "日历", "Calendar", "カレンダー") }
+
+        // Launch at Login
+        static var launchAtLogin: String { d("開機自動啟動", "开机自动启动", "Launch at Login", "ログイン時に起動") }
+        static var enableLaunchAtLogin: String { d("登入時自動啟動 Saybit", "登录时自动启动 Saybit", "Launch Saybit at Login", "ログイン時に Saybit を起動") }
+        static var launchAtLoginDesc: String { d("Mac 開機登入後自動啟動 Saybit", "Mac 开机登录后自动启动 Saybit", "Automatically launch Saybit when you log in to your Mac", "Mac にログインした際に Saybit を自動起動します") }
 
         // Tutorial
         static var tutorial: String { d("教學", "教程", "Tutorial", "チュートリアル") }

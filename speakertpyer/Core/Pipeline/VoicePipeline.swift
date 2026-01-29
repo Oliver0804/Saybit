@@ -6,6 +6,7 @@
 //
 
 import AppKit
+import Combine
 import CoreData
 import Foundation
 
@@ -27,12 +28,25 @@ class VoicePipeline {
     private var isListeningModeEnabled = false
     /// 在按下快捷鍵時預先擷取的選取文字與上下文（async Task）
     private var contextCaptureTask: Task<AppContext, Never>?
+    private var cancellables = Set<AnyCancellable>()
 
     init(settingsStore: SettingsStore) {
         self.settingsStore = settingsStore
         log.info("VoicePipeline 初始化", category: "Pipeline")
         log.info("模型: \(settingsStore.selectedModel)", category: "Pipeline")
         log.info("Prompt 風格: \(settingsStore.promptStyle.rawValue)", category: "Pipeline")
+
+        // 啟動全域共享 audio engine（一次性）
+        SharedAudioEngine.shared.start(inputDeviceUID: settingsStore.selectedInputDeviceUID)
+
+        // 監聽輸入裝置變更
+        settingsStore.$selectedInputDeviceUID
+            .dropFirst()
+            .sink { uid in
+                SharedAudioEngine.shared.switchInputDevice(uid: uid)
+            }
+            .store(in: &cancellables)
+
         configureOverlay()
         // Show bubble immediately on launch
         OverlayWindowController.shared.show()
@@ -64,7 +78,7 @@ class VoicePipeline {
             self.startRecording()
             self.enableSilenceAutoStop()
         }
-        monitor.startMonitoring(inputDeviceUID: settingsStore.selectedInputDeviceUID)
+        monitor.startMonitoring()
         listeningMonitor = monitor
 
         if settingsStore.enableSoundFeedback {
@@ -126,6 +140,8 @@ class VoicePipeline {
 
         // 在 reset 前非同步預擷取選取文字（錄音期間可能失去選取）
         // 使用 Task 避免阻塞主線程（clipboard fallback 需要等待）
+        contextCaptureTask?.cancel()
+        contextCaptureTask = nil
         if settingsStore.enableContextAwareness {
             contextCaptureTask = Task {
                 await TextExtractor.getCurrentContext()
@@ -144,14 +160,13 @@ class VoicePipeline {
             case .appleSpeech:
                 speechRecognizer.micGain = micGain
                 try speechRecognizer.startListening(
-                    onDeviceOnly: settingsStore.enableOnDeviceSTT,
-                    inputDeviceUID: settingsStore.selectedInputDeviceUID
+                    onDeviceOnly: settingsStore.enableOnDeviceSTT
                 )
-                log.info("Apple Speech 啟動 (onDevice=\(settingsStore.enableOnDeviceSTT), device=\(settingsStore.selectedInputDeviceUID.isEmpty ? "系統預設" : settingsStore.selectedInputDeviceUID))", category: "STT")
+                log.info("Apple Speech 啟動 (onDevice=\(settingsStore.enableOnDeviceSTT))", category: "STT")
             case .whisperAPI:
                 whisperClient.micGain = micGain
-                try whisperClient.startRecording(inputDeviceUID: settingsStore.selectedInputDeviceUID)
-                log.info("Whisper 錄音啟動 (device=\(settingsStore.selectedInputDeviceUID.isEmpty ? "系統預設" : settingsStore.selectedInputDeviceUID))", category: "STT")
+                try whisperClient.startRecording()
+                log.info("Whisper 錄音啟動", category: "STT")
             }
         } catch {
             log.error("語音辨識啟動失敗: \(error.localizedDescription)", category: "STT")
@@ -796,7 +811,7 @@ class VoicePipeline {
             self?.cancelSmartSend()
         }
         let grace: TimeInterval = settingsStore.enableSoundFeedback ? 0.8 : 0
-        monitor.startMonitoring(inputDeviceUID: settingsStore.selectedInputDeviceUID, gracePeriod: grace)
+        monitor.startMonitoring(gracePeriod: grace)
         self.audioLevelMonitor = monitor
 
         // 倒數 Task

@@ -34,6 +34,21 @@ class OverlayWindowController: NSObject {
     private let panelWidth: CGFloat = 840
     private let panelHeight: CGFloat = 160
 
+    deinit {
+        if let observer = moveObserver {
+            NotificationCenter.default.removeObserver(observer)
+        }
+        if let monitor = rightClickMonitor {
+            NSEvent.removeMonitor(monitor)
+        }
+        if let monitor = leftDownMonitor {
+            NSEvent.removeMonitor(monitor)
+        }
+        if let monitor = leftUpMonitor {
+            NSEvent.removeMonitor(monitor)
+        }
+    }
+
     func configure(session: TranscriptionSession, settingsStore: SettingsStore, pipeline: VoicePipeline) {
         self.session = session
         self.settingsStore = settingsStore

@@ -69,9 +69,15 @@ struct CapsuleBarView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 16))
                     .overlay(
                         RoundedRectangle(cornerRadius: 16)
+                            .stroke(innerGlowColor, lineWidth: 6)
+                            .blur(radius: 8)
+                            .clipShape(RoundedRectangle(cornerRadius: 16))
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 16)
                             .strokeBorder(borderGradient, lineWidth: 1.5)
                     )
-                    .shadow(color: confirmingShadowColor, radius: confirmingShadowRadius, y: 3)
+                    .shadow(color: .black.opacity(0.3), radius: 10, y: 3)
             } else {
                 defaultLayout
                     .scaleEffect(scale)
@@ -85,9 +91,15 @@ struct CapsuleBarView: View {
                     .clipShape(Capsule())
                     .overlay(
                         Capsule()
+                            .stroke(innerGlowColor, lineWidth: 6)
+                            .blur(radius: 8)
+                            .clipShape(Capsule())
+                    )
+                    .overlay(
+                        Capsule()
                             .strokeBorder(borderGradient, lineWidth: 1.5)
                     )
-                    .shadow(color: confirmingShadowColor, radius: confirmingShadowRadius, y: 3)
+                    .shadow(color: .black.opacity(0.3), radius: 10, y: 3)
             }
         }
         .animation(.easeInOut(duration: 0.2), value: settingsStore.capsuleScale)
@@ -307,32 +319,21 @@ struct CapsuleBarView: View {
         )
     }
 
-    // MARK: - Shadow
+    // MARK: - Inner Glow
 
-    private var confirmingShadowColor: Color {
-        if case .confirming = session.state {
-            return .cyan.opacity(0.4 * breatheOpacity)
+    private var innerGlowColor: Color {
+        switch session.state {
+        case .listening:
+            return .orange.opacity(0.6)
+        case .recording:
+            return .red.opacity(0.5)
+        case .confirming:
+            return .cyan.opacity(0.6 * breatheOpacity)
+        case .previewing:
+            return .blue.opacity(0.5)
+        default:
+            return .clear
         }
-        if case .previewing = session.state {
-            return .blue.opacity(0.3)
-        }
-        if case .listening = session.state {
-            return .orange.opacity(0.3)
-        }
-        return .black.opacity(0.3)
-    }
-
-    private var confirmingShadowRadius: CGFloat {
-        if case .confirming = session.state {
-            return 12
-        }
-        if case .previewing = session.state {
-            return 12
-        }
-        if case .listening = session.state {
-            return 12
-        }
-        return 10
     }
 
     // MARK: - Dimensions

@@ -487,7 +487,7 @@ struct TutorialView: View {
             micTester.stop()
             isMicTesting = false
         } else {
-            micTester.start(inputDeviceUID: settingsStore.selectedInputDeviceUID)
+            micTester.start()
             isMicTesting = true
         }
     }

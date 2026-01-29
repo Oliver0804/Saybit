@@ -5,142 +5,79 @@
 //  Created by 顏國明 on 2026/1/28.
 //
 
-import AudioToolbox
 import AVFoundation
 import Foundation
 
 /// Whisper API STT — 錄音後上傳 OpenAI Whisper API 取得轉錄
 @Observable
-class WhisperSTTClient {
+class WhisperSTTClient: AudioBufferConsumer {
+    let consumerID = "WhisperSTTClient"
+
     var isRecording = false
     var audioLevel: Float = 0.0
 
-    // Silence detection (mirrors SpeechRecognizer logic)
-    var onSilenceTimeout: (() -> Void)?
-    var silenceTimeoutDuration: TimeInterval = 2.0
+    // Silence detection
+    var onSilenceTimeout: (() -> Void)? {
+        get { silenceDetector.onSilenceTimeout }
+        set { silenceDetector.onSilenceTimeout = newValue }
+    }
+    var silenceTimeoutDuration: TimeInterval {
+        get { silenceDetector.silenceTimeoutDuration }
+        set { silenceDetector.silenceTimeoutDuration = newValue }
+    }
+    private let silenceDetector = SilenceDetector()
 
-    private let audioEngine = AVAudioEngine()
     private var audioBuffers: [AVAudioPCMBuffer] = []
     private var recordingFormat: AVAudioFormat?
-
-    private let silenceThreshold: Float = 0.08
-    private let speechThreshold: Float = 0.15
-    private let noSpeechTimeout: TimeInterval = 3.0
-    private var silenceStartTime: Date?
-    private var recordingStartTime: Date?
-    private var silenceTimeoutFired = false
-    private var hasDetectedSpeech = false
     var micGain: Float = 2.0
 
     private let log = AppLogger.shared
 
     // MARK: - Recording
 
-    func startRecording(inputDeviceUID: String? = nil) throws {
+    func startRecording() throws {
         audioBuffers = []
-        silenceStartTime = nil
-        recordingStartTime = Date()
-        silenceTimeoutFired = false
-        hasDetectedSpeech = false
+        silenceDetector.start()
 
-        let inputNode = audioEngine.inputNode
-        inputNode.removeTap(onBus: 0)
+        recordingFormat = SharedAudioEngine.shared.inputFormat
 
-        // Set specific input device if requested
-        if let uid = inputDeviceUID, !uid.isEmpty,
-           let deviceID = AudioSessionManager.deviceID(forUID: uid),
-           let audioUnit = inputNode.audioUnit
-        {
-            var devID = deviceID
-            AudioUnitSetProperty(
-                audioUnit,
-                kAudioOutputUnitProperty_CurrentDevice,
-                kAudioUnitScope_Global,
-                0,
-                &devID,
-                UInt32(MemoryLayout<AudioDeviceID>.size)
-            )
-        }
-
-        let format = inputNode.outputFormat(forBus: 0)
-        let tapFormat = format.channelCount > 0 ? format : nil
-        recordingFormat = tapFormat ?? format
-
-        inputNode.installTap(onBus: 0, bufferSize: 4096, format: tapFormat) { [weak self] buffer, _ in
-            guard let self, self.isRecording else { return }
-
-            // Store audio buffer for later upload
-            if let copy = buffer.copy() as? AVAudioPCMBuffer {
-                self.audioBuffers.append(copy)
-            }
-
-            // Calculate audio level (RMS)
-            guard let channelData = buffer.floatChannelData?[0] else { return }
-            let frameLength = Int(buffer.frameLength)
-            guard frameLength > 0 else { return }
-            var sum: Float = 0
-            for i in 0..<frameLength {
-                sum += channelData[i] * channelData[i]
-            }
-            let rms = sqrtf(sum / Float(frameLength))
-            let gain = self.micGain
-            let displayLevel = max(0, min(1, rms * 5 * gain))
-            let rawLevel = max(0, min(1, rms * 5))
-
-            DispatchQueue.main.async {
-                self.audioLevel = displayLevel
-            }
-
-            // Silence detection using rawLevel (unaffected by gain)
-            if rawLevel >= self.speechThreshold {
-                self.hasDetectedSpeech = true
-                self.silenceStartTime = nil
-                self.silenceTimeoutFired = false
-            } else if self.hasDetectedSpeech, rawLevel < self.silenceThreshold {
-                if self.silenceStartTime == nil {
-                    self.silenceStartTime = Date()
-                }
-                if let start = self.silenceStartTime,
-                   Date().timeIntervalSince(start) >= self.silenceTimeoutDuration,
-                   !self.silenceTimeoutFired
-                {
-                    self.silenceTimeoutFired = true
-                    DispatchQueue.main.async {
-                        self.onSilenceTimeout?()
-                    }
-                }
-            } else if !self.hasDetectedSpeech, rawLevel < self.silenceThreshold {
-                if let recStart = self.recordingStartTime,
-                   Date().timeIntervalSince(recStart) >= self.noSpeechTimeout,
-                   !self.silenceTimeoutFired
-                {
-                    self.silenceTimeoutFired = true
-                    DispatchQueue.main.async {
-                        self.onSilenceTimeout?()
-                    }
-                }
-            }
-        }
-
-        audioEngine.prepare()
-        try audioEngine.start()
+        SharedAudioEngine.shared.addConsumer(self)
         isRecording = true
         log.info("WhisperSTTClient 開始錄音", category: "STT")
     }
 
     func stopRecording() -> Data? {
-        audioEngine.stop()
-        audioEngine.inputNode.removeTap(onBus: 0)
+        SharedAudioEngine.shared.removeConsumer(self)
         isRecording = false
-        silenceStartTime = nil
-        recordingStartTime = nil
-        silenceTimeoutFired = false
-        onSilenceTimeout = nil
+        silenceDetector.reset()
         audioLevel = 0.0
         log.info("WhisperSTTClient 停止錄音 (buffers=\(audioBuffers.count))", category: "STT")
 
         guard !audioBuffers.isEmpty, let format = recordingFormat else { return nil }
         return convertToWAV(buffers: audioBuffers, format: format)
+    }
+
+    // MARK: - AudioBufferConsumer
+
+    func handleAudioBuffer(_ buffer: AVAudioPCMBuffer, time: AVAudioTime) {
+        guard isRecording else { return }
+
+        // 存儲 buffer 副本
+        if let copy = buffer.copy() as? AVAudioPCMBuffer {
+            audioBuffers.append(copy)
+        }
+
+        // RMS 計算
+        guard let rms = AudioUtils.rms(from: buffer) else { return }
+        let displayLevel = AudioUtils.normalizedLevel(rms: rms, multiplier: 5.0 * micGain)
+        let rawLevel = AudioUtils.normalizedLevel(rms: rms)
+
+        DispatchQueue.main.async { [weak self] in
+            self?.audioLevel = displayLevel
+        }
+
+        // 靜音偵測
+        silenceDetector.update(rawLevel: rawLevel)
     }
 
     // MARK: - Whisper API

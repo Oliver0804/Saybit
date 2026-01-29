@@ -103,10 +103,46 @@ struct PersistenceController {
         container.viewContext.automaticallyMergesChangesFromParent = true
 
         if !inMemory {
+            seedDefaultDictionaryIfNeeded()
             seedDefaultSkillsIfNeeded()
+            seedDefaultSkillsV3IfNeeded()
             cleanupLegacySkills()
         }
     }
+
+    // MARK: - Default Dictionary Seeding
+
+    private static let hasSeededDefaultDictKey = "hasSeededDefaultDict_v1"
+
+    private func seedDefaultDictionaryIfNeeded() {
+        guard !UserDefaults.standard.bool(forKey: Self.hasSeededDefaultDictKey) else { return }
+
+        let context = container.viewContext
+        for item in Self.defaultDictionary {
+            let entry = PersonalDictionaryEntry(context: context)
+            entry.id = UUID()
+            entry.term = item.term
+            entry.preferred = item.preferred
+        }
+
+        do {
+            try context.save()
+            UserDefaults.standard.set(true, forKey: Self.hasSeededDefaultDictKey)
+        } catch {
+            print("Failed to seed default dictionary: \(error)")
+        }
+    }
+
+    private static let defaultDictionary: [(term: String, preferred: String)] = [
+        ("openai", "OpenAI"),
+        ("chatgpt", "ChatGPT"),
+        ("github", "GitHub"),
+        ("iphone", "iPhone"),
+        ("macbook", "MacBook"),
+        ("wifi", "Wi-Fi"),
+        ("youtube", "YouTube"),
+        ("line", "LINE"),
+    ]
 
     // MARK: - Default Skills Seeding
 
@@ -171,6 +207,49 @@ struct PersistenceController {
         (
             trigger: "代辦",
             prompt: "將輸入內容轉換為待辦事項清單。每個項目使用 - [ ] 格式（Markdown checkbox）。自動拆解複合任務為獨立項目，按邏輯順序排列。"
+        ),
+    ]
+
+    // MARK: - Default Skills v3
+
+    private static let hasSeededSkillsV3Key = "hasSeededDefaultSkills_v3"
+
+    private func seedDefaultSkillsV3IfNeeded() {
+        guard !UserDefaults.standard.bool(forKey: Self.hasSeededSkillsV3Key) else { return }
+
+        let context = container.viewContext
+        // 檢查已存在的觸發詞避免重複
+        let request: NSFetchRequest<SnippetEntry> = SnippetEntry.fetchRequest()
+        let existingTriggers: Set<String>
+        if let entries = try? context.fetch(request) {
+            existingTriggers = Set(entries.compactMap { $0.trigger })
+        } else {
+            existingTriggers = []
+        }
+
+        for skill in Self.defaultSkills_v3 where !existingTriggers.contains(skill.trigger) {
+            let entry = SnippetEntry(context: context)
+            entry.id = UUID()
+            entry.trigger = skill.trigger
+            entry.content = skill.prompt
+        }
+
+        do {
+            try context.save()
+            UserDefaults.standard.set(true, forKey: Self.hasSeededSkillsV3Key)
+        } catch {
+            print("Failed to seed default skills v3: \(error)")
+        }
+    }
+
+    private static let defaultSkills_v3: [(trigger: String, prompt: String)] = [
+        (
+            trigger: "修潤",
+            prompt: "潤飾輸入的文字，修正錯字、調整語句使其更通順自然。保留原意，不改變內容方向。"
+        ),
+        (
+            trigger: "寫信",
+            prompt: "請用正式商業書信格式撰寫，包含問候語與結尾敬語。語氣專業有禮。"
         ),
     ]
 }

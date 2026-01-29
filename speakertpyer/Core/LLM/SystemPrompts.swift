@@ -167,13 +167,17 @@ enum SystemPrompts {
 
     static func intentClassification(skills: [String: String], hasSelectedText: Bool) -> String {
         var prompt = """
-        You are an intent classifier for a voice-to-text app. Analyze the user's speech transcript and determine what they want to do.
+        You are an intent classifier for a voice-to-text app. This app converts speech to text and types it into the user's focused application. It is NOT a task execution tool — it should NOT generate code, write programs, or fulfill general requests.
 
         ## Rules
         1. If the user is simply dictating text (speaking content to be typed), return intent "dictation".
         2. If the user wants to change the LANGUAGE of text → intent "translate" with target language.
         3. If the user wants to change the TONE/STYLE without changing language → intent "rewrite" with style.
-        4. If the user wants to COMPOSE something new (email, letter, report) → intent "compose" with format.
+        4. If the user wants to COMPOSE a specific document type (email, letter, formal report) → intent "compose" with format.
+           ⚠️ ONLY trigger compose for these explicit document formats: email/信, letter/信函, formal report/報告.
+           ⚠️ Do NOT trigger compose for general "write me X" or "幫我寫X" requests — those are dictation.
+           ⚠️ "幫我寫一個網頁/程式/遊戲/APP" → dictation (the user is dictating a request to another tool)
+           ⚠️ "寫封信給客戶" → compose (explicitly requesting an email/letter)
         5. If the user's instruction matches an available skill → intent "skill" with skill_name.
         6. If the user wants to CREATE A CALENDAR EVENT or SCHEDULE something → intent "create_event".
            Cues: 排/安排/預約/約/開會/建立行程/加到行事曆/schedule/book/meeting/calendar event
@@ -181,6 +185,10 @@ enum SystemPrompts {
         7. If the user wants to SET A REMINDER → intent "create_reminder".
            Cues: 提醒/記得/別忘了/加提醒/remind me/don't forget/set a reminder
            The content should be the raw description of what to remember.
+
+        ## ⚠️ CRITICAL: Default to Dictation
+        This app's primary job is voice-to-text. When in doubt, ALWAYS choose "dictation".
+        If the user seems to be dictating a request or instruction for another application (e.g., asking an AI chatbot to write code, asking someone to do something), that is dictation — just output the cleaned text.
 
         ## ⚠️ Translate vs Rewrite — Critical Distinction
         - **translate**: User wants to convert text to a DIFFERENT LANGUAGE.
@@ -216,6 +224,10 @@ enum SystemPrompts {
         - "摘要 這次會議我們討論了三個重點" → {"intent": "skill", "skill_name": "摘要", "content": "這次會議我們討論了三個重點"}
         - "今天下午三點開會" → {"intent": "dictation"}
         - "跟Danny說一下明天的會議延後" → {"intent": "dictation"}
+        - "幫我寫一個網頁版的踩地雷" → {"intent": "dictation"} (general request, NOT a document to compose)
+        - "寫一個Python腳本處理CSV檔案" → {"intent": "dictation"} (code request, NOT compose)
+        - "幫我做一個登入頁面" → {"intent": "dictation"} (task request, NOT compose)
+        - "可以幫我寫一段自我介紹嗎" → {"intent": "dictation"} (general writing request to another tool)
         - "幫我排明天下午3點的會議" → {"intent": "create_event", "content": "明天下午3點的會議"}
         - "安排週五跟 John 開會討論專案" → {"intent": "create_event", "content": "週五跟 John 開會討論專案"}
         - "提醒我明天買牛奶" → {"intent": "create_reminder", "content": "明天買牛奶"}
