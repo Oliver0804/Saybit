@@ -58,6 +58,15 @@ struct GeneralSettingsView: View {
                                 }
                             }
                             .pickerStyle(.segmented)
+                            .disabled(settingsStore.enableAutoLanguageDetection)
+
+                            Divider().opacity(0.3)
+
+                            Toggle(L10n.General.autoLanguageDetection, isOn: $settingsStore.enableAutoLanguageDetection)
+                            Text(L10n.General.autoLanguageDetectionDesc)
+                                .font(.body)
+                                .foregroundStyle(.secondary)
+                                .padding(.leading, 2)
                         }
                     }
                 }
@@ -323,6 +332,27 @@ struct GeneralSettingsView: View {
                     }
                 }
 
+                // MARK: - 注入方式
+                if settingsMatchesSearch(["注入", "inject", "貼上", "paste", "keypress", "逐字", "取代", "replace"], searchText: searchState.searchText) {
+                    GlassCard {
+                        VStack(alignment: .leading, spacing: 10) {
+                            GlassSectionHeader(title: L10n.General.injectionMode, icon: "keyboard")
+
+                            Picker(L10n.General.injectionMode, selection: $settingsStore.injectionMode) {
+                                ForEach(InjectionMode.allCases, id: \.self) { mode in
+                                    Text(mode.displayName).tag(mode)
+                                }
+                            }
+                            .pickerStyle(.segmented)
+
+                            Text(L10n.General.injectionModeDesc)
+                                .font(.body)
+                                .foregroundStyle(.secondary)
+                                .padding(.leading, 2)
+                        }
+                    }
+                }
+
                 // MARK: - 預覽與送出
                 if settingsMatchesSearch(["預覽", "preview", "注入", "inject", "预览", "smart send", "倒數", "countdown", "自動送出", "自动发送"], searchText: searchState.searchText) {
                     GlassCard {
@@ -570,6 +600,7 @@ struct GeneralSettingsView: View {
                         settingsMatchesSearch(["膠囊", "胶囊", "capsule", "大小", "size", "縮放", "scale"], searchText: searchState.searchText) ||
                         settingsMatchesSearch(["輸入裝置", "输入设备", "input", "device", "麥克風", "麦克风", "microphone", "mic", "靈敏度", "灵敏度", "sensitivity", "gain"], searchText: searchState.searchText) ||
                         settingsMatchesSearch(["自動停止", "auto stop", "靜音", "silence", "自动停止"], searchText: searchState.searchText) ||
+                        settingsMatchesSearch(["注入", "inject", "貼上", "paste", "keypress", "逐字", "取代", "replace"], searchText: searchState.searchText) ||
                         settingsMatchesSearch(["預覽", "preview", "注入", "inject", "预览", "smart send", "倒數", "countdown", "自動送出", "自动发送"], searchText: searchState.searchText) ||
                         settingsMatchesSearch(["歷史", "history", "清理", "cleanup", "保留", "retention", "历史"], searchText: searchState.searchText) ||
                         settingsMatchesSearch(["教學", "tutorial", "教程", "使用指南"], searchText: searchState.searchText) ||

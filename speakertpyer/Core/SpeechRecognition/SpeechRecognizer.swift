@@ -43,11 +43,17 @@ class SpeechRecognizer: AudioBufferConsumer {
     }
     private let silenceDetector = SilenceDetector()
 
-    private let speechRecognizer: SFSpeechRecognizer?
+    private var speechRecognizer: SFSpeechRecognizer?
     private var recognitionRequest: SFSpeechAudioBufferRecognitionRequest?
     private var recognitionTask: SFSpeechRecognitionTask?
 
     init(locale: Locale = Locale(identifier: "zh-TW")) {
+        speechRecognizer = SFSpeechRecognizer(locale: locale)
+    }
+
+    /// 動態切換語言（在 startListening 前呼叫）
+    func updateLocale(_ locale: Locale) {
+        guard !isListening else { return }
         speechRecognizer = SFSpeechRecognizer(locale: locale)
     }
 

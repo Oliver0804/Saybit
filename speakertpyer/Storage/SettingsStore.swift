@@ -76,6 +76,12 @@ class SettingsStore: ObservableObject {
         didSet { UserDefaults.standard.set(languagePreference, forKey: "languagePreference") }
     }
 
+    // MARK: - Auto Language Detection
+
+    @Published var enableAutoLanguageDetection: Bool {
+        didSet { UserDefaults.standard.set(enableAutoLanguageDetection, forKey: "enableAutoLanguageDetection") }
+    }
+
     // MARK: - Tone
 
     @Published var toneStyle: ToneStyle {
@@ -144,6 +150,12 @@ class SettingsStore: ObservableObject {
 
     @Published var whisperModel: String {
         didSet { UserDefaults.standard.set(whisperModel, forKey: "whisperModel") }
+    }
+
+    // MARK: - Injection Mode
+
+    @Published var injectionMode: InjectionMode {
+        didSet { UserDefaults.standard.set(injectionMode.rawValue, forKey: "injectionMode") }
     }
 
     // MARK: - Preview Before Inject
@@ -252,6 +264,7 @@ class SettingsStore: ObservableObject {
         self.llmTopP = defaults.object(forKey: "llmTopP") as? Double ?? 1.0
         self.promptStyle = PromptStyle(rawValue: defaults.string(forKey: "promptStyle") ?? "") ?? .typeless
         self.languagePreference = defaults.string(forKey: "languagePreference") ?? "zh-TW"
+        self.enableAutoLanguageDetection = defaults.object(forKey: "enableAutoLanguageDetection") as? Bool ?? false
         self.toneStyle = ToneStyle(rawValue: defaults.string(forKey: "toneStyle") ?? "") ?? .auto
         self.hotkeyKeyCode = defaults.object(forKey: "hotkeyKeyCode") as? Int ?? 49 // Space
         self.hotkeyModifiers = defaults.object(forKey: "hotkeyModifiers") as? Int ?? 0x80000 // Option
@@ -266,6 +279,7 @@ class SettingsStore: ObservableObject {
         self.enableAutoStop = defaults.object(forKey: "enableAutoStop") as? Bool ?? true
         self.sttEngine = STTEngine(rawValue: defaults.string(forKey: "sttEngine") ?? "") ?? .appleSpeech
         self.whisperModel = defaults.string(forKey: "whisperModel") ?? "whisper-1"
+        self.injectionMode = InjectionMode(rawValue: defaults.string(forKey: "injectionMode") ?? "") ?? .paste
         self.enablePreviewBeforeInject = defaults.object(forKey: "enablePreviewBeforeInject") as? Bool ?? false
         self.previewTimeout = defaults.object(forKey: "previewTimeout") as? Double ?? 3.0
         self.enableSmartSend = defaults.object(forKey: "enableSmartSend") as? Bool ?? false

@@ -93,6 +93,8 @@ enum L10n {
     enum General {
         static var language: String { d("語言", "语言", "Language", "言語") }
         static var preferredLanguage: String { d("偏好語言", "偏好语言", "Preferred Language", "表示言語") }
+        static var autoLanguageDetection: String { d("自動語言偵測", "自动语言检测", "Auto Language Detection", "自動言語検出") }
+        static var autoLanguageDetectionDesc: String { d("讓 Whisper API 自動偵測說話語言，無需手動指定", "让 Whisper API 自动检测说话语言，无需手动指定", "Let Whisper API auto-detect the spoken language", "Whisper API に話す言語を自動検出させます") }
 
         // Features
         static var features: String { d("功能", "功能", "Features", "機能") }
@@ -133,6 +135,11 @@ enum L10n {
         static var enableAutoStop: String { d("啟用自動停止", "启用自动停止", "Enable Auto-Stop", "自動停止を有効化") }
         static var silenceTimeout: String { d("靜音等待時間", "静音等待时间", "Silence Timeout", "無音待機時間") }
         static var silenceAutoStopDesc: String { d("說完話後等待此時間未偵測到聲音即自動結束錄音", "说完话后等待此时间未检测到声音即自动结束录音", "Automatically stops recording after this duration of silence", "この時間無音が続くと自動的に録音を停止します") }
+
+        // Preview & Send
+        // Injection Mode
+        static var injectionMode: String { d("注入方式", "注入方式", "Injection Mode", "注入モード") }
+        static var injectionModeDesc: String { d("選擇文字注入到目標 App 的方式", "选择文字注入到目标 App 的方式", "Choose how text is injected into the target app", "テキストの注入方法を選択") }
 
         // Preview & Send
         static var previewAndSend: String { d("預覽與送出", "预览与发送", "Preview & Send", "プレビューと送信") }
@@ -593,6 +600,14 @@ enum L10n {
         switch engine {
         case .appleSpeech: return d("Apple Speech (本地)", "Apple Speech (本地)", "Apple Speech (Local)", "Apple Speech (ローカル)")
         case .whisperAPI: return d("Whisper API (雲端)", "Whisper API (云端)", "Whisper API (Cloud)", "Whisper API (クラウド)")
+        }
+    }
+
+    static func injectionMode(_ mode: InjectionMode) -> String {
+        switch mode {
+        case .paste: return d("貼上 (Cmd+V)", "粘贴 (Cmd+V)", "Paste (Cmd+V)", "ペースト (Cmd+V)")
+        case .keypress: return d("逐字輸入", "逐字输入", "Keypress", "キー入力")
+        case .replaceSelection: return d("取代選取", "替换选中", "Replace Selection", "選択を置換")
         }
     }
 

@@ -9,30 +9,15 @@ import AppKit
 import CoreGraphics
 
 enum TextInjector {
-    /// Inject text into the currently focused app by simulating Cmd+V
-    static func inject(_ text: String) {
-        // Save current pasteboard content
-        let pasteboard = NSPasteboard.general
-        let previousContent = pasteboard.string(forType: .string)
-
-        // Set new content
-        pasteboard.clearContents()
-        pasteboard.setString(text, forType: .string)
-        let ourChangeCount = pasteboard.changeCount
-
-        // Small delay to ensure pasteboard is ready
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-            simulatePaste()
-
-            // Restore previous pasteboard content after a delay
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                // Only restore if no other app has modified the pasteboard since our paste
-                guard pasteboard.changeCount == ourChangeCount else { return }
-                if let previous = previousContent {
-                    pasteboard.clearContents()
-                    pasteboard.setString(previous, forType: .string)
-                }
-            }
+    /// 統一入口：根據模式注入文字
+    static func inject(_ text: String, mode: InjectionMode = .paste) {
+        switch mode {
+        case .paste:
+            injectViaPaste(text)
+        case .keypress:
+            simulateKeypress(text)
+        case .replaceSelection:
+            replaceSelection(text)
         }
     }
 
@@ -53,6 +38,79 @@ enum TextInjector {
         keyDown.post(tap: .cghidEventTap)
         keyUp.post(tap: .cghidEventTap)
     }
+
+    // MARK: - Paste Mode (Cmd+V)
+
+    /// Inject text via clipboard paste (Cmd+V) with clipboard save/restore
+    private static func injectViaPaste(_ text: String) {
+        let pasteboard = NSPasteboard.general
+        let previousContent = pasteboard.string(forType: .string)
+
+        pasteboard.clearContents()
+        pasteboard.setString(text, forType: .string)
+        let ourChangeCount = pasteboard.changeCount
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            simulatePaste()
+
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                guard pasteboard.changeCount == ourChangeCount else { return }
+                if let previous = previousContent {
+                    pasteboard.clearContents()
+                    pasteboard.setString(previous, forType: .string)
+                }
+            }
+        }
+    }
+
+    // MARK: - Keypress Mode (逐字輸入)
+
+    /// 模擬逐字鍵盤輸入，適合不支援貼上的應用程式
+    private static func simulateKeypress(_ text: String) {
+        let source = CGEventSource(stateID: .hidSystemState)
+        var delay: TimeInterval = 0
+
+        for char in text {
+            let charDelay = delay
+            DispatchQueue.main.asyncAfter(deadline: .now() + charDelay) {
+                guard let event = CGEvent(keyboardEventSource: source, virtualKey: 0, keyDown: true) else { return }
+                let chars = Array(String(char).utf16)
+                event.keyboardSetUnicodeString(stringLength: chars.count, unicodeString: chars)
+                event.flags = []
+                event.post(tap: .cghidEventTap)
+
+                // keyUp
+                if let upEvent = CGEvent(keyboardEventSource: source, virtualKey: 0, keyDown: false) {
+                    upEvent.flags = []
+                    upEvent.post(tap: .cghidEventTap)
+                }
+            }
+            delay += 0.02 // 20ms between keystrokes
+        }
+    }
+
+    // MARK: - Replace Selection Mode (Delete + Paste)
+
+    /// 先刪除選取文字，再貼上新文字
+    private static func replaceSelection(_ text: String) {
+        let source = CGEventSource(stateID: .hidSystemState)
+
+        // 模擬 Delete/Backspace 刪除選取內容
+        if let keyDown = CGEvent(keyboardEventSource: source, virtualKey: 0x33, keyDown: true),
+           let keyUp = CGEvent(keyboardEventSource: source, virtualKey: 0x33, keyDown: false) {
+            keyDown.flags = []
+            keyUp.flags = []
+            keyDown.post(tap: .cghidEventTap)
+            keyUp.post(tap: .cghidEventTap)
+        }
+
+        // 短暫延遲後貼上
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            injectViaPaste(text)
+        }
+    }
+
+    // MARK: - Private
 
     private static func simulatePaste() {
         let source = CGEventSource(stateID: .hidSystemState)

@@ -165,10 +165,12 @@ class VoicePipeline {
             switch settingsStore.sttEngine {
             case .appleSpeech:
                 speechRecognizer.micGain = micGain
+                let locale = Locale(identifier: settingsStore.languagePreference)
+                speechRecognizer.updateLocale(locale)
                 try speechRecognizer.startListening(
                     onDeviceOnly: settingsStore.enableOnDeviceSTT
                 )
-                log.info("Apple Speech 啟動 (onDevice=\(settingsStore.enableOnDeviceSTT))", category: "STT")
+                log.info("Apple Speech 啟動 (locale=\(settingsStore.languagePreference), onDevice=\(settingsStore.enableOnDeviceSTT))", category: "STT")
             case .whisperAPI:
                 whisperClient.micGain = micGain
                 try whisperClient.startRecording()
@@ -266,7 +268,9 @@ class VoicePipeline {
             // Transcribe via Whisper API, then proceed to LLM
             Task { @MainActor in
                 do {
-                    let whisperLang = whisperLanguageCode(from: settingsStore.languagePreference)
+                    let whisperLang: String? = settingsStore.enableAutoLanguageDetection
+                        ? nil
+                        : whisperLanguageCode(from: settingsStore.languagePreference)
                     let transcript = try await whisperClient.transcribe(
                         audioData: audioData,
                         model: settingsStore.whisperModel,
@@ -859,8 +863,9 @@ class VoicePipeline {
     /// 執行文字注入 + 後續流程（音效、歷史、Smart Send）
     private func performInject() {
         session.state = .done
-        TextInjector.inject(session.processedText)
-        log.info("文字已注入", category: "Inject")
+        let mode = settingsStore.injectionMode
+        TextInjector.inject(session.processedText, mode: mode)
+        log.info("文字已注入 (mode=\(mode.rawValue))", category: "Inject")
 
         saveToHistory()
 
@@ -878,6 +883,10 @@ class VoicePipeline {
     // MARK: - Smart Send
 
     private func startSmartSendCountdown() {
+        // 取消前一個倒數（防止重複）
+        smartSendTask?.cancel()
+        cleanupSmartSend()
+
         let totalSeconds = Int(settingsStore.smartSendDelay)
         log.info("Smart Send 倒數開始 (\(totalSeconds)s)", category: "SmartSend")
 
@@ -892,32 +901,44 @@ class VoicePipeline {
         monitor.startMonitoring(gracePeriod: grace)
         self.audioLevelMonitor = monitor
 
-        // 倒數 Task
-        smartSendTask = Task { @MainActor [weak self] in
-            for remaining in stride(from: totalSeconds, through: 1, by: -1) {
-                guard let self, case .confirming = self.session.state else { return }
-                self.session.state = .confirming(remaining: remaining)
-
+        // 倒數 Task（sleep 在背景執行緒，避免被主執行緒動畫阻塞）
+        smartSendTask = Task { [weak self] in
+            for secondsLeft in stride(from: totalSeconds - 1, through: 0, by: -1) {
                 do {
                     try await Task.sleep(for: .seconds(1))
                 } catch {
                     return // Task 被取消
                 }
+
+                let shouldContinue: Bool = await MainActor.run {
+                    guard let self, case .confirming = self.session.state else { return false }
+                    if secondsLeft > 0 {
+                        self.session.state = .confirming(remaining: secondsLeft)
+                        self.log.debug("Smart Send 倒數: \(secondsLeft)", category: "SmartSend")
+                    }
+                    return true
+                }
+                guard shouldContinue else { return }
             }
 
             // 倒數結束，送出 Enter
-            guard let self, case .confirming = self.session.state else { return }
-            self.cleanupSmartSend()
-            self.log.info("Smart Send 倒數結束，送出 Enter", category: "SmartSend")
+            await MainActor.run {
+                guard let self, case .confirming = self.session.state else { return }
+                self.cleanupSmartSend()
+                self.log.info("Smart Send 倒數結束，送出 Enter", category: "SmartSend")
+            }
 
             try? await Task.sleep(for: .milliseconds(100))
-            TextInjector.simulateEnter()
 
-            self.session.state = .done
-            if self.settingsStore.enableSoundFeedback {
-                NSSound(named: .init("Submarine"))?.play()
+            await MainActor.run {
+                guard let self else { return }
+                TextInjector.simulateEnter()
+                self.session.state = .done
+                if self.settingsStore.enableSoundFeedback {
+                    NSSound(named: .init("Submarine"))?.play()
+                }
+                self.autoResetState(after: 1.0)
             }
-            self.autoResetState(after: 1.0)
         }
     }
 

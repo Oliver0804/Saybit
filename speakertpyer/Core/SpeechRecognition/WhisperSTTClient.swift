@@ -82,7 +82,7 @@ class WhisperSTTClient: AudioBufferConsumer {
 
     // MARK: - Whisper API
 
-    func transcribe(audioData: Data, model: String = "whisper-1", language: String = "zh") async throws -> String {
+    func transcribe(audioData: Data, model: String = "whisper-1", language: String? = "zh") async throws -> String {
         guard let apiKey = KeychainHelper.loadAPIKey(for: "whisper_api"), !apiKey.isEmpty else {
             throw WhisperError.noAPIKey
         }
@@ -107,10 +107,12 @@ class WhisperSTTClient: AudioBufferConsumer {
         body.append("--\(boundary)\r\n".data(using: .utf8)!)
         body.append("Content-Disposition: form-data; name=\"model\"\r\n\r\n".data(using: .utf8)!)
         body.append("\(model)\r\n".data(using: .utf8)!)
-        // language field
-        body.append("--\(boundary)\r\n".data(using: .utf8)!)
-        body.append("Content-Disposition: form-data; name=\"language\"\r\n\r\n".data(using: .utf8)!)
-        body.append("\(language)\r\n".data(using: .utf8)!)
+        // language field (omit for auto-detection)
+        if let language, !language.isEmpty {
+            body.append("--\(boundary)\r\n".data(using: .utf8)!)
+            body.append("Content-Disposition: form-data; name=\"language\"\r\n\r\n".data(using: .utf8)!)
+            body.append("\(language)\r\n".data(using: .utf8)!)
+        }
         // response_format field
         body.append("--\(boundary)\r\n".data(using: .utf8)!)
         body.append("Content-Disposition: form-data; name=\"response_format\"\r\n\r\n".data(using: .utf8)!)
@@ -120,7 +122,7 @@ class WhisperSTTClient: AudioBufferConsumer {
 
         request.httpBody = body
 
-        log.info("Whisper API 請求 (model=\(model), language=\(language), audioSize=\(audioData.count) bytes)", category: "STT")
+        log.info("Whisper API 請求 (model=\(model), language=\(language ?? "auto"), audioSize=\(audioData.count) bytes)", category: "STT")
 
         let (data, response) = try await URLSession.shared.data(for: request)
 
