@@ -59,6 +59,7 @@ enum L10n {
         static var connectionSuccess: String { d("連線成功", "连接成功", "Connected", "接続成功") }
         static var startUsing: String { d("開始使用", "开始使用", "Get Started", "使い始める") }
         static var searchSettings: String { d("搜尋設定…", "搜索设置…", "Search settings…", "設定を検索…") }
+        static var all: String { d("全部", "全部", "All", "すべて") }
         static var noResults: String { d("找不到符合的設定", "找不到匹配的设置", "No matching settings", "一致する設定が見つかりません") }
     }
 
@@ -71,6 +72,20 @@ enum L10n {
         static var dictionary: String { d("字典 / 技能", "字典 / 技能", "Dictionary / Skills", "辞書 / スキル") }
         static var history: String { d("歷史", "历史", "History", "履歴") }
         static var statistics: String { d("統計", "统计", "Statistics", "統計") }
+        static var logs: String { d("日誌", "日志", "Logs", "ログ") }
+    }
+
+    // MARK: - Settings (Logs)
+
+    enum Settings {
+        static var logs: String { d("日誌檢視器", "日志查看器", "Log Viewer", "ログビューア") }
+        static var logLevel: String { d("等級", "等级", "Level", "レベル") }
+        static var logCategory: String { d("分類", "分类", "Category", "カテゴリ") }
+        static var logSearch: String { d("搜尋日誌…", "搜索日志…", "Search logs…", "ログを検索…") }
+        static var logAutoScroll: String { d("自動捲動", "自动滚动", "Auto-scroll", "自動スクロール") }
+        static var logExport: String { d("匯出", "导出", "Export", "エクスポート") }
+        static var logClear: String { d("清除", "清除", "Clear", "クリア") }
+        static var logEmpty: String { d("目前沒有日誌", "当前没有日志", "No logs yet", "ログがありません") }
     }
 
     // MARK: - General Settings

@@ -5,6 +5,7 @@
 //  Created by 顏國明 on 2026/1/27.
 //
 
+import Combine
 import SwiftUI
 
 // MARK: - Waveform View
@@ -77,7 +78,7 @@ struct CapsuleBarView: View {
                         RoundedRectangle(cornerRadius: 16)
                             .strokeBorder(borderGradient, lineWidth: 1.5)
                     )
-                    .shadow(color: .black.opacity(0.3), radius: 10, y: 3)
+                    .shadow(color: .blue.opacity(0.3), radius: 14, y: 3)
             } else {
                 defaultLayout
                     .scaleEffect(scale)
@@ -99,7 +100,7 @@ struct CapsuleBarView: View {
                         Capsule()
                             .strokeBorder(borderGradient, lineWidth: 1.5)
                     )
-                    .shadow(color: .black.opacity(0.3), radius: 10, y: 3)
+                    .shadow(color: outerGlowColor, radius: outerGlowRadius, y: 3)
             }
         }
         .animation(.easeInOut(duration: 0.2), value: settingsStore.capsuleScale)
@@ -337,6 +338,32 @@ struct CapsuleBarView: View {
         }
     }
 
+    // MARK: - Outer Glow
+
+    private var outerGlowColor: Color {
+        switch session.state {
+        case .listening:
+            return .orange.opacity(0.4)
+        case .recording:
+            return .red.opacity(0.35)
+        case .confirming:
+            return .cyan.opacity(0.4 * breatheOpacity)
+        case .previewing:
+            return .blue.opacity(0.3)
+        default:
+            return .black.opacity(0.3)
+        }
+    }
+
+    private var outerGlowRadius: CGFloat {
+        switch session.state {
+        case .listening, .recording, .confirming, .previewing:
+            return 14
+        default:
+            return 10
+        }
+    }
+
     // MARK: - Dimensions
 
     private func updateDimensions(for state: TranscriptionSession.State) {
@@ -428,15 +455,15 @@ struct CapsuleBarView: View {
 struct TypingDotsView: View {
     @State private var dotCount = 0
 
+    private let timer = Timer.publish(every: 0.4, on: .main, in: .common).autoconnect()
+
     var body: some View {
         Text(String(repeating: ".", count: dotCount + 1))
             .font(.system(size: 12, weight: .bold, design: .rounded))
             .foregroundStyle(.white.opacity(0.5))
             .frame(width: 20, alignment: .leading)
-            .onAppear {
-                Timer.scheduledTimer(withTimeInterval: 0.4, repeats: true) { _ in
-                    dotCount = (dotCount + 1) % 3
-                }
+            .onReceive(timer) { _ in
+                dotCount = (dotCount + 1) % 3
             }
     }
 }

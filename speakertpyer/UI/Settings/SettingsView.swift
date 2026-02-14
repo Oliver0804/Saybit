@@ -89,6 +89,11 @@ struct SettingsView: View {
                     .tabItem {
                         Label(L10n.Tabs.statistics, systemImage: "chart.bar.fill")
                     }
+
+                LogsView()
+                    .tabItem {
+                        Label(L10n.Tabs.logs, systemImage: "doc.text.magnifyingglass")
+                    }
             }
         }
         .frame(minWidth: 800, idealWidth: 800, maxWidth: .infinity,

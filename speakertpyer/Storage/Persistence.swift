@@ -38,8 +38,7 @@ struct PersistenceController {
         do {
             try viewContext.save()
         } catch {
-            let nsError = error as NSError
-            fatalError("Unresolved error \(nsError), \(nsError.userInfo)")
+            AppLogger.shared.error("Preview Core Data 儲存失敗: \(error.localizedDescription)", category: "CoreData")
         }
         return result
     }()
@@ -95,9 +94,19 @@ struct PersistenceController {
         let description = container.persistentStoreDescriptions.first
         description?.setOption(true as NSNumber, forKey: NSMigratePersistentStoresAutomaticallyOption)
         description?.setOption(true as NSNumber, forKey: NSInferMappingModelAutomaticallyOption)
-        container.loadPersistentStores { _, error in
+        let persistentContainer = container
+        persistentContainer.loadPersistentStores { storeDescription, error in
             if let error = error as NSError? {
-                fatalError("Unresolved error \(error), \(error.userInfo)")
+                AppLogger.shared.error("Core Data 載入失敗: \(error.localizedDescription) — 嘗試重建 store", category: "CoreData")
+                // 嘗試刪除舊 store 並重建
+                if let url = storeDescription.url {
+                    try? FileManager.default.removeItem(at: url)
+                    persistentContainer.loadPersistentStores { _, retryError in
+                        if let retryError {
+                            AppLogger.shared.error("Core Data 重建失敗: \(retryError.localizedDescription)", category: "CoreData")
+                        }
+                    }
+                }
             }
         }
         container.viewContext.automaticallyMergesChangesFromParent = true

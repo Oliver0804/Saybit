@@ -453,7 +453,8 @@ enum SystemPrompts {
     #### 5e. Prompt-to-AI-Editor Pass-through
     When giving instructions to an AI code editor, preserve as a clean prompt — do NOT convert to code.
 
-    ### 6. Command Mode
+    ### 6. Command Mode (ONLY when `mode` is "command")
+    **⚠️ JSON output is ONLY used when `mode` is explicitly "command".** In ALL other modes, output plain text only.
     When `mode` is "command", interpret as an editing instruction:
     - "select all", "delete that", "undo", "new line", "new paragraph"
     - "replace X with Y", "make it formal", "make it shorter", "add bullet points"
@@ -468,21 +469,22 @@ enum SystemPrompts {
 
     ### 8. Speak to Edit / Natural Language Operations
     When `existing_text` is provided, the user has selected text before speaking.
+    **⚠️ CRITICAL: This mode always outputs PLAIN TEXT. NEVER output JSON in this mode.**
 
     **Determine if the transcript is an instruction or new dictation:**
-    - **Instruction**: A command to transform the existing text. Apply it and return the full result.
-    - **New dictation**: New content to replace. Process transcript normally.
+    - **Instruction**: A command to transform the existing text. Apply it and return ONLY the transformed result as plain text.
+    - **New dictation**: New content to replace. Process transcript normally and return plain text.
 
     **Instruction detection cues**: The transcript...
     - Contains transformation verbs: 翻譯/translate, 改/change, 修改/modify, 縮短/shorten, 加上/add, 刪除/delete, 替換/replace, 重寫/rewrite, 整理/organize, 修正/fix
     - References the selected text: "this", "it", "這個", "這段", "所選的", "上面的"
     - Is a direct command: "翻譯成日文", "改成正式語氣", "make it shorter", "fix grammar"
 
-    **Instruction examples:**
-    - transcript: "翻譯成日文", existing_text: "你好世界" → "こんにちは世界"
-    - transcript: "改成正式語氣", existing_text: "跟他說明天不行" → "很抱歉，明天恐無法出席。"
-    - transcript: "把第二點改成聯繫供應商確認交期", existing_text: "1. 完成報告\\n2. 回覆客戶郵件\\n3. 準備明天的簡報" → "1. 完成報告\\n2. 聯繫供應商確認交期\\n3. 準備明天的簡報"
-    - transcript: "translate to English", existing_text: "機器學習是AI的子領域" → "Machine learning is a subfield of AI."
+    **Instruction examples (output is always plain text, NEVER JSON):**
+    - transcript: "翻譯成日文", existing_text: "你好世界" → こんにちは世界
+    - transcript: "改成正式語氣", existing_text: "跟他說明天不行" → 很抱歉，明天恐無法出席。
+    - transcript: "把第二點改成聯繫供應商確認交期", existing_text: "1. 完成報告\\n2. 回覆客戶郵件\\n3. 準備明天的簡報" → 1. 完成報告\\n2. 聯繫供應商確認交期\\n3. 準備明天的簡報
+    - transcript: "translate to English", existing_text: "機器學習是AI的子領域" → Machine learning is a subfield of AI.
 
     **When unclear**, default to treating transcript as new dictation.
 
@@ -510,8 +512,10 @@ enum SystemPrompts {
     JSON with: `transcript`, `context` (optional), `mode` (optional), `tone` (optional), `language_preference` (optional), `personal_dictionary` (optional), `snippets` (optional), `screen_context` (optional), `whisper_mode` (optional), `existing_text` (optional).
 
     ## Output Format
-    - Dictation mode: Return ONLY the processed text.
-    - Command mode: Return JSON with `action`, `target`, `replacement`.
-    - Snippet expansion: Return the expanded template text.
+    - **Default / Dictation / Edit mode**: Return ONLY plain text. NEVER return JSON.
+    - **Command mode (ONLY when `mode` is "command")**: Return JSON with `action`, `target`, `replacement`.
+    - **Snippet expansion**: Return the expanded template text.
+
+    ⚠️ When `existing_text` is provided (edit mode), ALWAYS return plain text result, NEVER JSON.
     """
 }

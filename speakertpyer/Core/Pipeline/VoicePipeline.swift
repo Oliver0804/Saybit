@@ -28,6 +28,8 @@ class VoicePipeline {
     private var isListeningModeEnabled = false
     /// 在按下快捷鍵時預先擷取的選取文字與上下文（async Task）
     private var contextCaptureTask: Task<AppContext, Never>?
+    /// autoResetState 的可取消 Task，避免多次重置競爭
+    private var autoResetTask: Task<Void, Never>?
     private var cancellables = Set<AnyCancellable>()
 
     init(settingsStore: SettingsStore) {
@@ -103,6 +105,10 @@ class VoicePipeline {
     // MARK: - Recording
 
     func startRecording() {
+        // 取消任何 pending 的 autoReset
+        autoResetTask?.cancel()
+        autoResetTask = nil
+
         // 若聆聽中，先清除
         if case .listening = session.state {
             cleanupListening()
@@ -454,6 +460,11 @@ class VoicePipeline {
                 return
             }
 
+            // LLM 可能誤回 JSON command 格式（如 {"action":"translate","replacement":"..."}），
+            // 此時應提取 replacement 欄位作為實際結果
+            accumulated = extractReplacementIfCommandJSON(accumulated)
+            session.processedText = accumulated
+
             log.info("LLM 結果: \(accumulated.prefix(100))\(accumulated.count > 100 ? "..." : "")", category: "LLM")
 
             if settingsStore.enablePreviewBeforeInject {
@@ -542,6 +553,30 @@ class VoicePipeline {
             }
             return dictationFallback
         }
+    }
+
+    // MARK: - Command JSON Extraction
+
+    /// LLM 有時會誤將 edit 模式的結果以 Command Mode JSON 格式回傳
+    /// （如 `{"action":"translate","target":"...","replacement":"..."}`），
+    /// 此方法偵測這種情況並提取 `replacement` 欄位。
+    private func extractReplacementIfCommandJSON(_ text: String) -> String {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: "```json", with: "")
+            .replacingOccurrences(of: "```", with: "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard trimmed.hasPrefix("{"), trimmed.hasSuffix("}"),
+              let data = trimmed.data(using: .utf8),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              json["action"] is String,
+              let replacement = json["replacement"] as? String,
+              !replacement.isEmpty else {
+            return text
+        }
+
+        log.info("偵測到 Command JSON，提取 replacement 欄位", category: "LLM")
+        return replacement
     }
 
     // MARK: - Error Messages
@@ -881,7 +916,11 @@ class VoicePipeline {
     }
 
     private func autoResetState(after seconds: Double) {
-        DispatchQueue.main.asyncAfter(deadline: .now() + seconds) { [weak self] in
+        autoResetTask?.cancel()
+        autoResetTask = Task { @MainActor [weak self] in
+            do {
+                try await Task.sleep(for: .seconds(seconds))
+            } catch { return }
             self?.returnToIdle()
         }
     }
@@ -950,6 +989,10 @@ class VoicePipeline {
         record.completionTokens = Int32(session.completionTokens)
         record.totalTokens = Int32(session.totalTokens)
 
-        try? context.save()
+        do {
+            try context.save()
+        } catch {
+            log.error("歷史記錄儲存失敗: \(error.localizedDescription)", category: "History")
+        }
     }
 }

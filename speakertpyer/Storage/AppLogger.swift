@@ -7,14 +7,25 @@
 
 import Foundation
 
+// MARK: - Log Level
+
+enum LogLevel: String, Codable, CaseIterable {
+    case debug = "DEBUG"
+    case info = "INFO"
+    case warn = "WARN"
+    case error = "ERROR"
+}
+
+// MARK: - Log Entry
+
 struct LogEntry: Identifiable, Codable {
     let id: UUID
     let timestamp: Date
-    let level: String
+    let level: LogLevel
     let category: String
     let message: String
 
-    init(level: String, category: String, message: String) {
+    init(level: LogLevel, category: String, message: String) {
         self.id = UUID()
         self.timestamp = Date()
         self.level = level
@@ -23,18 +34,24 @@ struct LogEntry: Identifiable, Codable {
     }
 
     var formatted: String {
+        "[\(Self.timeFormatter.string(from: timestamp))] [\(level.rawValue)] [\(category)] \(message)"
+    }
+
+    private static let timeFormatter: DateFormatter = {
         let df = DateFormatter()
         df.dateFormat = "HH:mm:ss.SSS"
-        return "[\(df.string(from: timestamp))] [\(level)] [\(category)] \(message)"
-    }
+        return df
+    }()
 }
+
+// MARK: - App Logger
 
 @Observable
 class AppLogger {
     static let shared = AppLogger()
 
     private(set) var entries: [LogEntry] = []
-    private let maxEntries = 100
+    private let maxEntries = 500
     private let queue = DispatchQueue(label: "com.bashcat.speakertpyer.logger")
     private let jsonEncoder: JSONEncoder = {
         let e = JSONEncoder()
@@ -48,10 +65,14 @@ class AppLogger {
         return appSupport.appendingPathComponent("Saybit/logs", isDirectory: true)
     }
 
-    var todayLogFileURL: URL {
+    private static let fileDateFormatter: DateFormatter = {
         let df = DateFormatter()
         df.dateFormat = "yyyy-MM-dd"
-        let filename = "saybit-\(df.string(from: Date())).jsonl"
+        return df
+    }()
+
+    var todayLogFileURL: URL {
+        let filename = "saybit-\(Self.fileDateFormatter.string(from: Date())).jsonl"
         return logDirectoryURL.appendingPathComponent(filename)
     }
 
@@ -61,32 +82,36 @@ class AppLogger {
     }
 
     func info(_ message: String, category: String = "App") {
-        append(LogEntry(level: "INFO", category: category, message: message))
+        append(LogEntry(level: .info, category: category, message: message))
+    }
+
+    func warn(_ message: String, category: String = "App") {
+        append(LogEntry(level: .warn, category: category, message: message))
     }
 
     func error(_ message: String, category: String = "App") {
-        append(LogEntry(level: "ERROR", category: category, message: message))
+        append(LogEntry(level: .error, category: category, message: message))
     }
 
     func debug(_ message: String, category: String = "App") {
-        append(LogEntry(level: "DEBUG", category: category, message: message))
+        append(LogEntry(level: .debug, category: category, message: message))
     }
 
     func clear() {
-        queue.sync {
-            entries.removeAll()
+        DispatchQueue.main.async {
+            self.entries.removeAll()
         }
     }
 
     private func append(_ entry: LogEntry) {
         print(entry.formatted)
-        queue.sync {
-            entries.append(entry)
-            if entries.count > maxEntries {
-                entries.removeFirst(entries.count - maxEntries)
+        // 在主執行緒更新 entries，確保 SwiftUI @Observable 安全
+        DispatchQueue.main.async {
+            self.entries.append(entry)
+            if self.entries.count > self.maxEntries {
+                self.entries.removeFirst(self.entries.count - self.maxEntries)
             }
         }
-        // Persist to disk
         persistToDisk(entry)
     }
 
