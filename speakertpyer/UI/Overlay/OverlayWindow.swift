@@ -92,7 +92,8 @@ class OverlayWindowController: NSObject {
             settingsStore: settingsStore ?? SettingsStore(),
             onConfirmInject: { pipelineRef?.confirmInject() },
             onRegenerate: { pipelineRef?.regenerate() },
-            onCancelPreview: { pipelineRef?.cancelPreview() }
+            onCancelPreview: { pipelineRef?.cancelPreview() },
+            onRetry: { pipelineRef?.retryLastAction() }
         )
         let hostingView = OverlayHostingView(rootView: capsuleView)
         hostingView.frame = NSRect(x: 0, y: 0, width: panelWidth, height: panelHeight)

@@ -145,7 +145,21 @@ enum L10n {
         static var enableSmartSend: String { d("啟用 Smart Send", "启用 Smart Send", "Enable Smart Send", "Smart Send を有効化") }
         static var smartSendDesc: String { d("文字貼上後自動倒數，到期自動按下 Enter 送出", "文字粘贴后自动倒数，到期自动按下 Enter 发送", "Auto-countdown after paste, then auto-presses Enter to send", "貼り付け後自動カウントダウンし、Enter を自動送信") }
         static var countdownSeconds: String { d("倒數秒數", "倒计时秒数", "Countdown", "カウントダウン") }
+        static var previewTimeout: String { d("預覽超時", "预览超时", "Preview Timeout", "プレビュータイムアウト") }
+        static var previewTimeoutDesc: String { d("預覽顯示後自動確認/取消的等待時間", "预览显示后自动确认/取消的等待时间", "Time to wait before auto-confirming/cancelling preview", "プレビュー表示後の自動確認/キャンセルまでの待機時間") }
+
         static var smartSendCancelHint: String { d("倒數期間若偵測到說話，會自動取消送出", "倒计时期间若检测到说话，会自动取消发送", "Speaking during countdown will cancel auto-send", "カウントダウン中に話すと自動送信がキャンセルされます") }
+
+        // Context Rules
+        static var contextRules: String { d("App 語氣規則", "App 语气规则", "App Tone Rules", "アプリトーンルール") }
+        static var contextRulesDesc: String { d("為不同 App 設定專屬語氣和額外指令", "为不同 App 设置专属语气和额外指令", "Set custom tone and extra instructions per app", "アプリごとにトーンと追加指示を設定") }
+        static var contextRulesManage: String { d("管理規則", "管理规则", "Manage Rules", "ルールを管理") }
+        static var contextRuleApp: String { d("App 識別名", "App 识别名", "App Identifier", "アプリ識別子") }
+        static var contextRuleTone: String { d("語氣覆寫", "语气覆写", "Tone Override", "トーン上書き") }
+        static var contextRulePrompt: String { d("額外指令", "额外指令", "Extra Instructions", "追加指示") }
+        static var contextRulePromptPlaceholder: String { d("（選填）額外的 Prompt 指令…", "（选填）额外的 Prompt 指令…", "(Optional) Extra prompt instructions…", "（任意）追加のプロンプト指示…") }
+        static var contextRuleEnabled: String { d("啟用", "启用", "Enabled", "有効") }
+        static var contextRuleAddNew: String { d("新增規則", "新增规则", "Add Rule", "ルールを追加") }
 
         // History Cleanup
         static var historyCleanup: String { d("歷史記錄清理", "历史记录清理", "History Cleanup", "履歴クリーンアップ") }
@@ -364,6 +378,8 @@ enum L10n {
         static var chars: String { d("字", "字", "chars", "文字") }
         static var inject: String { d("輸入", "输入", "Inject", "入力") }
         static var regenerate: String { d("重新生成", "重新生成", "Regenerate", "再生成") }
+        static var retry: String { d("重試", "重试", "Retry", "リトライ") }
+        static var retrying: String { d("重試中...", "重试中...", "Retrying...", "リトライ中...") }
         // Context menu
         static var promptStyleMenu: String { d("Prompt 風格", "Prompt 风格", "Prompt Style", "プロンプトスタイル") }
         static var toneMenu: String { d("語調", "语调", "Tone", "トーン") }

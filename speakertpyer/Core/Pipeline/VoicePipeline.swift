@@ -413,11 +413,26 @@ class VoicePipeline {
 
         // ── 串流 LLM 呼叫 ──
         let contextId = session.appContext.contextIdentifier
+
+        // 查詢 context rule 覆蓋語氣
+        var effectiveTone: String? = settingsStore.toneStyle == .auto ? nil : settingsStore.toneStyle.rawValue
+        var finalSystemPrompt = systemPrompt
+        if let rule = settingsStore.contextRule(for: contextId) {
+            if let toneOverride = rule.toneOverride, toneOverride != "auto" {
+                effectiveTone = toneOverride
+                log.info("Context rule 覆蓋語氣: \(contextId) → \(toneOverride)", category: "Context")
+            }
+            if let additional = rule.additionalPrompt, !additional.isEmpty {
+                finalSystemPrompt += "\n\n### App-Specific Instructions\n\(additional)"
+                log.info("Context rule 注入附加指示 (\(contextId))", category: "Context")
+            }
+        }
+
         let payload = LLMPayload(
             transcript: contentForLLM,
             context: contextId.isEmpty ? nil : contextId,
             mode: hasSelectedText ? "edit" : nil,
-            tone: settingsStore.toneStyle == .auto ? nil : settingsStore.toneStyle.rawValue,
+            tone: effectiveTone,
             languagePreference: settingsStore.languagePreference,
             personalDictionary: loadPersonalDictionary(),
             snippets: nil,
@@ -431,7 +446,7 @@ class VoicePipeline {
 
         do {
             let stream = await llmClient.sendStreaming(
-                systemPrompt: systemPrompt,
+                systemPrompt: finalSystemPrompt,
                 payload: payload,
                 model: model,
                 temperature: temperature,
@@ -477,8 +492,13 @@ class VoicePipeline {
         } catch {
             let msg = friendlyErrorMessage(error)
             log.error("LLM 錯誤: \(msg) (\(error))", category: "LLM")
+            session.lastErrorContext = ErrorContext(
+                transcript: transcript,
+                selectedText: selectedText,
+                appContext: session.appContext
+            )
             session.state = .error(msg)
-            autoResetState(after: 3.0)
+            autoResetState(after: 5.0)
         }
     }
 
@@ -749,6 +769,23 @@ class VoicePipeline {
         }
     }
 
+    // MARK: - Quick Retry
+
+    /// 重試上次失敗的 LLM 處理
+    func retryLastAction() {
+        guard let errorCtx = session.lastErrorContext else { return }
+        log.info("Quick Retry: 重新處理上次失敗的請求", category: "Pipeline")
+
+        session.rawTranscript = errorCtx.transcript
+        session.appContext = errorCtx.appContext
+        session.lastErrorContext = nil
+        session.state = .processing
+
+        Task { @MainActor in
+            await processWithLLM()
+        }
+    }
+
     // MARK: - Preview Actions
 
     /// 使用者確認注入（預覽模式）
@@ -786,15 +823,16 @@ class VoicePipeline {
         }
     }
 
-    /// 預覽模式 3 秒自動確認
+    /// 預覽模式自動確認（使用 settingsStore.previewTimeout）
     private func startPreviewAutoConfirm() {
         cancelPreviewAutoConfirm()
+        let timeout = settingsStore.previewTimeout
         previewAutoConfirmTask = Task { @MainActor [weak self] in
             do {
-                try await Task.sleep(for: .seconds(3))
+                try await Task.sleep(for: .seconds(timeout))
             } catch { return }
             guard let self, case .previewing = self.session.state else { return }
-            self.log.info("預覽 3 秒無操作，自動確認", category: "Pipeline")
+            self.log.info("預覽 \(timeout)s 無操作，自動確認", category: "Pipeline")
             self.confirmInject()
         }
     }
@@ -804,15 +842,16 @@ class VoicePipeline {
         previewAutoConfirmTask = nil
     }
 
-    /// 行事曆/備忘錄預覽 3 秒無操作自動取消
+    /// 行事曆/備忘錄預覽自動取消（使用 settingsStore.previewTimeout）
     private func startPreviewAutoCancel() {
         cancelPreviewAutoConfirm()
+        let timeout = settingsStore.previewTimeout
         previewAutoConfirmTask = Task { @MainActor [weak self] in
             do {
-                try await Task.sleep(for: .seconds(3))
+                try await Task.sleep(for: .seconds(timeout))
             } catch { return }
             guard let self, case .previewing = self.session.state else { return }
-            self.log.info("預覽 3 秒無操作，自動取消", category: "Pipeline")
+            self.log.info("預覽 \(timeout)s 無操作，自動取消", category: "Pipeline")
             self.cancelPreview()
         }
     }

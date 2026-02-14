@@ -152,6 +152,12 @@ class SettingsStore: ObservableObject {
         didSet { UserDefaults.standard.set(enablePreviewBeforeInject, forKey: "enablePreviewBeforeInject") }
     }
 
+    // MARK: - Preview Timeout
+
+    @Published var previewTimeout: Double {
+        didSet { UserDefaults.standard.set(previewTimeout, forKey: "previewTimeout") }
+    }
+
     // MARK: - Smart Send
 
     @Published var enableSmartSend: Bool {
@@ -194,6 +200,21 @@ class SettingsStore: ObservableObject {
                 try? SMAppService.mainApp.unregister()
             }
         }
+    }
+
+    // MARK: - Context Rules
+
+    @Published var contextRules: [ContextRule] {
+        didSet {
+            if let data = try? JSONEncoder().encode(contextRules) {
+                UserDefaults.standard.set(data, forKey: "contextRules")
+            }
+        }
+    }
+
+    /// Find matching rule for a given app context identifier
+    func contextRule(for appIdentifier: String) -> ContextRule? {
+        contextRules.first { $0.appIdentifier == appIdentifier && $0.isEnabled }
     }
 
     // MARK: - Overlay Position
@@ -246,6 +267,7 @@ class SettingsStore: ObservableObject {
         self.sttEngine = STTEngine(rawValue: defaults.string(forKey: "sttEngine") ?? "") ?? .appleSpeech
         self.whisperModel = defaults.string(forKey: "whisperModel") ?? "whisper-1"
         self.enablePreviewBeforeInject = defaults.object(forKey: "enablePreviewBeforeInject") as? Bool ?? false
+        self.previewTimeout = defaults.object(forKey: "previewTimeout") as? Double ?? 3.0
         self.enableSmartSend = defaults.object(forKey: "enableSmartSend") as? Bool ?? false
         self.smartSendDelay = defaults.object(forKey: "smartSendDelay") as? Double ?? 3.0
         self.capsuleScale = defaults.object(forKey: "capsuleScale") as? Double ?? 1.0
@@ -256,5 +278,11 @@ class SettingsStore: ObservableObject {
         self.hasCustomOverlayPosition = defaults.bool(forKey: "hasCustomOverlayPosition")
         self.historyRetentionDays = defaults.object(forKey: "historyRetentionDays") as? Int ?? 30
         self.enableHistoryAutoCleanup = defaults.object(forKey: "enableHistoryAutoCleanup") as? Bool ?? false
+        if let data = defaults.data(forKey: "contextRules"),
+           let decoded = try? JSONDecoder().decode([ContextRule].self, from: data) {
+            self.contextRules = decoded
+        } else {
+            self.contextRules = ContextRule.defaultRules
+        }
     }
 }

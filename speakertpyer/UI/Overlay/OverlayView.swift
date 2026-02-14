@@ -42,6 +42,7 @@ struct CapsuleBarView: View {
     var onConfirmInject: (() -> Void)?
     var onRegenerate: (() -> Void)?
     var onCancelPreview: (() -> Void)?
+    var onRetry: (() -> Void)?
 
     @State private var capsuleWidth: CGFloat = 120
     @State private var capsuleHeight: CGFloat = 36
@@ -284,10 +285,23 @@ struct CapsuleBarView: View {
                 .lineLimit(2)
                 .truncationMode(.tail)
         case .error(let msg):
-            Text(msg)
-                .font(.system(size: 11, design: .rounded))
-                .foregroundStyle(.red.opacity(0.9))
-                .lineLimit(1)
+            HStack(spacing: 6) {
+                Text(msg)
+                    .font(.system(size: 11, design: .rounded))
+                    .foregroundStyle(.red.opacity(0.9))
+                    .lineLimit(1)
+                if session.lastErrorContext != nil {
+                    Button {
+                        onRetry?()
+                    } label: {
+                        Label(L10n.Overlay.retry, systemImage: "arrow.clockwise")
+                            .font(.system(size: 10, weight: .medium))
+                    }
+                    .buttonStyle(.bordered)
+                    .tint(.orange)
+                    .controlSize(.mini)
+                }
+            }
         }
     }
 
@@ -402,7 +416,7 @@ struct CapsuleBarView: View {
             capsuleWidth = estimatedWidth
             capsuleHeight = text.count > 25 ? 56 : 36
         case .error:
-            capsuleWidth = 260
+            capsuleWidth = session.lastErrorContext != nil ? 320 : 260
             capsuleHeight = 36
         }
     }

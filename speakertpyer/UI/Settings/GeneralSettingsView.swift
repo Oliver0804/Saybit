@@ -26,6 +26,7 @@ struct GeneralSettingsView: View {
     @State private var showWhisperKey: Bool = false
     @State private var isTestingWhisper: Bool = false
     @State private var whisperTestStatus: String?
+    @State private var showContextRulesSheet: Bool = false
 
     var body: some View {
         ScrollView {
@@ -84,6 +85,28 @@ struct GeneralSettingsView: View {
                                 .font(.body)
                                 .foregroundStyle(.secondary)
                                 .padding(.leading, 2)
+
+                            if settingsStore.enableContextAwareness {
+                                Divider().opacity(0.3)
+
+                                HStack {
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(L10n.General.contextRules)
+                                            .font(.body)
+                                        Text(L10n.General.contextRulesDesc)
+                                            .font(.body)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                    Spacer()
+                                    Button {
+                                        showContextRulesSheet = true
+                                    } label: {
+                                        Label(L10n.General.contextRulesManage, systemImage: "list.bullet.rectangle")
+                                    }
+                                    .buttonStyle(.bordered)
+                                    .controlSize(.small)
+                                }
+                            }
                         }
                     }
                 }
@@ -311,6 +334,23 @@ struct GeneralSettingsView: View {
                                 .font(.body)
                                 .foregroundStyle(.secondary)
                                 .padding(.leading, 2)
+
+                            if settingsStore.enablePreviewBeforeInject {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    HStack {
+                                        Text(L10n.General.previewTimeout)
+                                        Spacer()
+                                        Text(L10n.General.seconds(settingsStore.previewTimeout))
+                                            .font(.system(.body, design: .monospaced))
+                                            .foregroundStyle(.secondary)
+                                    }
+                                    Slider(value: $settingsStore.previewTimeout, in: 1.0...10.0, step: 0.5)
+                                    Text(L10n.General.previewTimeoutDesc)
+                                        .font(.body)
+                                        .foregroundStyle(.secondary)
+                                }
+                                .padding(.leading, 2)
+                            }
 
                             Divider().opacity(0.3)
 
@@ -543,6 +583,10 @@ struct GeneralSettingsView: View {
                 }
             }
             .padding(20)
+        }
+        .sheet(isPresented: $showContextRulesSheet) {
+            ContextRulesView(settingsStore: settingsStore)
+                .frame(minWidth: 500, minHeight: 400)
         }
         .onAppear {
             refreshPermissions()

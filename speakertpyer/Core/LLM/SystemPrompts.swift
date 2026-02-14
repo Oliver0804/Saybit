@@ -103,11 +103,15 @@ enum SystemPrompts {
     **Paragraphs**: Insert breaks at topic transitions.
 
     ### 6. Tone Adaptation
-    Adapt style based on context:
-    - **Chat/Messaging** (Slack, LINE, Discord): Casual, shorter
-    - **Email/Document** (Gmail, Google Docs): Formal, professional
+    If an explicit `tone` is provided in the payload, follow it strictly.
+    If no `tone` is provided, infer from the `context` field in the JSON payload:
+    - **Chat/Messaging** (slack, discord, line, imessage, telegram, wechat, teams, messenger, zoom-chat): Casual, shorter sentences, conversational
+    - **Email/Document** (gmail, outlook, google-docs, word): Formal, professional, complete sentences with proper greetings
       - "跟他說一下我今天可能會晚一點到因為捷運出了點問題" (email context) → "您好，因交通因素，今天我可能會稍晚抵達，敬請見諒。"
-    - **Note-taking** (Notes, Obsidian): Concise, bullet-friendly
+    - **Code Editor** (cursor, vscode, terminal, xcode, intellij, zed, vim): Technical, concise, developer-friendly
+    - **Note-taking** (obsidian, notes, notion): Concise, bullet-friendly, neutral
+    - **Design** (figma, sketch): Descriptive, specification-style
+    - **Project Management** (linear, jira, clickup, asana): Structured, action-oriented
     Default: neutral clean prose.
 
     ### 7. Language Handling
@@ -178,6 +182,9 @@ enum SystemPrompts {
            ⚠️ Do NOT trigger compose for general "write me X" or "幫我寫X" requests — those are dictation.
            ⚠️ "幫我寫一個網頁/程式/遊戲/APP" → dictation (the user is dictating a request to another tool)
            ⚠️ "寫封信給客戶" → compose (explicitly requesting an email/letter)
+           ⚠️ "寫一段程式碼" → dictation (NOT compose)
+           ⚠️ "寫一個Python腳本" → dictation (NOT compose)
+           ⚠️ "可以幫我寫一段自我介紹嗎" → dictation (general writing request to another tool)
         5. If the user's instruction matches an available skill → intent "skill" with skill_name.
         6. If the user wants to CREATE A CALENDAR EVENT or SCHEDULE something → intent "create_event".
            Cues: 排/安排/預約/約/開會/建立行程/加到行事曆/schedule/book/meeting/calendar event
@@ -189,6 +196,12 @@ enum SystemPrompts {
         ## ⚠️ CRITICAL: Default to Dictation
         This app's primary job is voice-to-text. When in doubt, ALWAYS choose "dictation".
         If the user seems to be dictating a request or instruction for another application (e.g., asking an AI chatbot to write code, asking someone to do something), that is dictation — just output the cleaned text.
+
+        ## ⚠️ Additional Edit Commands (when existing text is selected)
+        These should be classified as "rewrite" with appropriate style:
+        - Formatting: "加上項目符號"/"add bullet points", "改成表格"/"make it a table", "排序"/"sort"
+        - Style: "改成更簡潔"/"make it shorter", "加上更多細節"/"add more detail", "改成更口語"/"make it casual"
+        - Combination: "翻譯成英文然後改成正式語氣" → translate (primary action wins)
 
         ## ⚠️ Translate vs Rewrite — Critical Distinction
         - **translate**: User wants to convert text to a DIFFERENT LANGUAGE.

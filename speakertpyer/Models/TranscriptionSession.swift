@@ -12,6 +12,12 @@ enum PendingAction {
     case createReminder(LLMReminderResponse)
 }
 
+struct ErrorContext {
+    let transcript: String
+    let selectedText: String?
+    let appContext: AppContext
+}
+
 @Observable
 class TranscriptionSession {
     enum State: Equatable {
@@ -34,6 +40,7 @@ class TranscriptionSession {
     var endTime: Date?
     var audioLevel: Float = 0.0
     var smartSendCancelled: Bool = false
+    var lastErrorContext: ErrorContext?
     var modelName: String = ""
     var promptTokens: Int = 0
     var completionTokens: Int = 0
@@ -55,6 +62,7 @@ class TranscriptionSession {
         endTime = nil
         audioLevel = 0.0
         smartSendCancelled = false
+        lastErrorContext = nil
         modelName = ""
         promptTokens = 0
         completionTokens = 0
