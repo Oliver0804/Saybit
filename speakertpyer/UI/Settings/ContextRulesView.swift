@@ -11,49 +11,66 @@ struct ContextRulesView: View {
     @ObservedObject var settingsStore: SettingsStore
     @State private var showAddSheet = false
 
+    @Environment(\.dismiss) private var dismiss
+
     var body: some View {
-        VStack(spacing: 16) {
-            // Header
-            HStack {
-                Text(L10n.General.contextRules)
-                    .font(.headline)
-                Spacer()
-                Button {
-                    showAddSheet = true
-                } label: {
-                    Label(L10n.General.contextRuleAddNew, systemImage: "plus.circle.fill")
+        VStack(spacing: 0) {
+            // Header (pinned)
+            VStack(spacing: 12) {
+                HStack {
+                    Text(L10n.General.contextRules)
+                        .font(.headline)
+                    Spacer()
+                    Button {
+                        showAddSheet = true
+                    } label: {
+                        Label(L10n.General.contextRuleAddNew, systemImage: "plus.circle.fill")
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+
+                    Button {
+                        dismiss()
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-            }
 
-            Text(L10n.General.contextRulesDesc)
-                .font(.body)
-                .foregroundStyle(.secondary)
-                .frame(maxWidth: .infinity, alignment: .leading)
-
-            // Rules list
-            if settingsStore.contextRules.isEmpty {
-                Text(L10n.Common.noResults)
+                Text(L10n.General.contextRulesDesc)
+                    .font(.body)
                     .foregroundStyle(.secondary)
-                    .padding(.vertical, 20)
-            } else {
-                VStack(spacing: 8) {
-                    ForEach(Array(settingsStore.contextRules.enumerated()), id: \.element.id) { index, rule in
-                        ContextRuleRow(
-                            rule: Binding(
-                                get: { settingsStore.contextRules[index] },
-                                set: { settingsStore.contextRules[index] = $0 }
-                            ),
-                            onDelete: {
-                                settingsStore.contextRules.remove(at: index)
-                            }
-                        )
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .padding(20)
+
+            Divider().opacity(0.3)
+
+            // Scrollable rules list
+            ScrollView {
+                if settingsStore.contextRules.isEmpty {
+                    Text(L10n.Common.noResults)
+                        .foregroundStyle(.secondary)
+                        .padding(.vertical, 20)
+                } else {
+                    VStack(spacing: 8) {
+                        ForEach(Array(settingsStore.contextRules.enumerated()), id: \.element.id) { index, rule in
+                            ContextRuleRow(
+                                rule: Binding(
+                                    get: { settingsStore.contextRules[index] },
+                                    set: { settingsStore.contextRules[index] = $0 }
+                                ),
+                                onDelete: {
+                                    settingsStore.contextRules.remove(at: index)
+                                }
+                            )
+                        }
                     }
                 }
             }
+            .padding(20)
         }
-        .padding(20)
         .sheet(isPresented: $showAddSheet) {
             AddContextRuleSheet(settingsStore: settingsStore, isPresented: $showAddSheet)
         }

@@ -41,7 +41,7 @@ class WhisperSTTClient: AudioBufferConsumer {
 
         recordingFormat = SharedAudioEngine.shared.inputFormat
 
-        SharedAudioEngine.shared.addConsumer(self)
+        SharedAudioEngine.shared.addConsumer(self, replayPreBuffer: true)
         isRecording = true
         log.info("WhisperSTTClient 開始錄音", category: "STT")
     }

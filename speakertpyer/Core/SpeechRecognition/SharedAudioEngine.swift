@@ -29,6 +29,12 @@ class SharedAudioEngine {
     private(set) var isRunning = false
     private(set) var inputFormat: AVAudioFormat?
 
+    // MARK: - Pre-buffer（環形緩衝區）
+    // 保留最近 ~1.5 秒的音訊，讓新消費者加入時可回放，避免開頭語音遺失
+    private var preBuffer: [(buffer: AVAudioPCMBuffer, time: AVAudioTime)] = []
+    private let preBufferLock = NSLock()
+    private let preBufferDuration: TimeInterval = 1.5
+
     private init() {}
 
     // MARK: - Lifecycle
@@ -60,6 +66,10 @@ class SharedAudioEngine {
         // 用 nil format 讓系統自動匹配裝置原生格式，避免格式不匹配
         inputNode.installTap(onBus: 0, bufferSize: 1024, format: nil) { [weak self] buffer, time in
             guard let self else { return }
+
+            // 寫入 pre-buffer
+            self.appendToPreBuffer(buffer, time: time)
+
             self.consumersLock.lock()
             let snapshot = self.consumers
             self.consumersLock.unlock()
@@ -86,7 +96,43 @@ class SharedAudioEngine {
         audioEngine.stop()
         audioEngine.inputNode.removeTap(onBus: 0)
         isRunning = false
+        clearPreBuffer()
         log.info("SharedAudioEngine 已停止", category: "Audio")
+    }
+
+    // MARK: - Pre-buffer Management
+
+    private func appendToPreBuffer(_ buffer: AVAudioPCMBuffer, time: AVAudioTime) {
+        guard let copy = buffer.copy() as? AVAudioPCMBuffer else { return }
+        preBufferLock.lock()
+        preBuffer.append((buffer: copy, time: time))
+        trimPreBuffer()
+        preBufferLock.unlock()
+    }
+
+    /// 移除超過 preBufferDuration 的舊 buffer
+    private func trimPreBuffer() {
+        guard let format = inputFormat, format.sampleRate > 0 else { return }
+        let maxFrames = AVAudioFrameCount(preBufferDuration * format.sampleRate)
+        var totalFrames: AVAudioFrameCount = 0
+        // 從尾端累計，保留最近 maxFrames
+        var keepFrom = preBuffer.count
+        for i in stride(from: preBuffer.count - 1, through: 0, by: -1) {
+            totalFrames += preBuffer[i].buffer.frameLength
+            if totalFrames >= maxFrames {
+                keepFrom = i
+                break
+            }
+        }
+        if keepFrom > 0 {
+            preBuffer.removeFirst(keepFrom)
+        }
+    }
+
+    private func clearPreBuffer() {
+        preBufferLock.lock()
+        preBuffer.removeAll()
+        preBufferLock.unlock()
     }
 
     // MARK: - Input Device
@@ -120,12 +166,27 @@ class SharedAudioEngine {
 
     // MARK: - Consumer Management
 
-    func addConsumer(_ consumer: AudioBufferConsumer) {
+    /// 加入消費者。`replayPreBuffer` 為 true 時會先回放最近 ~1.5 秒的音訊，避免開頭遺失。
+    func addConsumer(_ consumer: AudioBufferConsumer, replayPreBuffer: Bool = false) {
         consumersLock.lock()
-        defer { consumersLock.unlock() }
-        guard !consumers.contains(where: { $0.consumerID == consumer.consumerID }) else { return }
+        guard !consumers.contains(where: { $0.consumerID == consumer.consumerID }) else {
+            consumersLock.unlock()
+            return
+        }
         consumers.append(consumer)
-        log.info("Audio consumer 加入: \(consumer.consumerID) (total=\(consumers.count))", category: "Audio")
+        consumersLock.unlock()
+
+        if replayPreBuffer {
+            preBufferLock.lock()
+            let snapshot = preBuffer
+            preBufferLock.unlock()
+            for entry in snapshot {
+                consumer.handleAudioBuffer(entry.buffer, time: entry.time)
+            }
+            log.info("Audio consumer 加入: \(consumer.consumerID) (replay \(snapshot.count) buffers)", category: "Audio")
+        } else {
+            log.info("Audio consumer 加入: \(consumer.consumerID)", category: "Audio")
+        }
     }
 
     func removeConsumer(_ consumer: AudioBufferConsumer) {

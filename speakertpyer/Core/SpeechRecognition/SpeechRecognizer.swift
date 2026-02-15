@@ -77,8 +77,8 @@ class SpeechRecognizer: AudioBufferConsumer {
         }
         self.recognitionRequest = request
 
-        // 向共享 engine 註冊，開始接收 buffer
-        SharedAudioEngine.shared.addConsumer(self)
+        // 向共享 engine 註冊，回放 pre-buffer 補回開頭語音
+        SharedAudioEngine.shared.addConsumer(self, replayPreBuffer: true)
 
         isListening = true
         transcript = ""
