@@ -109,9 +109,16 @@ class OverlayWindowController: NSObject {
         // Right-click context menu via local event monitor
         // (SwiftUI's internal views intercept rightMouseDown, so we monitor at app level)
         rightClickMonitor = NSEvent.addLocalMonitorForEvents(matching: .rightMouseDown) { [weak self] event in
-            guard let self, event.window == self.panel else { return event }
+            guard
+                let self,
+                let panel = self.panel,
+                event.window == panel,
+                let contentView = panel.contentView
+            else {
+                return event
+            }
             let menu = self.buildContextMenu()
-            NSMenu.popUpContextMenu(menu, with: event, for: event.window!.contentView!)
+            NSMenu.popUpContextMenu(menu, with: event, for: contentView)
             return nil
         }
 

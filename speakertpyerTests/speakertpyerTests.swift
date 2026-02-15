@@ -6,7 +6,7 @@
 //
 
 import Testing
-@testable import speakertpyer
+@testable import Saybit
 
 struct speakertpyerTests {
 

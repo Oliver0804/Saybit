@@ -328,6 +328,9 @@ private extension Data {
     }
 
     mutating func append(_ bufferPointer: UnsafeBufferPointer<UInt8>) {
-        self.append(bufferPointer.baseAddress!, count: bufferPointer.count)
+        guard let baseAddress = bufferPointer.baseAddress, bufferPointer.count > 0 else {
+            return
+        }
+        self.append(baseAddress, count: bufferPointer.count)
     }
 }
