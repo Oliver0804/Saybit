@@ -221,6 +221,9 @@ enum L10n {
             d("已連線 (\(count) 個模型)", "已连接 (\(count) 个模型)", "Connected (\(count) models)", "接続済み (\(count) モデル)")
         }
         static var notDetected: String { d("未偵測到 Ollama", "未检测到 Ollama", "Ollama Not Detected", "Ollama が検出されません") }
+        static func notDetectedServer(_ name: String) -> String {
+            d("未偵測到 \(name)", "未检测到 \(name)", "\(name) Not Detected", "\(name) が検出されません")
+        }
         static var availableModels: String { d("可用模型：", "可用模型：", "Available Models:", "利用可能なモデル：") }
         static var ollamaHint: String { d("無需 API Key，請確保 Ollama 已啟動（ollama serve）", "无需 API Key，请确保 Ollama 已启动（ollama serve）", "No API Key needed. Make sure Ollama is running (ollama serve).", "API Key 不要。Ollama が起動していることを確認してください（ollama serve）") }
         static var model: String { d("模型", "模型", "Model", "モデル") }

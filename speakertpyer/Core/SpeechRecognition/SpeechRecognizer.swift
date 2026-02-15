@@ -77,9 +77,7 @@ class SpeechRecognizer: AudioBufferConsumer {
         }
         self.recognitionRequest = request
 
-        // 向共享 engine 註冊，回放 pre-buffer 補回開頭語音
-        SharedAudioEngine.shared.addConsumer(self, replayPreBuffer: true)
-
+        // 必須先設定 isListening，否則 pre-buffer 回放時 handleAudioBuffer 會被 guard 擋掉
         isListening = true
         transcript = ""
         silenceDetector.start()
@@ -100,6 +98,9 @@ class SpeechRecognizer: AudioBufferConsumer {
                 _ = self.stopListening()
             }
         }
+
+        // 在 isListening = true 且 recognitionTask 就緒後，才註冊消費者並回放 pre-buffer
+        SharedAudioEngine.shared.addConsumer(self, replayPreBuffer: true)
     }
 
     func stopListening() -> String {

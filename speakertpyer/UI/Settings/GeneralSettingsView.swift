@@ -200,6 +200,14 @@ struct GeneralSettingsView: View {
                                     .font(.body)
                                     .foregroundStyle(.secondary)
                                     .padding(.leading, 2)
+
+                                Divider().opacity(0.3)
+
+                                Toggle("持續背景辨識", isOn: $settingsStore.enableContinuousSTT)
+                                Text("開啟後 STT 在背景持續運行，按快捷鍵時直接截取文字，完全消除開頭語音遺失。會增加少許 CPU 使用。")
+                                    .font(.body)
+                                    .foregroundStyle(.secondary)
+                                    .padding(.leading, 2)
                             }
                         }
                     }

@@ -30,10 +30,11 @@ class SharedAudioEngine {
     private(set) var inputFormat: AVAudioFormat?
 
     // MARK: - Pre-buffer（環形緩衝區）
-    // 保留最近 ~1.5 秒的音訊，讓新消費者加入時可回放，避免開頭語音遺失
+    // 保留最近 ~3 秒的音訊，讓新消費者加入時可回放，避免開頭語音遺失
+    // 需要足夠長以涵蓋：AudioLevelMonitor 偵測延遲 + startRecording() 前置作業 + STT 引擎初始化時間
     private var preBuffer: [(buffer: AVAudioPCMBuffer, time: AVAudioTime)] = []
     private let preBufferLock = NSLock()
-    private let preBufferDuration: TimeInterval = 1.5
+    private let preBufferDuration: TimeInterval = 3.0
 
     private init() {}
 

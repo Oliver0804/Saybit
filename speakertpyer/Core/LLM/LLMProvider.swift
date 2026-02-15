@@ -119,7 +119,18 @@ struct LLMProvider: Codable, Identifiable, Hashable {
         requiresAPIKey: false
     )
 
-    static let builtInProviders: [LLMProvider] = [.openRouter, .openAI, .deepSeek, .groq, .togetherAI, .ollama]
+    static let lmStudio = LLMProvider(
+        id: "lmstudio",
+        name: "LM Studio (本地)",
+        baseURL: "http://localhost:1234/v1/chat/completions",
+        extraHeaders: [:],
+        keyPlaceholder: "lm-studio-...",
+        modelHint: "",
+        isBuiltIn: true,
+        requiresAPIKey: false
+    )
+
+    static let builtInProviders: [LLMProvider] = [.openRouter, .openAI, .deepSeek, .groq, .togetherAI, .ollama, .lmStudio]
 
     // MARK: - Custom Provider Factory
 
@@ -133,6 +144,48 @@ struct LLMProvider: Codable, Identifiable, Hashable {
             modelHint: "",
             isBuiltIn: false
         )
+    }
+
+    // MARK: - LM Studio Helpers
+
+    /// Fetch available LLM models from LM Studio (GET /api/v1/models)
+    static func fetchLMStudioModels(baseOrigin: String = "http://localhost:1234") async -> [String] {
+        guard let url = URL(string: "\(baseOrigin)/api/v1/models") else { return [] }
+        do {
+            var request = URLRequest(url: url)
+            request.timeoutInterval = 5
+            // 帶上 API key（如果有）
+            if let key = KeychainHelper.loadAPIKey(for: "lmstudio"), !key.isEmpty {
+                request.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
+            }
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
+                return []
+            }
+            let decoded = try JSONDecoder().decode(LMStudioModelsResponse.self, from: data)
+            // 只回傳 LLM 模型，排除 embedding 模型
+            return decoded.models
+                .filter { $0.type == "llm" }
+                .map(\.key)
+        } catch {
+            return []
+        }
+    }
+
+    /// Check if LM Studio is running
+    static func isLMStudioRunning(baseOrigin: String = "http://localhost:1234") async -> Bool {
+        guard let url = URL(string: "\(baseOrigin)/api/v1/models") else { return false }
+        do {
+            var request = URLRequest(url: url)
+            request.timeoutInterval = 3
+            if let key = KeychainHelper.loadAPIKey(for: "lmstudio"), !key.isEmpty {
+                request.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
+            }
+            let (_, response) = try await URLSession.shared.data(for: request)
+            return (response as? HTTPURLResponse)?.statusCode == 200
+        } catch {
+            return false
+        }
     }
 
     // MARK: - Ollama Helpers
@@ -165,6 +218,17 @@ struct LLMProvider: Codable, Identifiable, Hashable {
         } catch {
             return false
         }
+    }
+}
+
+// MARK: - LM Studio API Response
+
+private struct LMStudioModelsResponse: Decodable {
+    let models: [LMStudioModel]
+
+    struct LMStudioModel: Decodable {
+        let type: String       // "llm" or "embedding"
+        let key: String        // model identifier (e.g. "google/gemma-3-4b")
     }
 }
 

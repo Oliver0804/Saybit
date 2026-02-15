@@ -22,83 +22,190 @@ func settingsMatchesSearch(_ keywords: [String], searchText: String) -> Bool {
     return keywords.contains { $0.lowercased().contains(query) }
 }
 
+// MARK: - Settings Tab
+
+enum SettingsTab: String, CaseIterable, Identifiable {
+    case general, api, hotkey, dictionary, history, statistics, logs
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .general: return L10n.Tabs.general
+        case .api: return L10n.Tabs.ai
+        case .hotkey: return L10n.Tabs.hotkey
+        case .dictionary: return L10n.Tabs.dictionary
+        case .history: return L10n.Tabs.history
+        case .statistics: return L10n.Tabs.statistics
+        case .logs: return L10n.Tabs.logs
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .general: return "gear"
+        case .api: return "cpu"
+        case .hotkey: return "keyboard"
+        case .dictionary: return "book"
+        case .history: return "clock"
+        case .statistics: return "chart.bar.fill"
+        case .logs: return "doc.text.magnifyingglass"
+        }
+    }
+
+    var iconColor: Color {
+        switch self {
+        case .general: return .gray
+        case .api: return .purple
+        case .hotkey: return .orange
+        case .dictionary: return .blue
+        case .history: return .green
+        case .statistics: return .pink
+        case .logs: return .brown
+        }
+    }
+}
+
 // MARK: - Settings View
 
 struct SettingsView: View {
     @EnvironmentObject var settingsStore: SettingsStore
     @StateObject private var searchState = SettingsSearchState()
+    @State private var selectedTab: SettingsTab = .general
 
     var body: some View {
-        VStack(spacing: 0) {
-            // Search bar
-            HStack {
-                Image(systemName: "magnifyingglass")
-                    .foregroundStyle(.secondary)
-                TextField(L10n.Common.searchSettings, text: $searchState.searchText)
-                    .textFieldStyle(.plain)
-                if !searchState.searchText.isEmpty {
-                    Button {
-                        searchState.searchText = ""
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .foregroundStyle(.secondary)
+        HStack(spacing: 0) {
+            // Sidebar
+            VStack(spacing: 0) {
+                // Search bar
+                HStack(spacing: 6) {
+                    Image(systemName: "magnifyingglass")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                    TextField(L10n.Common.searchSettings, text: $searchState.searchText)
+                        .textFieldStyle(.plain)
+                        .font(.callout)
+                    if !searchState.searchText.isEmpty {
+                        Button {
+                            searchState.searchText = ""
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.caption)
+                                .foregroundStyle(.tertiary)
+                        }
+                        .buttonStyle(.plain)
                     }
-                    .buttonStyle(.plain)
+                }
+                .padding(7)
+                .background(
+                    RoundedRectangle(cornerRadius: 7)
+                        .fill(Color.primary.opacity(0.06))
+                )
+                .padding(.horizontal, 12)
+                .padding(.top, 12)
+                .padding(.bottom, 8)
+
+                // Tab list
+                VStack(spacing: 2) {
+                    ForEach(SettingsTab.allCases) { tab in
+                        SidebarRow(
+                            tab: tab,
+                            isSelected: selectedTab == tab
+                        ) {
+                            withAnimation(.easeInOut(duration: 0.15)) {
+                                selectedTab = tab
+                            }
+                        }
+                    }
+                }
+                .padding(.horizontal, 8)
+
+                Spacer()
+
+                // Version info
+                Text("Saybit v\(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?")")
+                    .font(.caption2)
+                    .foregroundStyle(.quaternary)
+                    .padding(.bottom, 12)
+            }
+            .frame(width: 200)
+            .background(Color(.windowBackgroundColor).opacity(0.4))
+
+            // Divider
+            Rectangle()
+                .fill(Color.primary.opacity(0.08))
+                .frame(width: 1)
+
+            // Detail content
+            Group {
+                switch selectedTab {
+                case .general:
+                    GeneralSettingsView()
+                        .environmentObject(searchState)
+                case .api:
+                    APISettingsView()
+                        .environmentObject(searchState)
+                case .hotkey:
+                    HotKeySettingsView()
+                        .environmentObject(searchState)
+                case .dictionary:
+                    DictionarySettingsView()
+                        .environmentObject(searchState)
+                case .history:
+                    HistoryView()
+                case .statistics:
+                    StatisticsView()
+                case .logs:
+                    LogsView()
                 }
             }
-            .padding(8)
-            .background(
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(Color.primary.opacity(0.06))
-            )
-            .padding(.horizontal, 16)
-            .padding(.top, 12)
-            .padding(.bottom, 4)
-
-            TabView {
-                GeneralSettingsView()
-                    .environmentObject(searchState)
-                    .tabItem {
-                        Label(L10n.Tabs.general, systemImage: "gear")
-                    }
-
-                APISettingsView()
-                    .environmentObject(searchState)
-                    .tabItem {
-                        Label(L10n.Tabs.ai, systemImage: "cpu")
-                    }
-
-                HotKeySettingsView()
-                    .environmentObject(searchState)
-                    .tabItem {
-                        Label(L10n.Tabs.hotkey, systemImage: "keyboard")
-                    }
-
-                DictionarySettingsView()
-                    .environmentObject(searchState)
-                    .tabItem {
-                        Label(L10n.Tabs.dictionary, systemImage: "book")
-                    }
-
-                HistoryView()
-                    .tabItem {
-                        Label(L10n.Tabs.history, systemImage: "clock")
-                    }
-
-                StatisticsView()
-                    .tabItem {
-                        Label(L10n.Tabs.statistics, systemImage: "chart.bar.fill")
-                    }
-
-                LogsView()
-                    .tabItem {
-                        Label(L10n.Tabs.logs, systemImage: "doc.text.magnifyingglass")
-                    }
-            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .frame(minWidth: 800, idealWidth: 800, maxWidth: .infinity,
+        .frame(minWidth: 1000, idealWidth: 1000, maxWidth: .infinity,
                minHeight: 600, idealHeight: 800, maxHeight: .infinity)
         .id(settingsStore.languagePreference)
+    }
+}
+
+// MARK: - Sidebar Row
+
+struct SidebarRow: View {
+    let tab: SettingsTab
+    let isSelected: Bool
+    let action: () -> Void
+
+    @State private var isHovered = false
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 10) {
+                Image(systemName: tab.icon)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(isSelected ? tab.iconColor : .secondary)
+                    .frame(width: 22, height: 22)
+                    .background(
+                        RoundedRectangle(cornerRadius: 5)
+                            .fill(isSelected ? tab.iconColor.opacity(0.15) : .clear)
+                    )
+
+                Text(tab.title)
+                    .font(.system(size: 13))
+                    .foregroundStyle(isSelected ? .primary : .secondary)
+
+                Spacer()
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 6)
+            .background(
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(isSelected
+                        ? Color.accentColor.opacity(0.12)
+                        : isHovered ? Color.primary.opacity(0.04) : .clear)
+            )
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { isHovered = $0 }
     }
 }
 

@@ -306,6 +306,14 @@ class OverlayWindowController: NSObject {
         whisperItem.state = (settingsStore?.enableWhisperMode == true) ? .on : .off
         menu.addItem(whisperItem)
 
+        // Continuous STT toggle (only for Apple Speech)
+        if settingsStore?.sttEngine == .appleSpeech {
+            let continuousItem = NSMenuItem(title: "持續背景辨識", action: #selector(toggleContinuousSTT(_:)), keyEquivalent: "")
+            continuousItem.target = self
+            continuousItem.state = (settingsStore?.enableContinuousSTT == true) ? .on : .off
+            menu.addItem(continuousItem)
+        }
+
         // Context Awareness toggle
         let contextItem = NSMenuItem(title: "Context Awareness", action: #selector(toggleContextAwareness(_:)), keyEquivalent: "")
         contextItem.target = self
@@ -381,6 +389,10 @@ class OverlayWindowController: NSObject {
         settingsStore?.enableSmartSend.toggle()
     }
 
+    @objc private func toggleContinuousSTT(_ sender: NSMenuItem) {
+        settingsStore?.enableContinuousSTT.toggle()
+    }
+
     @objc private func resetPosition(_ sender: NSMenuItem) {
         guard let screen = NSScreen.main else { return }
         let screenFrame = screen.visibleFrame
@@ -404,7 +416,7 @@ class OverlayWindowController: NSObject {
         let hostingView = NSHostingView(rootView: settingsView)
 
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 820, height: 800),
+            contentRect: NSRect(x: 0, y: 0, width: 1000, height: 800),
             styleMask: [.titled, .closable, .resizable],
             backing: .buffered,
             defer: false
@@ -412,7 +424,7 @@ class OverlayWindowController: NSObject {
         window.isReleasedWhenClosed = false
         window.title = L10n.Overlay.settingsWindowTitle
         window.contentView = hostingView
-        window.minSize = NSSize(width: 820, height: 600)
+        window.minSize = NSSize(width: 1000, height: 600)
 
         // Auto-size window to fit content
         let fittingSize = hostingView.fittingSize

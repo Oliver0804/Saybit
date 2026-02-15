@@ -35,7 +35,24 @@ class SettingsStore: ObservableObject {
     }
 
     var selectedProvider: LLMProvider {
-        allProviders.first(where: { $0.id == selectedProviderID }) ?? .openRouter
+        let provider = allProviders.first(where: { $0.id == selectedProviderID }) ?? .openRouter
+        // LM Studio: 使用用戶自訂的 base URL
+        if provider.id == "lmstudio", !lmStudioBaseURL.isEmpty {
+            let url = lmStudioBaseURL.hasSuffix("/")
+                ? lmStudioBaseURL + "v1/chat/completions"
+                : lmStudioBaseURL + "/v1/chat/completions"
+            return LLMProvider(
+                id: provider.id,
+                name: provider.name,
+                baseURL: url,
+                extraHeaders: provider.extraHeaders,
+                keyPlaceholder: provider.keyPlaceholder,
+                modelHint: provider.modelHint,
+                isBuiltIn: provider.isBuiltIn,
+                requiresAPIKey: false
+            )
+        }
+        return provider
     }
 
     @Published var selectedModel: String {
@@ -124,6 +141,10 @@ class SettingsStore: ObservableObject {
         didSet { UserDefaults.standard.set(enableOnDeviceSTT, forKey: "enableOnDeviceSTT") }
     }
 
+    @Published var enableContinuousSTT: Bool {
+        didSet { UserDefaults.standard.set(enableContinuousSTT, forKey: "enableContinuousSTT") }
+    }
+
     @Published var enableSoundFeedback: Bool {
         didSet { UserDefaults.standard.set(enableSoundFeedback, forKey: "enableSoundFeedback") }
     }
@@ -140,6 +161,12 @@ class SettingsStore: ObservableObject {
 
     @Published var enableAutoStop: Bool {
         didSet { UserDefaults.standard.set(enableAutoStop, forKey: "enableAutoStop") }
+    }
+
+    // MARK: - LM Studio
+
+    @Published var lmStudioBaseURL: String {
+        didSet { UserDefaults.standard.set(lmStudioBaseURL, forKey: "lmStudioBaseURL") }
     }
 
     // MARK: - STT Engine
@@ -273,10 +300,12 @@ class SettingsStore: ObservableObject {
         self.selectedMode = ProcessingMode(rawValue: defaults.string(forKey: "selectedMode") ?? "") ?? .dictation
         self.enableContextAwareness = defaults.object(forKey: "enableContextAwareness") as? Bool ?? true
         self.enableOnDeviceSTT = defaults.object(forKey: "enableOnDeviceSTT") as? Bool ?? true
+        self.enableContinuousSTT = defaults.object(forKey: "enableContinuousSTT") as? Bool ?? false
         self.enableSoundFeedback = defaults.object(forKey: "enableSoundFeedback") as? Bool ?? true
         self.enableWhisperMode = defaults.object(forKey: "enableWhisperMode") as? Bool ?? false
         self.silenceTimeout = defaults.object(forKey: "silenceTimeout") as? Double ?? 2.0
         self.enableAutoStop = defaults.object(forKey: "enableAutoStop") as? Bool ?? true
+        self.lmStudioBaseURL = defaults.string(forKey: "lmStudioBaseURL") ?? "http://localhost:1234"
         self.sttEngine = STTEngine(rawValue: defaults.string(forKey: "sttEngine") ?? "") ?? .appleSpeech
         self.whisperModel = defaults.string(forKey: "whisperModel") ?? "whisper-1"
         self.injectionMode = InjectionMode(rawValue: defaults.string(forKey: "injectionMode") ?? "") ?? .paste

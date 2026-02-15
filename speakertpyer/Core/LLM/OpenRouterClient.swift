@@ -93,6 +93,10 @@ actor OpenRouterClient {
                         userMessage = payloadString
                     }
 
+                    // 本地服務（LM Studio, Ollama）可能不支援 stream_options
+                    let useStreamOptions = provider.id != "lmstudio" && provider.id != "ollama"
+                        && !provider.id.hasPrefix("custom-")
+
                     let chatRequest = OpenRouterChatRequest(
                         model: model,
                         messages: [
@@ -101,7 +105,7 @@ actor OpenRouterClient {
                         ],
                         stream: true,
                         temperature: temperature,
-                        streamOptions: .init(includeUsage: true),
+                        streamOptions: useStreamOptions ? .init(includeUsage: true) : nil,
                         maxTokens: maxTokens,
                         frequencyPenalty: frequencyPenalty,
                         presencePenalty: presencePenalty,
@@ -152,8 +156,15 @@ actor OpenRouterClient {
                         }
 
                         // Success (200) → stream response
+                        var hasReceivedContent = false
                         for try await line in bytes.lines {
-                            guard line.hasPrefix("data: ") else { continue }
+                            guard line.hasPrefix("data: ") else {
+                                // 非 SSE 格式的行 — 可能是錯誤訊息
+                                if !line.isEmpty {
+                                    AppLogger.shared.debug("LLM stream non-SSE line: \(line.prefix(200))", category: "LLM")
+                                }
+                                continue
+                            }
                             let jsonString = String(line.dropFirst(6))
                             if jsonString == "[DONE]" { break }
 
@@ -161,15 +172,19 @@ actor OpenRouterClient {
                             do {
                                 let chunk = try jsonDecoder.decode(OpenRouterStreamChunk.self, from: jsonData)
                                 if let content = chunk.choices?.first?.delta?.content {
+                                    hasReceivedContent = true
                                     continuation.yield(.text(content))
                                 }
                                 if let usage = chunk.usage {
                                     continuation.yield(.usage(usage))
                                 }
                             } catch {
-                                // Skip malformed chunks
+                                AppLogger.shared.debug("LLM stream decode error: \(error.localizedDescription), raw: \(jsonString.prefix(300))", category: "LLM")
                                 continue
                             }
+                        }
+                        if !hasReceivedContent {
+                            AppLogger.shared.error("LLM stream 完成但無內容 (provider=\(provider.id))", category: "LLM")
                         }
 
                         continuation.finish()

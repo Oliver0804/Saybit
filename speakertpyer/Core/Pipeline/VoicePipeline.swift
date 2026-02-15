@@ -32,6 +32,11 @@ class VoicePipeline {
     private var autoResetTask: Task<Void, Never>?
     private var cancellables = Set<AnyCancellable>()
 
+    /// 持續背景 STT 引擎（enableContinuousSTT 開啟時啟用）
+    private var backgroundSTT: BackgroundSTTEngine?
+    /// 標記本次錄音是否使用持續 STT 模式
+    private var isUsingContinuousSTT = false
+
     init(settingsStore: SettingsStore) {
         self.settingsStore = settingsStore
         log.info("VoicePipeline 初始化", category: "Pipeline")
@@ -46,6 +51,37 @@ class VoicePipeline {
             .dropFirst()
             .sink { uid in
                 SharedAudioEngine.shared.switchInputDevice(uid: uid)
+            }
+            .store(in: &cancellables)
+
+        // 啟動持續背景 STT（若已啟用且為 Apple Speech）
+        if settingsStore.enableContinuousSTT && settingsStore.sttEngine == .appleSpeech {
+            startBackgroundSTT()
+        }
+
+        // 監聽持續 STT 設定變更
+        settingsStore.$enableContinuousSTT
+            .dropFirst()
+            .sink { [weak self] enabled in
+                guard let self else { return }
+                if enabled && self.settingsStore.sttEngine == .appleSpeech {
+                    self.startBackgroundSTT()
+                } else {
+                    self.stopBackgroundSTT()
+                }
+            }
+            .store(in: &cancellables)
+
+        // 監聽 STT 引擎切換
+        settingsStore.$sttEngine
+            .dropFirst()
+            .sink { [weak self] engine in
+                guard let self else { return }
+                if engine == .appleSpeech && self.settingsStore.enableContinuousSTT {
+                    self.startBackgroundSTT()
+                } else {
+                    self.stopBackgroundSTT()
+                }
             }
             .store(in: &cancellables)
 
@@ -161,26 +197,40 @@ class VoicePipeline {
 
         let micGain = Float(settingsStore.micSensitivity)
 
-        do {
-            switch settingsStore.sttEngine {
-            case .appleSpeech:
-                speechRecognizer.micGain = micGain
-                let locale = Locale(identifier: settingsStore.languagePreference)
-                speechRecognizer.updateLocale(locale)
-                try speechRecognizer.startListening(
-                    onDeviceOnly: settingsStore.enableOnDeviceSTT
-                )
-                log.info("Apple Speech 啟動 (locale=\(settingsStore.languagePreference), onDevice=\(settingsStore.enableOnDeviceSTT))", category: "STT")
-            case .whisperAPI:
-                whisperClient.micGain = micGain
-                try whisperClient.startRecording()
-                log.info("Whisper 錄音啟動", category: "STT")
+        // 判斷是否使用持續 STT 模式
+        isUsingContinuousSTT = settingsStore.enableContinuousSTT
+            && settingsStore.sttEngine == .appleSpeech
+            && backgroundSTT?.isRunning == true
+
+        if isUsingContinuousSTT, let bgSTT = backgroundSTT {
+            // 持續 STT 模式：背景 STT 已在運行，直接開始擷取
+            bgSTT.micGain = micGain
+            bgSTT.startCapture()
+            log.info("持續 STT 模式：開始擷取 (locale=\(settingsStore.languagePreference))", category: "STT")
+        } else {
+            // Pre-buffer 模式：啟動新的 STT session
+            isUsingContinuousSTT = false
+            do {
+                switch settingsStore.sttEngine {
+                case .appleSpeech:
+                    speechRecognizer.micGain = micGain
+                    let locale = Locale(identifier: settingsStore.languagePreference)
+                    speechRecognizer.updateLocale(locale)
+                    try speechRecognizer.startListening(
+                        onDeviceOnly: settingsStore.enableOnDeviceSTT
+                    )
+                    log.info("Apple Speech 啟動 (locale=\(settingsStore.languagePreference), onDevice=\(settingsStore.enableOnDeviceSTT))", category: "STT")
+                case .whisperAPI:
+                    whisperClient.micGain = micGain
+                    try whisperClient.startRecording()
+                    log.info("Whisper 錄音啟動", category: "STT")
+                }
+            } catch {
+                log.error("語音辨識啟動失敗: \(error.localizedDescription)", category: "STT")
+                session.state = .error(error.localizedDescription)
+                autoResetState(after: 3.0)
+                return
             }
-        } catch {
-            log.error("語音辨識啟動失敗: \(error.localizedDescription)", category: "STT")
-            session.state = .error(error.localizedDescription)
-            autoResetState(after: 3.0)
-            return
         }
 
         // Play start sound
@@ -212,13 +262,18 @@ class VoicePipeline {
             }
         }
 
-        switch settingsStore.sttEngine {
-        case .appleSpeech:
-            speechRecognizer.silenceTimeoutDuration = settingsStore.silenceTimeout
-            speechRecognizer.onSilenceTimeout = silenceHandler
-        case .whisperAPI:
-            whisperClient.silenceTimeoutDuration = settingsStore.silenceTimeout
-            whisperClient.onSilenceTimeout = silenceHandler
+        if isUsingContinuousSTT, let bgSTT = backgroundSTT {
+            bgSTT.silenceTimeoutDuration = settingsStore.silenceTimeout
+            bgSTT.onSilenceTimeout = silenceHandler
+        } else {
+            switch settingsStore.sttEngine {
+            case .appleSpeech:
+                speechRecognizer.silenceTimeoutDuration = settingsStore.silenceTimeout
+                speechRecognizer.onSilenceTimeout = silenceHandler
+            case .whisperAPI:
+                whisperClient.silenceTimeoutDuration = settingsStore.silenceTimeout
+                whisperClient.onSilenceTimeout = silenceHandler
+            }
         }
     }
 
@@ -227,6 +282,28 @@ class VoicePipeline {
 
         session.endTime = Date()
         session.audioLevel = 0.0
+
+        if isUsingContinuousSTT, let bgSTT = backgroundSTT {
+            // 持續 STT 模式：從背景 STT 擷取文字
+            let transcript = bgSTT.stopCapture()
+            session.rawTranscript = transcript
+            isUsingContinuousSTT = false
+            log.info("持續 STT 擷取結束 (時長=\(String(format: "%.1f", session.duration))s)", category: "STT")
+            log.info("原始轉錄: \(transcript.isEmpty ? "(空)" : transcript)", category: "STT")
+
+            guard !transcript.isEmpty else {
+                log.info("轉錄為空，跳過 LLM", category: "Pipeline")
+                returnToIdle()
+                return
+            }
+
+            if settingsStore.enableSoundFeedback {
+                NSSound(named: .init("Pop"))?.play()
+            }
+
+            proceedToLLM()
+            return
+        }
 
         switch settingsStore.sttEngine {
         case .appleSpeech:
@@ -320,13 +397,18 @@ class VoicePipeline {
     private func observeTranscript() {
         Task { @MainActor in
             while case .recording = session.state {
-                switch settingsStore.sttEngine {
-                case .appleSpeech:
-                    session.rawTranscript = speechRecognizer.transcript
-                    session.audioLevel = speechRecognizer.audioLevel
-                case .whisperAPI:
-                    // Whisper 不支援 partial results，只更新音量
-                    session.audioLevel = whisperClient.audioLevel
+                if isUsingContinuousSTT, let bgSTT = backgroundSTT {
+                    session.rawTranscript = bgSTT.currentTranscript
+                    session.audioLevel = bgSTT.audioLevel
+                } else {
+                    switch settingsStore.sttEngine {
+                    case .appleSpeech:
+                        session.rawTranscript = speechRecognizer.transcript
+                        session.audioLevel = speechRecognizer.audioLevel
+                    case .whisperAPI:
+                        // Whisper 不支援 partial results，只更新音量
+                        session.audioLevel = whisperClient.audioLevel
+                    }
                 }
                 try? await Task.sleep(for: .milliseconds(100))
             }
@@ -1054,5 +1136,22 @@ class VoicePipeline {
         } catch {
             log.error("歷史記錄儲存失敗: \(error.localizedDescription)", category: "History")
         }
+    }
+
+    // MARK: - Background STT Management
+
+    private func startBackgroundSTT() {
+        guard backgroundSTT == nil else { return }
+        let engine = BackgroundSTTEngine()
+        let locale = Locale(identifier: settingsStore.languagePreference)
+        engine.start(locale: locale, onDeviceOnly: settingsStore.enableOnDeviceSTT)
+        backgroundSTT = engine
+        log.info("持續背景 STT 已啟動", category: "Pipeline")
+    }
+
+    private func stopBackgroundSTT() {
+        backgroundSTT?.stop()
+        backgroundSTT = nil
+        log.info("持續背景 STT 已停止", category: "Pipeline")
     }
 }

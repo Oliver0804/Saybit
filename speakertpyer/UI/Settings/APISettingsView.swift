@@ -21,6 +21,8 @@ struct APISettingsView: View {
     @State private var customBaseURL: String = ""
     @State private var ollamaRunning: Bool? = nil
     @State private var ollamaModels: [String] = []
+    @State private var lmStudioRunning: Bool? = nil
+    @State private var lmStudioModels: [String] = []
 
     private var currentProvider: LLMProvider {
         settingsStore.selectedProvider
@@ -30,7 +32,7 @@ struct APISettingsView: View {
         ScrollView {
             VStack(spacing: 16) {
                 // MARK: - API 設定（合併：服務商 + API Key + 模型）
-                if settingsMatchesSearch(["API", "provider", "模型", "model", "服務商", "服务商", "OpenRouter", "Ollama", "自訂", "custom", "key", "金鑰", "密钥"], searchText: searchState.searchText) {
+                if settingsMatchesSearch(["API", "provider", "模型", "model", "服務商", "服务商", "OpenRouter", "Ollama", "LM Studio", "自訂", "custom", "key", "金鑰", "密钥"], searchText: searchState.searchText) {
                     GlassCard {
                         VStack(alignment: .leading, spacing: 14) {
                             GlassSectionHeader(title: L10n.API.provider, icon: "server.rack")
@@ -151,6 +153,126 @@ struct APISettingsView: View {
                                         .foregroundStyle(.secondary)
                                         .transition(.opacity)
                                 }
+                            } else if currentProvider.id == "lmstudio" {
+                                // LM Studio: URL + optional API key + status
+                                VStack(alignment: .leading, spacing: 8) {
+                                    Text("伺服器位址")
+                                        .font(.headline)
+
+                                    TextField("http://192.168.0.147:1234", text: $settingsStore.lmStudioBaseURL)
+                                        .textFieldStyle(.roundedBorder)
+                                        .onSubmit {
+                                            checkLMStudioStatus()
+                                        }
+                                        .onChange(of: settingsStore.lmStudioBaseURL) { _, _ in
+                                            lmStudioRunning = nil
+                                            lmStudioModels = []
+                                        }
+
+                                    Text("API Key（選填）")
+                                        .font(.headline)
+                                        .padding(.top, 4)
+
+                                    HStack(spacing: 8) {
+                                        Group {
+                                            if showKey {
+                                                TextField(currentProvider.keyPlaceholder, text: $apiKey)
+                                            } else {
+                                                SecureField(currentProvider.keyPlaceholder, text: $apiKey)
+                                            }
+                                        }
+                                        .textFieldStyle(.roundedBorder)
+
+                                        Button(showKey ? L10n.Common.hide : L10n.Common.show) {
+                                            showKey.toggle()
+                                        }
+                                        .controlSize(.small)
+                                        .buttonStyle(.bordered)
+                                    }
+
+                                    HStack(spacing: 8) {
+                                        Button(L10n.Common.save) {
+                                            do {
+                                                try KeychainHelper.saveAPIKey(apiKey, for: currentProvider.id)
+                                                hasKey = !apiKey.isEmpty
+                                                showTemporaryStatus(L10n.Common.saved)
+                                            } catch {
+                                                showTemporaryStatus(L10n.Common.saveFailed)
+                                            }
+                                        }
+                                        .buttonStyle(.borderedProminent)
+                                        .controlSize(.small)
+
+                                        if hasKey {
+                                            Button(L10n.API.clear) {
+                                                KeychainHelper.deleteAPIKey(for: currentProvider.id)
+                                                apiKey = ""
+                                                hasKey = false
+                                                showTemporaryStatus(L10n.Common.cleared)
+                                            }
+                                            .controlSize(.small)
+                                            .buttonStyle(.bordered)
+                                            .tint(.red)
+                                        }
+                                    }
+
+                                    if !saveStatus.isEmpty {
+                                        Text(saveStatus)
+                                            .font(.title3)
+                                            .foregroundStyle(.secondary)
+                                            .transition(.opacity)
+                                    }
+
+                                    Divider().opacity(0.3)
+                                }
+
+                                HStack(spacing: 8) {
+                                    Circle()
+                                        .fill(lmStudioStatusColor)
+                                        .frame(width: 8, height: 8)
+                                    Text(lmStudioStatusText)
+                                        .font(.body)
+
+                                    Spacer()
+
+                                    Button {
+                                        checkLMStudioStatus()
+                                    } label: {
+                                        Label(L10n.Common.recheck, systemImage: "arrow.clockwise")
+                                    }
+                                    .controlSize(.small)
+                                    .buttonStyle(.bordered)
+
+                                    Button {
+                                        testAPIConnection()
+                                    } label: {
+                                        if isTesting {
+                                            ProgressView().controlSize(.small)
+                                        } else {
+                                            Text(L10n.Common.testConnection)
+                                        }
+                                    }
+                                    .controlSize(.small)
+                                    .buttonStyle(.bordered)
+                                    .disabled(isTesting || lmStudioRunning != true)
+                                }
+
+                                if !lmStudioModels.isEmpty {
+                                    FlowLayout(spacing: 4) {
+                                        ForEach(lmStudioModels, id: \.self) { model in
+                                            Button(model) {
+                                                settingsStore.selectedModel = model
+                                            }
+                                            .controlSize(.mini)
+                                            .buttonStyle(.bordered)
+                                            .tint(settingsStore.selectedModel == model ? .accentColor : .secondary)
+                                        }
+                                    }
+                                }
+
+                                Text("連接 LM Studio 本地伺服器，支援所有 OpenAI 相容模型。")
+                                    .font(.body)
+                                    .foregroundStyle(.secondary)
                             } else {
                                 // Ollama status
                                 HStack(spacing: 8) {
@@ -409,6 +531,41 @@ struct APISettingsView: View {
         }
     }
 
+    // MARK: - LM Studio Status
+
+    private var lmStudioStatusColor: Color {
+        switch lmStudioRunning {
+        case .none: return .gray
+        case .some(true): return .green
+        case .some(false): return .red
+        }
+    }
+
+    private var lmStudioStatusText: String {
+        switch lmStudioRunning {
+        case .none: return L10n.API.checking
+        case .some(true): return L10n.API.connectedModels(lmStudioModels.count)
+        case .some(false): return L10n.API.notDetectedServer("LM Studio")
+        }
+    }
+
+    private func checkLMStudioStatus() {
+        lmStudioRunning = nil
+        lmStudioModels = []
+        let baseURL = settingsStore.lmStudioBaseURL
+        Task {
+            let running = await LLMProvider.isLMStudioRunning(baseOrigin: baseURL)
+            let models = running ? await LLMProvider.fetchLMStudioModels(baseOrigin: baseURL) : []
+            await MainActor.run {
+                lmStudioRunning = running
+                lmStudioModels = models
+                if running, !models.isEmpty, !models.contains(settingsStore.selectedModel) {
+                    settingsStore.selectedModel = models.first ?? ""
+                }
+            }
+        }
+    }
+
     private func checkOllamaStatus() {
         ollamaRunning = nil
         ollamaModels = []
@@ -436,6 +593,17 @@ struct APISettingsView: View {
                 hasKey = false
             }
             showKey = false
+        } else if currentProvider.id == "lmstudio" {
+            // LM Studio: optional API key
+            if let key = KeychainHelper.loadAPIKey(for: currentProvider.id) {
+                apiKey = key
+                hasKey = !key.isEmpty
+            } else {
+                apiKey = ""
+                hasKey = false
+            }
+            showKey = false
+            checkLMStudioStatus()
         } else {
             hasKey = true
             apiKey = ""
@@ -471,6 +639,9 @@ struct APISettingsView: View {
         case "together":
             settingsStore.selectedModel = "meta-llama/Llama-3.3-70B-Instruct-Turbo"
         case "ollama":
+            // Will be auto-selected from available models
+            break
+        case "lmstudio":
             // Will be auto-selected from available models
             break
         default:
