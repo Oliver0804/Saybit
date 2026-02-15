@@ -104,6 +104,7 @@ struct CapsuleBarView: View {
                     .shadow(color: outerGlowColor, radius: outerGlowRadius, y: 3)
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .animation(.easeInOut(duration: 0.2), value: settingsStore.capsuleScale)
         .onChange(of: session.state) { oldState, newState in
             withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {

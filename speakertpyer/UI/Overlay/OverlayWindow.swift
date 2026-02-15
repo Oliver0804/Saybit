@@ -10,7 +10,39 @@ import SwiftUI
 
 // MARK: - Custom Hosting View (right-click menu + hit-test passthrough)
 
-class OverlayHostingView<Content: View>: NSHostingView<Content> {}
+class OverlayHostingView<Content: View>: NSHostingView<Content> {
+    override var isOpaque: Bool { false }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        if #available(macOS 14.0, *) {
+            sceneBridgingOptions = []
+        }
+        // SwiftUI 會在下一個 run loop 才完成子視圖建立，延遲清除背景
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.clearBackgroundRecursively(self)
+        }
+    }
+
+    override func layout() {
+        super.layout()
+        layer?.backgroundColor = .clear
+    }
+
+    /// 遞迴清除 NSHostingView 內部所有子視圖和子 layer 的背景，
+    /// 但保留 NSVisualEffectView（膠囊的 .ultraThinMaterial 需要它）
+    private func clearBackgroundRecursively(_ view: NSView) {
+        // 不要清除 NSVisualEffectView — 那是膠囊的毛玻璃效果
+        if view !== self, view is NSVisualEffectView { return }
+        view.wantsLayer = true
+        view.layer?.backgroundColor = .clear
+        view.layer?.isOpaque = false
+        for subview in view.subviews {
+            clearBackgroundRecursively(subview)
+        }
+    }
+}
 
 // MARK: - Overlay Window Controller
 
@@ -31,8 +63,8 @@ class OverlayWindowController: NSObject {
     private var mouseDownLocation: NSPoint = .zero
     private var mouseDownTime: Date = .distantPast
 
-    private let panelWidth: CGFloat = 840
-    private let panelHeight: CGFloat = 160
+    private let panelWidth: CGFloat = 900
+    private let panelHeight: CGFloat = 200
 
     deinit {
         if let observer = moveObserver {
