@@ -34,7 +34,7 @@ class SharedAudioEngine {
     // 需要足夠長以涵蓋：AudioLevelMonitor 偵測延遲 + startRecording() 前置作業 + STT 引擎初始化時間
     private var preBuffer: [(buffer: AVAudioPCMBuffer, time: AVAudioTime)] = []
     private let preBufferLock = NSLock()
-    private let preBufferDuration: TimeInterval = 3.0
+    private let preBufferDuration: TimeInterval = 2.0
 
     private init() {}
 
@@ -117,7 +117,7 @@ class SharedAudioEngine {
         let maxFrames = AVAudioFrameCount(preBufferDuration * format.sampleRate)
         var totalFrames: AVAudioFrameCount = 0
         // 從尾端累計，保留最近 maxFrames
-        var keepFrom = preBuffer.count
+        var keepFrom = 0
         for i in stride(from: preBuffer.count - 1, through: 0, by: -1) {
             totalFrames += preBuffer[i].buffer.frameLength
             if totalFrames >= maxFrames {
