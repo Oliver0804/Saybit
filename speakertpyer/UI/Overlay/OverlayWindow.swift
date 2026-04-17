@@ -8,39 +8,21 @@
 import AppKit
 import SwiftUI
 
-// MARK: - Custom Hosting View (right-click menu + hit-test passthrough)
+// MARK: - Custom Hosting View (transparent, sizes to SwiftUI content)
 
 class OverlayHostingView<Content: View>: NSHostingView<Content> {
     override var isOpaque: Bool { false }
+}
 
-    override func viewDidMoveToWindow() {
-        super.viewDidMoveToWindow()
-        if #available(macOS 14.0, *) {
-            sceneBridgingOptions = []
-        }
-        // SwiftUI 會在下一個 run loop 才完成子視圖建立，延遲清除背景
-        DispatchQueue.main.async { [weak self] in
-            guard let self else { return }
-            self.clearBackgroundRecursively(self)
-        }
-    }
+/// Panel 的透明容器 — 純透明，子視圖透過 Auto Layout 置中
+class TransparentContainerView: NSView {
+    override var isOpaque: Bool { false }
+    override var wantsUpdateLayer: Bool { true }
+    // 讓 isMovableByWindowBackground 在透明區域也能觸發拖曳
+    override var mouseDownCanMoveWindow: Bool { true }
 
-    override func layout() {
-        super.layout()
+    override func updateLayer() {
         layer?.backgroundColor = .clear
-    }
-
-    /// 遞迴清除 NSHostingView 內部所有子視圖和子 layer 的背景，
-    /// 但保留 NSVisualEffectView（膠囊的 .ultraThinMaterial 需要它）
-    private func clearBackgroundRecursively(_ view: NSView) {
-        // 不要清除 NSVisualEffectView — 那是膠囊的毛玻璃效果
-        if view !== self, view is NSVisualEffectView { return }
-        view.wantsLayer = true
-        view.layer?.backgroundColor = .clear
-        view.layer?.isOpaque = false
-        for subview in view.subviews {
-            clearBackgroundRecursively(subview)
-        }
     }
 }
 
@@ -64,7 +46,7 @@ class OverlayWindowController: NSObject {
     private var mouseDownTime: Date = .distantPast
 
     private let panelWidth: CGFloat = 900
-    private let panelHeight: CGFloat = 200
+    private let panelHeight: CGFloat = 240
 
     deinit {
         if let observer = moveObserver {
@@ -128,14 +110,23 @@ class OverlayWindowController: NSObject {
             onRetry: { pipelineRef?.retryLastAction() }
         )
         let hostingView = OverlayHostingView(rootView: capsuleView)
-        hostingView.frame = NSRect(x: 0, y: 0, width: panelWidth, height: panelHeight)
-        hostingView.autoresizingMask = [.width, .height]
-        hostingView.setContentHuggingPriority(.defaultLow, for: .horizontal)
-        hostingView.setContentHuggingPriority(.defaultLow, for: .vertical)
-        hostingView.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-        hostingView.setContentCompressionResistancePriority(.defaultLow, for: .vertical)
+        hostingView.translatesAutoresizingMaskIntoConstraints = false
+        hostingView.setContentHuggingPriority(.required, for: .horizontal)
+        hostingView.setContentHuggingPriority(.required, for: .vertical)
+        hostingView.setContentCompressionResistancePriority(.required, for: .horizontal)
+        hostingView.setContentCompressionResistancePriority(.required, for: .vertical)
 
-        panel.contentView = hostingView
+        // 用透明容器包裝，hostingView 透過 constraints 只佔膠囊實際大小並置中
+        let container = TransparentContainerView(frame: NSRect(x: 0, y: 0, width: panelWidth, height: panelHeight))
+        container.wantsLayer = true
+        container.autoresizingMask = [.width, .height]
+        container.addSubview(hostingView)
+        NSLayoutConstraint.activate([
+            hostingView.centerXAnchor.constraint(equalTo: container.centerXAnchor),
+            hostingView.centerYAnchor.constraint(equalTo: container.centerYAnchor)
+        ])
+
+        panel.contentView = container
         self.panel = panel
 
         // Right-click context menu via local event monitor

@@ -104,7 +104,9 @@ struct CapsuleBarView: View {
                     .shadow(color: outerGlowColor, radius: outerGlowRadius, y: 3)
             }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .fixedSize()
+        // 保留空間給 .shadow 渲染，避免被 hostingView frame 裁切（scale 2x + radius 14 約需 30）
+        .padding(30)
         .animation(.easeInOut(duration: 0.2), value: settingsStore.capsuleScale)
         .onChange(of: session.state) { oldState, newState in
             withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {

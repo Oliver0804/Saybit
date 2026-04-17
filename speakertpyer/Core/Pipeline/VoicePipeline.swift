@@ -1003,17 +1003,25 @@ class VoicePipeline {
                 guard shouldContinue else { return }
             }
 
-            // 倒數結束，送出 Enter
-            await MainActor.run {
-                guard let self, case .confirming = self.session.state else { return }
+            // 倒數結束，送出 Enter（第二段 MainActor.run 必須再次檢查 state，
+            // 否則倒數結束後若被 cancelSmartSend/startRecording 搶先切換狀態，
+            // Enter 還是會被送出）
+            let shouldSendEnter: Bool = await MainActor.run {
+                guard let self, case .confirming = self.session.state else { return false }
                 self.cleanupSmartSend()
                 self.log.info("Smart Send 倒數結束，送出 Enter", category: "SmartSend")
+                return true
+            }
+            guard shouldSendEnter else { return }
+
+            do {
+                try await Task.sleep(for: .milliseconds(100))
+            } catch {
+                return  // 100ms 之間被取消，放棄送 Enter
             }
 
-            try? await Task.sleep(for: .milliseconds(100))
-
             await MainActor.run {
-                guard let self else { return }
+                guard let self, case .confirming = self.session.state else { return }
                 TextInjector.simulateEnter()
                 self.session.state = .done
                 if self.settingsStore.enableSoundFeedback {
