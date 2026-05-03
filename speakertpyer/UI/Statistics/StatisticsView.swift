@@ -141,7 +141,7 @@ struct StatisticsView: View {
                     .font(.title2)
                     .foregroundStyle(.green)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("累計成本估算")
+                    Text(L10n.Cost.totalEstimate)
                         .font(.headline)
                     Text("\(ModelPricingTable.formatUSD(totalCostUSD)) USD")
                         .font(.system(size: 22, weight: .bold))
@@ -149,7 +149,7 @@ struct StatisticsView: View {
                 }
                 Spacer()
                 if unknownModelCount > 0 {
-                    Text("\(unknownModelCount) 筆未知模型已忽略")
+                    Text(L10n.Cost.unknownIgnored(unknownModelCount))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }

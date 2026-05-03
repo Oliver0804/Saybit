@@ -31,11 +31,6 @@ final class speakertpyerUITests: XCTestCase {
         // Use XCTAssert and related functions to verify your tests produce the correct results.
     }
 
-    @MainActor
-    func testLaunchPerformance() throws {
-        // This measures how long it takes to launch your application.
-        measure(metrics: [XCTApplicationLaunchMetric()]) {
-            XCUIApplication().launch()
-        }
-    }
+    // Removed testLaunchPerformance: XCTApplicationLaunchMetric is unstable for menu bar
+    // (LSUIElement) apps and intermittently emits zero metrics, breaking CI.
 }

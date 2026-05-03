@@ -271,6 +271,13 @@ enum L10n {
         static var holdStep2: String { d("說出想要輸入的文字", "说出想要输入的文字", "Speak what you want to type", "入力したい内容を話す") }
         static var holdStep3: String { d("放開按鍵，AI 自動處理並輸入", "放开按键，AI 自动处理并输入", "Release to stop, AI processes and types", "キーを離すと停止、AI が処理して入力") }
 
+        static func conflictWarning(_ name: String) -> String {
+            d("可能與系統熱鍵衝突：\(name)。Saybit 的事件 tap 順序在系統之後，這個組合可能不會被觸發。",
+              "可能与系统热键冲突：\(name)。Saybit 的事件 tap 顺序在系统之后，这个组合可能不会被触发。",
+              "May conflict with system shortcut: \(name). Saybit's event tap runs after the system, so this combo may never fire.",
+              "システムショートカットと競合する可能性：\(name)。Saybit のイベントタップはシステムの後に動くため、発火しない可能性があります。")
+        }
+
         // DoubleTap mode steps
         static var doubleTapStep1: String { d("快速雙擊快捷鍵開始錄音", "快速双击快捷键开始录音", "Double-tap the hotkey to start recording", "ショートカットをダブルタップして録音開始") }
         static var doubleTapStep2: String { d("說出想要輸入的文字", "说出想要输入的文字", "Speak what you want to type", "入力したい内容を話す") }
@@ -621,6 +628,70 @@ enum L10n {
         case "edit": return processingMode(.edit)
         default: return mode
         }
+    }
+
+    // MARK: - Update Check (About)
+
+    enum Update {
+        static var checkButton: String { d("檢查更新", "检查更新", "Check for Updates", "アップデートを確認") }
+        static var viewRelease: String { d("查看新版", "查看新版", "View Release", "リリースを見る") }
+        static func upToDate(_ v: String) -> String {
+            d("已是最新版本（v\(v)）", "已是最新版本（v\(v)）", "You're on the latest version (v\(v))", "最新バージョンです (v\(v))")
+        }
+        static func newer(latest: String, current: String) -> String {
+            d("發現新版 \(latest)（目前 v\(current)）",
+              "发现新版 \(latest)（当前 v\(current)）",
+              "New version available: \(latest) (current v\(current))",
+              "新バージョン \(latest) があります（現在 v\(current)）")
+        }
+        static func ahead(current: String, remote: String) -> String {
+            d("本地 v\(current) 比遠端 v\(remote) 新（dev build）",
+              "本地 v\(current) 比远端 v\(remote) 新（dev build）",
+              "Local v\(current) is ahead of remote v\(remote) (dev build)",
+              "ローカル v\(current) がリモート v\(remote) より新しい（開発ビルド）")
+        }
+    }
+
+    // MARK: - API: list models button (cloud chips)
+
+    enum APIModels {
+        static var listButton: String { d("列出模型", "列出模型", "List Models", "モデル一覧") }
+        static var searchPlaceholder: String { d("搜尋模型…", "搜索模型…", "Search models…", "モデルを検索…") }
+        static func count(_ n: Int) -> String {
+            d("共 \(n) 個模型", "共 \(n) 个模型", "\(n) models", "\(n) モデル")
+        }
+        static func filteredCount(query: String, total: Int, matched: Int) -> String {
+            d("共 \(total) 個模型，符合「\(query)」共 \(matched) 個",
+              "共 \(total) 个模型，匹配「\(query)」共 \(matched) 个",
+              "\(total) models · \(matched) match \"\(query)\"",
+              "\(total) モデル · \"\(query)\" に一致 \(matched) 件")
+        }
+        static var emptyResponse: String { d("服務商未回傳任何模型", "服务商未返回任何模型", "Provider returned no models", "プロバイダーがモデルを返しませんでした") }
+        static func fetchFailed(_ msg: String) -> String {
+            d("抓取失敗：\(msg)", "抓取失败：\(msg)", "Fetch failed: \(msg)", "取得失敗：\(msg)")
+        }
+    }
+
+    // MARK: - Cost / Statistics
+
+    enum Cost {
+        static var totalEstimate: String { d("累計成本估算", "累计成本估算", "Estimated Total Cost", "累計コスト推定") }
+        static func unknownIgnored(_ n: Int) -> String {
+            d("\(n) 筆未知模型已忽略", "\(n) 条未知模型已忽略", "\(n) records with unknown model ignored", "\(n) 件の未知モデルを除外")
+        }
+        static func perRecord(_ formatted: String) -> String {
+            d("估算成本：\(formatted)", "估算成本：\(formatted)", "Est. cost: \(formatted)", "推定コスト：\(formatted)")
+        }
+    }
+
+    // MARK: - History export
+
+    enum Export {
+        static var menuLabel: String { d("匯出", "导出", "Export", "エクスポート") }
+        static var asJSON: String { d("匯出為 JSON", "导出为 JSON", "Export as JSON", "JSON でエクスポート") }
+        static var asMarkdown: String { d("匯出為 Markdown", "导出为 Markdown", "Export as Markdown", "Markdown でエクスポート") }
+        static var asCSV: String { d("匯出為 CSV", "导出为 CSV", "Export as CSV", "CSV でエクスポート") }
+        static var savePanelTitle: String { d("匯出歷史紀錄", "导出历史记录", "Export History", "履歴をエクスポート") }
     }
 
     // MARK: - Private Helper

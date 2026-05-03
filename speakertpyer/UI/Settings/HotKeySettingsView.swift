@@ -73,6 +73,17 @@ struct HotKeySettingsView: View {
                                 : L10n.HotKey.requirement)
                                 .font(.title3)
                                 .foregroundStyle(isRecording ? .orange : .secondary)
+
+                            if !isRecording, let conflict = currentConflict {
+                                HStack(alignment: .top, spacing: 6) {
+                                    Image(systemName: "exclamationmark.triangle.fill")
+                                        .foregroundStyle(.orange)
+                                    Text(L10n.HotKey.conflictWarning(conflict.name))
+                                        .font(.title3)
+                                        .foregroundStyle(.orange)
+                                }
+                                .padding(.top, 2)
+                            }
                         }
                     }
                 }
@@ -155,6 +166,13 @@ struct HotKeySettingsView: View {
             return L10n.HotKey.recording
         }
         return GlobalHotKeyManager.hotkeyDescription(
+            keyCode: UInt16(settingsStore.hotkeyKeyCode),
+            modifiers: CGEventFlags(rawValue: UInt64(settingsStore.hotkeyModifiers))
+        )
+    }
+
+    private var currentConflict: HotKeyConflictChecker.KnownShortcut? {
+        HotKeyConflictChecker.conflict(
             keyCode: UInt16(settingsStore.hotkeyKeyCode),
             modifiers: CGEventFlags(rawValue: UInt64(settingsStore.hotkeyModifiers))
         )

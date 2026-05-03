@@ -77,11 +77,11 @@ struct HistoryView: View {
                     Spacer()
 
                     Menu {
-                        Button("匯出為 JSON") { exportRecords(format: .json) }
-                        Button("匯出為 Markdown") { exportRecords(format: .markdown) }
-                        Button("匯出為 CSV") { exportRecords(format: .csv) }
+                        Button(L10n.Export.asJSON) { exportRecords(format: .json) }
+                        Button(L10n.Export.asMarkdown) { exportRecords(format: .markdown) }
+                        Button(L10n.Export.asCSV) { exportRecords(format: .csv) }
                     } label: {
-                        Label("匯出", systemImage: "square.and.arrow.up")
+                        Label(L10n.Export.menuLabel, systemImage: "square.and.arrow.up")
                             .font(.caption)
                     }
                     .menuStyle(.borderlessButton)
@@ -165,7 +165,7 @@ struct HistoryView: View {
                                             promptTokens: Int(record.promptTokens),
                                             completionTokens: Int(record.completionTokens)
                                         ) {
-                                            Label("估算成本：\(ModelPricingTable.formatUSD(cost))", systemImage: "dollarsign.circle")
+                                            Label(L10n.Cost.perRecord(ModelPricingTable.formatUSD(cost)), systemImage: "dollarsign.circle")
                                         }
                                     }
 
@@ -311,7 +311,7 @@ struct HistoryView: View {
     private func exportRecords(format: ExportFormat) {
         let snapshot = Array(records)
         let panel = NSSavePanel()
-        panel.title = "匯出歷史紀錄"
+        panel.title = L10n.Export.savePanelTitle
         panel.allowedContentTypes = [format.contentType]
         let stamp = ISO8601DateFormatter().string(from: Date())
             .replacingOccurrences(of: ":", with: "-")

@@ -76,7 +76,7 @@ struct AboutView: View {
                         if isCheckingUpdate {
                             ProgressView().controlSize(.small)
                         } else {
-                            Label("檢查更新", systemImage: "arrow.down.circle")
+                            Label(L10n.Update.checkButton, systemImage: "arrow.down.circle")
                         }
                     }
                     .controlSize(.small)
@@ -84,7 +84,7 @@ struct AboutView: View {
                     .disabled(isCheckingUpdate)
 
                     if let url = updateURL {
-                        Link("查看新版", destination: url)
+                        Link(L10n.Update.viewRelease, destination: url)
                             .font(.system(size: 12))
                     }
                 }
@@ -171,12 +171,12 @@ struct AboutView: View {
                     isCheckingUpdate = false
                     switch result {
                     case .upToDate(let v):
-                        updateStatus = "已是最新版本（v\(v)）"
+                        updateStatus = L10n.Update.upToDate(v)
                     case .newer(let cur, let latest):
-                        updateStatus = "發現新版 \(latest.tagName)（目前 v\(cur)）"
+                        updateStatus = L10n.Update.newer(latest: latest.tagName, current: cur)
                         updateURL = URL(string: latest.htmlUrl)
                     case .ahead(let cur, let latest):
-                        updateStatus = "本地 v\(cur) 比遠端 v\(latest) 新（dev build）"
+                        updateStatus = L10n.Update.ahead(current: cur, remote: latest)
                     }
                 }
             } catch {

@@ -40,7 +40,10 @@ jobs:
             MACOSX_DEPLOYMENT_TARGET=$CI_DEPLOYMENT_TARGET \
             build | xcbeautify --renderer github-actions
 
-      - name: Test
+      # 只跑單元測試。UI 測試會試圖將 LSUIElement menu bar app 帶到前景，
+      # 在 GitHub headless runner 上必失敗（"Failed to activate application ...
+      # current state: Running Background"）。
+      - name: Test (unit only)
         run: |
           set -o pipefail
           xcodebuild \
@@ -48,6 +51,7 @@ jobs:
             -scheme Saybit \
             -configuration Debug \
             -destination 'platform=macOS' \
+            -only-testing:speakertpyerTests \
             CODE_SIGNING_ALLOWED=NO \
             MACOSX_DEPLOYMENT_TARGET=$CI_DEPLOYMENT_TARGET \
             test | xcbeautify --renderer github-actions

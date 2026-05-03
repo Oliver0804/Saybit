@@ -5,6 +5,7 @@
 //  Created by 顏國明 on 2026/1/27.
 //
 
+import CoreGraphics
 import Foundation
 import Testing
 @testable import Saybit
@@ -143,6 +144,117 @@ struct OpenRouterStreamChunkDecodeTests {
         let chunk = try decoder.decode(OpenRouterStreamChunk.self, from: json)
         #expect(chunk.choices?.first?.delta?.content == nil)
         #expect(chunk.choices?.first?.finishReason == "stop")
+    }
+}
+
+// MARK: - UpdateChecker semver
+
+struct UpdateCheckerSemverTests {
+
+    @Test func normalizeStripsLeadingV() {
+        #expect(UpdateChecker.normalize("v1.5.0") == "1.5.0")
+        #expect(UpdateChecker.normalize("V2.0") == "2.0")
+        #expect(UpdateChecker.normalize("3.0.0") == "3.0.0")
+        #expect(UpdateChecker.normalize("  v1.0  ") == "1.0")
+    }
+
+    @Test func compareBasicOrdering() {
+        #expect(UpdateChecker.compareSemver("1.0.0", "1.0.1") == .orderedAscending)
+        #expect(UpdateChecker.compareSemver("1.5.0", "1.5.0") == .orderedSame)
+        #expect(UpdateChecker.compareSemver("2.0.0", "1.99.0") == .orderedDescending)
+    }
+
+    @Test func compareWithDifferentLengths() {
+        #expect(UpdateChecker.compareSemver("1.5", "1.5.0") == .orderedSame)
+        #expect(UpdateChecker.compareSemver("1.5", "1.5.1") == .orderedAscending)
+        #expect(UpdateChecker.compareSemver("1.6", "1.5.99") == .orderedDescending)
+    }
+
+    @Test func compareIgnoresPreReleaseSuffix() {
+        // Only compare core version
+        #expect(UpdateChecker.compareSemver("1.5.0-beta.1", "1.5.0") == .orderedSame)
+    }
+}
+
+// MARK: - HotKeyConflictChecker
+
+struct HotKeyConflictCheckerTests {
+
+    @Test func detectsSpotlightConflict() {
+        let conflict = HotKeyConflictChecker.conflict(
+            keyCode: 49, // Space
+            modifiers: .maskCommand
+        )
+        #expect(conflict?.name.contains("Spotlight") == true)
+    }
+
+    @Test func defaultOptionSpaceIsNotInList() {
+        // Saybit 預設 ⌥Space 不在內建衝突清單裡
+        let conflict = HotKeyConflictChecker.conflict(
+            keyCode: 49,
+            modifiers: .maskAlternate
+        )
+        #expect(conflict == nil)
+    }
+
+    @Test func detectsScreenshotConflict() {
+        let conflict = HotKeyConflictChecker.conflict(
+            keyCode: 21, // 4
+            modifiers: [.maskCommand, .maskShift]
+        )
+        #expect(conflict?.name.contains("Screenshot") == true)
+    }
+
+    @Test func ignoresExtraModifierBits() {
+        // 即使帶上 capslock/fn 等其他 bit，仍應命中
+        let extraFlags: CGEventFlags = [.maskCommand, .maskAlphaShift]
+        let conflict = HotKeyConflictChecker.conflict(
+            keyCode: 12, // Q
+            modifiers: extraFlags
+        )
+        #expect(conflict?.name.contains("Quit") == true)
+    }
+}
+
+// MARK: - ModelPricingTable
+
+struct ModelPricingTests {
+
+    @Test func gpt41NanoPricingMatches() {
+        let cost = ModelPricingTable.cost(model: "gpt-4.1-nano",
+                                          promptTokens: 1000,
+                                          completionTokens: 1000)
+        // 0.0001 + 0.0004 = 0.0005
+        #expect(cost.map { abs($0 - 0.0005) < 0.0001 } == true)
+    }
+
+    @Test func unknownModelReturnsNil() {
+        let cost = ModelPricingTable.cost(model: "totally-fake-model-xyz",
+                                          promptTokens: 1000,
+                                          completionTokens: 1000)
+        #expect(cost == nil)
+    }
+
+    @Test func emptyModelReturnsNil() {
+        let cost = ModelPricingTable.cost(model: "",
+                                          promptTokens: 100,
+                                          completionTokens: 100)
+        #expect(cost == nil)
+    }
+
+    @Test func formatUSDHandlesEdges() {
+        #expect(ModelPricingTable.formatUSD(0) == "$0")
+        #expect(ModelPricingTable.formatUSD(0.00001) == "<$0.0001")
+        #expect(ModelPricingTable.formatUSD(0.1234) == "$0.1234")
+    }
+
+    @Test func providerPrefixedModelMatches() {
+        // OpenRouter style "anthropic/claude-sonnet-4"
+        let cost = ModelPricingTable.cost(model: "anthropic/claude-sonnet-4",
+                                          promptTokens: 1000,
+                                          completionTokens: 1000)
+        // sonnet-4: 0.003 + 0.015 = 0.018
+        #expect(cost.map { abs($0 - 0.018) < 0.0001 } == true)
     }
 }
 

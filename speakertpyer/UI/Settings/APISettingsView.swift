@@ -356,7 +356,7 @@ struct APISettingsView: View {
                                         if isFetchingCloudModels {
                                             ProgressView().controlSize(.small)
                                         } else {
-                                            Label("列出模型", systemImage: "arrow.clockwise")
+                                            Label(L10n.APIModels.listButton, systemImage: "arrow.clockwise")
                                         }
                                     }
                                     .controlSize(.small)
@@ -370,7 +370,7 @@ struct APISettingsView: View {
 
                             if currentProvider.requiresAPIKey, !fetchedCloudModels.isEmpty {
                                 if fetchedCloudModels.count > 12 {
-                                    TextField("搜尋模型…", text: $cloudModelsSearch)
+                                    TextField(L10n.APIModels.searchPlaceholder, text: $cloudModelsSearch)
                                         .textFieldStyle(.roundedBorder)
                                         .controlSize(.small)
                                 }
@@ -385,7 +385,11 @@ struct APISettingsView: View {
                                         .tint(settingsStore.selectedModel == model ? .accentColor : .secondary)
                                     }
                                 }
-                                Text("共 \(fetchedCloudModels.count) 個模型\(cloudModelsSearch.isEmpty ? "" : "，符合「\(cloudModelsSearch)」共 \(filteredCloudModels.count) 個")")
+                                Text(cloudModelsSearch.isEmpty
+                                     ? L10n.APIModels.count(fetchedCloudModels.count)
+                                     : L10n.APIModels.filteredCount(query: cloudModelsSearch,
+                                                                    total: fetchedCloudModels.count,
+                                                                    matched: filteredCloudModels.count))
                                     .font(.body)
                                     .foregroundStyle(.secondary)
                             }
@@ -779,14 +783,14 @@ struct APISettingsView: View {
                     fetchedCloudModels = models
                     isFetchingCloudModels = false
                     if models.isEmpty {
-                        cloudModelsError = "服務商未回傳任何模型"
+                        cloudModelsError = L10n.APIModels.emptyResponse
                     }
                 }
             } catch {
                 await MainActor.run {
                     isFetchingCloudModels = false
                     fetchedCloudModels = []
-                    cloudModelsError = "抓取失敗：\(error.localizedDescription)"
+                    cloudModelsError = L10n.APIModels.fetchFailed(error.localizedDescription)
                 }
             }
         }
