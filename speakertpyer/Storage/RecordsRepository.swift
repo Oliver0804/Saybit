@@ -1,0 +1,89 @@
+//
+//  RecordsRepository.swift
+//  speakertpyer
+//
+//  Core Data 讀寫的薄殼。集中個人字典、Snippets、TranscriptionRecord
+//  的 fetch / save，避免在 VoicePipeline 散落 NSPersistentContainer 的細節。
+//
+
+import CoreData
+import Foundation
+
+struct RecordsRepository {
+    let container: NSPersistentContainer
+
+    init(container: NSPersistentContainer = PersistenceController.shared.container) {
+        self.container = container
+    }
+
+    private var viewContext: NSManagedObjectContext { container.viewContext }
+
+    // MARK: - Personal Dictionary
+
+    /// 取出個人字典 [term → preferred]；空字典回 nil 方便 caller 用 `??` 串接。
+    func loadPersonalDictionary() -> [String: String]? {
+        let request = PersonalDictionaryEntry.fetchRequest()
+        guard let entries = try? viewContext.fetch(request), !entries.isEmpty else {
+            return nil
+        }
+        var dict: [String: String] = [:]
+        for entry in entries {
+            if let term = entry.term, let preferred = entry.preferred {
+                dict[term] = preferred
+            }
+        }
+        return dict.isEmpty ? nil : dict
+    }
+
+    // MARK: - Snippets
+
+    /// 取出 snippets [trigger → content]；空字典回 nil。
+    func loadSnippets() -> [String: String]? {
+        let request = SnippetEntry.fetchRequest()
+        guard let entries = try? viewContext.fetch(request), !entries.isEmpty else {
+            return nil
+        }
+        var snippets: [String: String] = [:]
+        for entry in entries {
+            if let trigger = entry.trigger, let content = entry.content {
+                snippets[trigger] = content
+            }
+        }
+        return snippets.isEmpty ? nil : snippets
+    }
+
+    // MARK: - Transcription History
+
+    /// 寫入一筆 TranscriptionRecord；失敗不 throw（caller 不會處理），由 logger 提供。
+    func saveTranscription(
+        rawTranscript: String,
+        processedText: String,
+        appName: String,
+        durationSec: Double,
+        modelName: String,
+        promptTokens: Int,
+        completionTokens: Int,
+        totalTokens: Int,
+        mode: String = "auto",
+        timestamp: Date = .init()
+    ) {
+        let record = TranscriptionRecord(context: viewContext)
+        record.id = UUID()
+        record.rawTranscript = rawTranscript
+        record.processedText = processedText
+        record.appContext = appName
+        record.mode = mode
+        record.timestamp = timestamp
+        record.duration = durationSec
+        record.modelName = modelName
+        record.promptTokens = Int32(promptTokens)
+        record.completionTokens = Int32(completionTokens)
+        record.totalTokens = Int32(totalTokens)
+
+        do {
+            try viewContext.save()
+        } catch {
+            AppLogger.shared.error("歷史記錄儲存失敗：\(error.localizedDescription)", category: "History")
+        }
+    }
+}

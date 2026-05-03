@@ -31,75 +31,10 @@ struct GeneralSettingsView: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 16) {
-                // MARK: - 開機自動啟動
-                if settingsMatchesSearch(["開機", "啟動", "登入", "launch", "login", "自動啟動", "startup", "开机", "启动"], searchText: searchState.searchText) {
-                    GlassCard {
-                        VStack(alignment: .leading, spacing: 10) {
-                            GlassSectionHeader(title: L10n.General.launchAtLogin, icon: "power")
-
-                            Toggle(L10n.General.enableLaunchAtLogin, isOn: $settingsStore.launchAtLogin)
-                            Text(L10n.General.launchAtLoginDesc)
-                                .font(.body)
-                                .foregroundStyle(.secondary)
-                                .padding(.leading, 2)
-                        }
-                    }
-                }
-
-                if settingsMatchesSearch(["更新", "update", "version", "版本", "auto-update"], searchText: searchState.searchText) {
-                    GlassCard {
-                        VStack(alignment: .leading, spacing: 10) {
-                            GlassSectionHeader(title: L10n.Update.checkButton, icon: "arrow.down.circle")
-
-                            Toggle(L10n.General.enableAutoUpdateCheck, isOn: $settingsStore.enableAutoUpdateCheck)
-                            Text(L10n.General.autoUpdateCheckDesc)
-                                .font(.body)
-                                .foregroundStyle(.secondary)
-                                .padding(.leading, 2)
-
-                            if !settingsStore.availableUpdateTag.isEmpty {
-                                HStack(spacing: 6) {
-                                    Image(systemName: "sparkles")
-                                        .foregroundStyle(.green)
-                                    Text(L10n.Update.newer(latest: settingsStore.availableUpdateTag,
-                                                           current: UpdateChecker.shared.currentVersion()))
-                                        .font(.body)
-                                    if let url = URL(string: settingsStore.availableUpdateURL),
-                                       !settingsStore.availableUpdateURL.isEmpty {
-                                        Link(L10n.Update.viewRelease, destination: url)
-                                            .font(.body)
-                                    }
-                                }
-                                .padding(.top, 2)
-                            }
-                        }
-                    }
-                }
-
-                // MARK: - 語言
-                if settingsMatchesSearch(["語言", "语言", "language", "言語", "介面"], searchText: searchState.searchText) {
-                    GlassCard {
-                        VStack(alignment: .leading, spacing: 10) {
-                            GlassSectionHeader(title: L10n.General.language, icon: "globe")
-
-                            Picker(L10n.General.preferredLanguage, selection: $settingsStore.languagePreference) {
-                                ForEach(AppLanguage.allCases) { lang in
-                                    Text(lang.displayName).tag(lang.rawValue)
-                                }
-                            }
-                            .pickerStyle(.segmented)
-                            .disabled(settingsStore.enableAutoLanguageDetection)
-
-                            Divider().opacity(0.3)
-
-                            Toggle(L10n.General.autoLanguageDetection, isOn: $settingsStore.enableAutoLanguageDetection)
-                            Text(L10n.General.autoLanguageDetectionDesc)
-                                .font(.body)
-                                .foregroundStyle(.secondary)
-                                .padding(.leading, 2)
-                        }
-                    }
-                }
+                // 拆出去的 sections，state 仍在 SettingsStore 與 SettingsSearchState：
+                LaunchAtLoginSection()
+                AutoUpdateCheckSection()
+                LanguageSection()
 
                 // MARK: - 功能開關
                 if settingsMatchesSearch(["功能", "features", "context", "上下文", "音效", "sound", "whisper"], searchText: searchState.searchText) {

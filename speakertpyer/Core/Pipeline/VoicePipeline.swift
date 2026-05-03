@@ -1078,38 +1078,14 @@ class VoicePipeline {
 
     // MARK: - Data Loading
 
+    private let records = RecordsRepository()
+
     private func loadPersonalDictionary() -> [String: String]? {
-        let context = PersistenceController.shared.container.viewContext
-        let request = PersonalDictionaryEntry.fetchRequest()
-
-        guard let entries = try? context.fetch(request), !entries.isEmpty else {
-            return nil
-        }
-
-        var dict: [String: String] = [:]
-        for entry in entries {
-            if let term = entry.term, let preferred = entry.preferred {
-                dict[term] = preferred
-            }
-        }
-        return dict.isEmpty ? nil : dict
+        records.loadPersonalDictionary()
     }
 
     private func loadSnippets() -> [String: String]? {
-        let context = PersistenceController.shared.container.viewContext
-        let request = SnippetEntry.fetchRequest()
-
-        guard let entries = try? context.fetch(request), !entries.isEmpty else {
-            return nil
-        }
-
-        var snippets: [String: String] = [:]
-        for entry in entries {
-            if let trigger = entry.trigger, let content = entry.content {
-                snippets[trigger] = content
-            }
-        }
-        return snippets.isEmpty ? nil : snippets
+        records.loadSnippets()
     }
 
     // MARK: - Language Mapping
@@ -1126,25 +1102,16 @@ class VoicePipeline {
     // MARK: - History
 
     private func saveToHistory() {
-        let context = PersistenceController.shared.container.viewContext
-        let record = TranscriptionRecord(context: context)
-        record.id = UUID()
-        record.rawTranscript = session.rawTranscript
-        record.processedText = session.processedText
-        record.appContext = session.appContext.appName
-        record.mode = "auto"
-        record.timestamp = Date()
-        record.duration = session.duration
-        record.modelName = session.modelName
-        record.promptTokens = Int32(session.promptTokens)
-        record.completionTokens = Int32(session.completionTokens)
-        record.totalTokens = Int32(session.totalTokens)
-
-        do {
-            try context.save()
-        } catch {
-            log.error("歷史記錄儲存失敗: \(error.localizedDescription)", category: "History")
-        }
+        records.saveTranscription(
+            rawTranscript: session.rawTranscript,
+            processedText: session.processedText,
+            appName: session.appContext.appName,
+            durationSec: session.duration,
+            modelName: session.modelName,
+            promptTokens: session.promptTokens,
+            completionTokens: session.completionTokens,
+            totalTokens: session.totalTokens
+        )
     }
 
     // MARK: - Background STT Management
