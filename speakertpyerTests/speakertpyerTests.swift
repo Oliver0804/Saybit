@@ -258,6 +258,41 @@ struct ModelPricingTests {
     }
 }
 
+// MARK: - LM Studio URL normalization
+
+struct LMStudioURLTests {
+
+    @Test func bareOriginGetsFullSuffix() {
+        #expect(SettingsStore.normalizeLMStudioURL("http://localhost:1234")
+                == "http://localhost:1234/v1/chat/completions")
+    }
+
+    @Test func trailingSlashStripped() {
+        #expect(SettingsStore.normalizeLMStudioURL("http://localhost:1234/")
+                == "http://localhost:1234/v1/chat/completions")
+    }
+
+    @Test func alreadyHasV1() {
+        #expect(SettingsStore.normalizeLMStudioURL("http://localhost:1234/v1")
+                == "http://localhost:1234/v1/chat/completions")
+    }
+
+    @Test func alreadyFull() {
+        #expect(SettingsStore.normalizeLMStudioURL("http://localhost:1234/v1/chat/completions")
+                == "http://localhost:1234/v1/chat/completions")
+    }
+
+    @Test func whitespaceTrimmed() {
+        #expect(SettingsStore.normalizeLMStudioURL("  http://localhost:1234  ")
+                == "http://localhost:1234/v1/chat/completions")
+    }
+
+    @Test func remoteHostWithPort() {
+        #expect(SettingsStore.normalizeLMStudioURL("http://192.168.0.10:1234/v1/")
+                == "http://192.168.0.10:1234/v1/chat/completions")
+    }
+}
+
 // MARK: - ClientError messages
 
 struct ClientErrorMessageTests {

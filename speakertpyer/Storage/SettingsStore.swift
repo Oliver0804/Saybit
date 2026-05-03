@@ -36,15 +36,12 @@ class SettingsStore: ObservableObject {
 
     var selectedProvider: LLMProvider {
         let provider = allProviders.first(where: { $0.id == selectedProviderID }) ?? .openRouter
-        // LM Studio: 使用用戶自訂的 base URL
+        // LM Studio: 使用用戶自訂的 base URL，容忍各種輸入格式
         if provider.id == "lmstudio", !lmStudioBaseURL.isEmpty {
-            let url = lmStudioBaseURL.hasSuffix("/")
-                ? lmStudioBaseURL + "v1/chat/completions"
-                : lmStudioBaseURL + "/v1/chat/completions"
             return LLMProvider(
                 id: provider.id,
                 name: provider.name,
-                baseURL: url,
+                baseURL: Self.normalizeLMStudioURL(lmStudioBaseURL),
                 extraHeaders: provider.extraHeaders,
                 keyPlaceholder: provider.keyPlaceholder,
                 modelHint: provider.modelHint,
@@ -53,6 +50,17 @@ class SettingsStore: ObservableObject {
             )
         }
         return provider
+    }
+
+    /// 把使用者隨意輸入的 LM Studio URL 統一轉成 `<origin>/v1/chat/completions`。
+    /// 容忍：尾巴 `/`、已含 `/v1`、已含 `/v1/chat/completions` 的情況。
+    static func normalizeLMStudioURL(_ raw: String) -> String {
+        var s = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        while s.hasSuffix("/") { s.removeLast() }
+
+        if s.hasSuffix("/chat/completions") { return s }
+        if s.hasSuffix("/v1") { return s + "/chat/completions" }
+        return s + "/v1/chat/completions"
     }
 
     @Published var selectedModel: String {
