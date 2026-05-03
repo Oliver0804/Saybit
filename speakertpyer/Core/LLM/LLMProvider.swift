@@ -146,6 +146,50 @@ struct LLMProvider: Codable, Identifiable, Hashable {
         )
     }
 
+    // MARK: - OpenAI-Compatible Models Endpoint
+
+    /// 從 chat/completions 的 baseURL 推導出 /models 端點。
+    /// e.g. ".../v1/chat/completions" → ".../v1/models"
+    ///      ".../chat/completions"    → ".../models"
+    var modelsEndpoint: URL? {
+        guard let url = URL(string: baseURL),
+              let scheme = url.scheme,
+              let host = url.host else { return nil }
+        var parts = url.pathComponents.filter { $0 != "/" }
+        if parts.last == "completions" { parts.removeLast() }
+        if parts.last == "chat" { parts.removeLast() }
+        parts.append("models")
+        let port = url.port.map { ":\($0)" } ?? ""
+        let path = "/" + parts.joined(separator: "/")
+        return URL(string: "\(scheme)://\(host)\(port)\(path)")
+    }
+
+    /// 從任何 OpenAI 相容的 /v1/models 端點抓取可用模型清單。
+    /// 適用：OpenAI、DeepSeek、OpenRouter、Groq、Together 等。
+    static func fetchOpenAIModels(provider: LLMProvider) async throws -> [String] {
+        guard let url = provider.modelsEndpoint else {
+            throw NSError(domain: "LLMProvider", code: -1,
+                          userInfo: [NSLocalizedDescriptionKey: "無法解析 models 端點：\(provider.baseURL)"])
+        }
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 15
+        if let key = KeychainHelper.loadAPIKey(for: provider.id), !key.isEmpty {
+            request.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
+        }
+        for (k, v) in provider.extraHeaders {
+            request.setValue(v, forHTTPHeaderField: k)
+        }
+        let (data, response) = try await URLSession.shared.data(for: request)
+        let status = (response as? HTTPURLResponse)?.statusCode ?? -1
+        guard (200...299).contains(status) else {
+            let body = String(data: data, encoding: .utf8) ?? ""
+            throw NSError(domain: "LLMProvider", code: status,
+                          userInfo: [NSLocalizedDescriptionKey: "HTTP \(status)：\(body.prefix(200))"])
+        }
+        let decoded = try JSONDecoder().decode(OpenAIModelsResponse.self, from: data)
+        return decoded.data.map(\.id).sorted()
+    }
+
     // MARK: - LM Studio Helpers
 
     /// Fetch available LLM models from LM Studio (GET /api/v1/models)
@@ -219,6 +263,13 @@ struct LLMProvider: Codable, Identifiable, Hashable {
             return false
         }
     }
+}
+
+// MARK: - OpenAI-Compatible /v1/models Response
+
+private struct OpenAIModelsResponse: Decodable {
+    let data: [Model]
+    struct Model: Decodable { let id: String }
 }
 
 // MARK: - LM Studio API Response

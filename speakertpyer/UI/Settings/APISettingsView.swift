@@ -23,6 +23,10 @@ struct APISettingsView: View {
     @State private var ollamaModels: [String] = []
     @State private var lmStudioRunning: Bool? = nil
     @State private var lmStudioModels: [String] = []
+    @State private var fetchedCloudModels: [String] = []
+    @State private var isFetchingCloudModels: Bool = false
+    @State private var cloudModelsError: String = ""
+    @State private var cloudModelsSearch: String = ""
 
     private var currentProvider: LLMProvider {
         settingsStore.selectedProvider
@@ -51,6 +55,9 @@ struct APISettingsView: View {
                                     updateModelForProvider(newID)
                                     testResult = ""
                                     saveStatus = ""
+                                    fetchedCloudModels = []
+                                    cloudModelsError = ""
+                                    cloudModelsSearch = ""
                                 }
 
                                 Button {
@@ -338,11 +345,55 @@ struct APISettingsView: View {
                             Divider()
 
                             // Model section
-                            Text(L10n.API.model)
-                                .font(.headline)
+                            HStack {
+                                Text(L10n.API.model)
+                                    .font(.headline)
+                                Spacer()
+                                if currentProvider.requiresAPIKey {
+                                    Button {
+                                        fetchCloudModels()
+                                    } label: {
+                                        if isFetchingCloudModels {
+                                            ProgressView().controlSize(.small)
+                                        } else {
+                                            Label("列出模型", systemImage: "arrow.clockwise")
+                                        }
+                                    }
+                                    .controlSize(.small)
+                                    .buttonStyle(.bordered)
+                                    .disabled(isFetchingCloudModels || !hasKey)
+                                }
+                            }
 
                             TextField("Model ID", text: $settingsStore.selectedModel)
                                 .textFieldStyle(.roundedBorder)
+
+                            if currentProvider.requiresAPIKey, !fetchedCloudModels.isEmpty {
+                                if fetchedCloudModels.count > 12 {
+                                    TextField("搜尋模型…", text: $cloudModelsSearch)
+                                        .textFieldStyle(.roundedBorder)
+                                        .controlSize(.small)
+                                }
+                                FlowLayout(spacing: 4) {
+                                    ForEach(filteredCloudModels, id: \.self) { model in
+                                        Button(model) {
+                                            settingsStore.selectedModel = model
+                                        }
+                                        .controlSize(.mini)
+                                        .buttonStyle(.bordered)
+                                        .tint(settingsStore.selectedModel == model ? .accentColor : .secondary)
+                                    }
+                                }
+                                Text("共 \(fetchedCloudModels.count) 個模型\(cloudModelsSearch.isEmpty ? "" : "，符合「\(cloudModelsSearch)」共 \(filteredCloudModels.count) 個")")
+                                    .font(.body)
+                                    .foregroundStyle(.secondary)
+                            }
+
+                            if !cloudModelsError.isEmpty {
+                                Text(cloudModelsError)
+                                    .font(.body)
+                                    .foregroundStyle(.red)
+                            }
 
                             if !currentProvider.modelHint.isEmpty {
                                 Text(L10n.API.commonModels(currentProvider.modelHint))
@@ -705,6 +756,38 @@ struct APISettingsView: View {
     private func clearTestResult() {
         DispatchQueue.main.asyncAfter(deadline: .now() + 5) {
             testResult = ""
+        }
+    }
+
+    // MARK: - Cloud Models Fetch
+
+    private var filteredCloudModels: [String] {
+        let q = cloudModelsSearch.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !q.isEmpty else { return fetchedCloudModels }
+        return fetchedCloudModels.filter { $0.lowercased().contains(q) }
+    }
+
+    private func fetchCloudModels() {
+        let provider = currentProvider
+        isFetchingCloudModels = true
+        cloudModelsError = ""
+        Task {
+            do {
+                let models = try await LLMProvider.fetchOpenAIModels(provider: provider)
+                await MainActor.run {
+                    fetchedCloudModels = models
+                    isFetchingCloudModels = false
+                    if models.isEmpty {
+                        cloudModelsError = "服務商未回傳任何模型"
+                    }
+                }
+            } catch {
+                await MainActor.run {
+                    isFetchingCloudModels = false
+                    fetchedCloudModels = []
+                    cloudModelsError = "抓取失敗：\(error.localizedDescription)"
+                }
+            }
         }
     }
 
