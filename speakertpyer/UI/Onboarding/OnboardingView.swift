@@ -406,7 +406,7 @@ struct OnboardingView: View {
                         Text(L10n.Onboarding.testAPI)
                     }
                 }
-                .disabled(isTesting || KeychainHelper.loadAPIKey() == nil)
+                .disabled(isTesting || KeychainHelper.loadAPIKey(for: currentOnboardingProvider.id) == nil)
 
                 if let result = testResult {
                     HStack(spacing: 4) {

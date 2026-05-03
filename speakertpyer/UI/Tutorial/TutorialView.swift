@@ -291,16 +291,17 @@ struct TutorialView: View {
                         .font(.body)
 
                     Button(L10n.Common.save) {
-                        if !apiKeyInput.isEmpty {
-                            try? KeychainHelper.saveAPIKey(apiKeyInput)
-                            // Set default model based on provider
-                            if settingsStore.selectedProviderID == "openai" {
-                                settingsStore.selectedModel = "gpt-4.1-nano"
-                            } else if settingsStore.selectedProviderID == "openrouter" {
-                                settingsStore.selectedModel = "openai/gpt-4.1-nano"
-                            } else if settingsStore.selectedProviderID == "groq" {
-                                settingsStore.selectedModel = "llama-3.3-70b-versatile"
-                            }
+                        guard !apiKeyInput.isEmpty else { return }
+                        try? KeychainHelper.saveAPIKey(apiKeyInput,
+                                                       for: settingsStore.selectedProvider.id)
+                        // Set default model based on provider
+                        switch settingsStore.selectedProviderID {
+                        case "openai":     settingsStore.selectedModel = "gpt-4.1-nano"
+                        case "openrouter": settingsStore.selectedModel = "openai/gpt-4.1-nano"
+                        case "deepseek":   settingsStore.selectedModel = "deepseek-chat"
+                        case "groq":       settingsStore.selectedModel = "llama-3.3-70b-versatile"
+                        case "together":   settingsStore.selectedModel = "meta-llama/Llama-3.3-70B-Instruct-Turbo"
+                        default: break
                         }
                     }
                     .buttonStyle(.borderedProminent)
@@ -309,7 +310,7 @@ struct TutorialView: View {
                 .padding(.horizontal, 50)
 
                 // Status
-                if KeychainHelper.loadAPIKey() != nil {
+                if KeychainHelper.loadAPIKey(for: settingsStore.selectedProvider.id) != nil {
                     HStack(spacing: 6) {
                         Image(systemName: "checkmark.circle.fill")
                             .foregroundColor(.green)

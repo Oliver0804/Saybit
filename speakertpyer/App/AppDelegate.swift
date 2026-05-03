@@ -35,7 +35,21 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             setupHotKey()
         }
 
+        clearStaleUpdateNotification()
         runAutoUpdateCheckIfDue()
+    }
+
+    /// 啟動時若使用者已升級到 ≥ 通知中的版本，清掉殘留的 availableUpdateTag。
+    private func clearStaleUpdateNotification() {
+        let stored = settingsStore.availableUpdateTag
+        guard !stored.isEmpty else { return }
+        let current = UpdateChecker.shared.currentVersion()
+        let normalized = UpdateChecker.normalize(stored)
+        if UpdateChecker.compareSemver(current, normalized) != .orderedAscending {
+            settingsStore.availableUpdateTag = ""
+            settingsStore.availableUpdateURL = ""
+            AppLogger.shared.info("Cleared stale update notification (current v\(current) ≥ \(normalized))", category: "Update")
+        }
     }
 
     /// 啟動時檢查更新（24h 節流）。
