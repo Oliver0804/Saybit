@@ -27,6 +27,8 @@ struct APISettingsView: View {
     @State private var isFetchingCloudModels: Bool = false
     @State private var cloudModelsError: String = ""
     @State private var cloudModelsSearch: String = ""
+    @State private var fetchModelsTask: Task<Void, Never>? = nil
+    @State private var testConnectionTask: Task<Void, Never>? = nil
 
     private var currentProvider: LLMProvider {
         settingsStore.selectedProvider
@@ -668,32 +670,32 @@ struct APISettingsView: View {
     }
 
     private func updateModelForProvider(_ providerID: String) {
-        // Auto-update model name when switching providers
-        switch providerID {
-        case "openrouter":
-            // OpenRouter uses prefixed model names
-            if !settingsStore.selectedModel.contains("/") {
-                settingsStore.selectedModel = "openai/gpt-4.1-nano"
+        // OpenRouter 用 "owner/model" 前綴，沒前綴就帶上預設
+        if providerID == "openrouter", !settingsStore.selectedModel.contains("/") {
+            settingsStore.selectedModel = LLMProvider.defaultModel(for: providerID) ?? ""
+            return
+        }
+        // OpenAI 不接受前綴，剝掉
+        if providerID == "openai", settingsStore.selectedModel.contains("/") {
+            let parts = settingsStore.selectedModel.split(separator: "/")
+            if let last = parts.last, parts.count > 1 {
+                settingsStore.selectedModel = String(last)
             }
-        case "openai":
-            // OpenAI uses plain model names
-            if settingsStore.selectedModel.contains("/") {
-                // Convert "openai/gpt-4.1-nano" to "gpt-4.1-nano"
-                let parts = settingsStore.selectedModel.split(separator: "/")
-                if parts.count > 1 {
-                    settingsStore.selectedModel = String(parts.last!)
+        }
+        // 其他雲端 provider 一律塞回該 provider 的預設模型
+        if let preset = LLMProvider.defaultModel(for: providerID) {
+            // 對 openai：上一段已剝前綴，若仍空或含 /，再 fallback
+            if providerID == "openai" {
+                if settingsStore.selectedModel.isEmpty || settingsStore.selectedModel.contains("/") {
+                    settingsStore.selectedModel = preset
                 }
+            } else if providerID != "openrouter" {
+                settingsStore.selectedModel = preset
             }
-            // Ensure valid OpenAI model
-            if settingsStore.selectedModel.isEmpty || settingsStore.selectedModel.contains("/") {
-                settingsStore.selectedModel = "gpt-4.1-nano"
-            }
-        case "deepseek":
-            settingsStore.selectedModel = "deepseek-chat"
-        case "groq":
-            settingsStore.selectedModel = "llama-3.3-70b-versatile"
-        case "together":
-            settingsStore.selectedModel = "meta-llama/Llama-3.3-70B-Instruct-Turbo"
+            return
+        }
+        // Local providers (ollama, lmstudio) 由 model list 自動帶
+        switch providerID {
         case "ollama":
             // Will be auto-selected from available models
             break
@@ -735,20 +737,26 @@ struct APISettingsView: View {
     }
 
     private func testAPIConnection() {
+        // 取消前一個 in-flight test，避免使用者連點 chip 時多個並行測試
+        testConnectionTask?.cancel()
         isTesting = true
         testResult = ""
         let client = OpenRouterClient()
         let provider = currentProvider
         let model = settingsStore.selectedModel
-        Task {
+        testConnectionTask = Task {
             do {
                 try await client.testConnection(model: model, provider: provider)
+                if Task.isCancelled { return }
                 await MainActor.run {
                     testResult = L10n.API.connectionSuccessModel(model)
                     isTesting = false
                     clearTestResult()
                 }
+            } catch is CancellationError {
+                // 被新測試取代，略過
             } catch {
+                if Task.isCancelled { return }
                 await MainActor.run {
                     testResult = "✗ \(error.localizedDescription)"
                     isTesting = false
@@ -773,12 +781,15 @@ struct APISettingsView: View {
     }
 
     private func fetchCloudModels() {
+        // 取消前一個 in-flight fetch，避免重複點按造成的 race
+        fetchModelsTask?.cancel()
         let provider = currentProvider
         isFetchingCloudModels = true
         cloudModelsError = ""
-        Task {
+        fetchModelsTask = Task {
             do {
                 let models = try await LLMProvider.fetchOpenAIModels(provider: provider)
+                if Task.isCancelled { return }
                 await MainActor.run {
                     fetchedCloudModels = models
                     isFetchingCloudModels = false
@@ -786,7 +797,10 @@ struct APISettingsView: View {
                         cloudModelsError = L10n.APIModels.emptyResponse
                     }
                 }
+            } catch is CancellationError {
+                // 被新 fetch 取代
             } catch {
+                if Task.isCancelled { return }
                 await MainActor.run {
                     isFetchingCloudModels = false
                     fetchedCloudModels = []

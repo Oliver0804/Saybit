@@ -446,14 +446,7 @@ struct OnboardingView: View {
     }
 
     private func defaultModel(for providerID: String) -> String {
-        switch providerID {
-        case "openrouter": "openai/gpt-4.1-nano"
-        case "openai":     "gpt-4.1-nano"
-        case "deepseek":   "deepseek-chat"
-        case "groq":       "llama-3.3-70b-versatile"
-        case "together":   "meta-llama/Llama-3.3-70B-Instruct-Turbo"
-        default:           settingsStore.selectedModel
-        }
+        LLMProvider.defaultModel(for: providerID) ?? settingsStore.selectedModel
     }
 
     // MARK: - Helpers

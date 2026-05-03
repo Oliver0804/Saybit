@@ -294,14 +294,8 @@ struct TutorialView: View {
                         guard !apiKeyInput.isEmpty else { return }
                         try? KeychainHelper.saveAPIKey(apiKeyInput,
                                                        for: settingsStore.selectedProvider.id)
-                        // Set default model based on provider
-                        switch settingsStore.selectedProviderID {
-                        case "openai":     settingsStore.selectedModel = "gpt-4.1-nano"
-                        case "openrouter": settingsStore.selectedModel = "openai/gpt-4.1-nano"
-                        case "deepseek":   settingsStore.selectedModel = "deepseek-chat"
-                        case "groq":       settingsStore.selectedModel = "llama-3.3-70b-versatile"
-                        case "together":   settingsStore.selectedModel = "meta-llama/Llama-3.3-70B-Instruct-Turbo"
-                        default: break
+                        if let preset = LLMProvider.defaultModel(for: settingsStore.selectedProviderID) {
+                            settingsStore.selectedModel = preset
                         }
                     }
                     .buttonStyle(.borderedProminent)

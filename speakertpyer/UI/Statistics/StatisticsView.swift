@@ -112,30 +112,32 @@ struct StatisticsView: View {
 
     // MARK: - Cost Estimate
 
-    private var totalCostUSD: Double {
-        filteredRecords.reduce(0.0) { acc, r in
+    /// 一次掃過 filteredRecords 算總成本和未知模型數，避免兩次 reduce
+    /// 加上對 ModelPricingTable.price 的線性掃描（每 record 需比對 ~20 個 pattern）。
+    private var costSummary: (total: Double, unknown: Int) {
+        var total = 0.0
+        var unknown = 0
+        for r in filteredRecords {
             let model = r.modelName ?? ""
-            let prompt = Int(r.promptTokens)
-            let completion = Int(r.completionTokens)
-            let cost = ModelPricingTable.cost(model: model,
-                                              promptTokens: prompt,
-                                              completionTokens: completion) ?? 0
-            return acc + cost
+            let cost = ModelPricingTable.cost(
+                model: model,
+                promptTokens: Int(r.promptTokens),
+                completionTokens: Int(r.completionTokens)
+            )
+            if let cost {
+                total += cost
+            } else if r.totalTokens > 0,
+                      !model.lowercased().hasPrefix("local/"),
+                      !model.lowercased().hasPrefix("ollama/") {
+                unknown += 1
+            }
         }
-    }
-
-    private var unknownModelCount: Int {
-        filteredRecords.filter { r in
-            let model = r.modelName ?? ""
-            guard r.totalTokens > 0 else { return false }
-            return ModelPricingTable.price(for: model) == nil
-                && !model.lowercased().hasPrefix("local/")
-                && !model.lowercased().hasPrefix("ollama/")
-        }.count
+        return (total, unknown)
     }
 
     private var costEstimateCard: some View {
-        GlassCard {
+        let summary = costSummary
+        return GlassCard {
             HStack(spacing: 12) {
                 Image(systemName: "dollarsign.circle.fill")
                     .font(.title2)
@@ -143,13 +145,13 @@ struct StatisticsView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(L10n.Cost.totalEstimate)
                         .font(.headline)
-                    Text("\(ModelPricingTable.formatUSD(totalCostUSD)) USD")
+                    Text("\(ModelPricingTable.formatUSD(summary.total)) USD")
                         .font(.system(size: 22, weight: .bold))
                         .monospacedDigit()
                 }
                 Spacer()
-                if unknownModelCount > 0 {
-                    Text(L10n.Cost.unknownIgnored(unknownModelCount))
+                if summary.unknown > 0 {
+                    Text(L10n.Cost.unknownIgnored(summary.unknown))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }

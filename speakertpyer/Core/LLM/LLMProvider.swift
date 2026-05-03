@@ -132,6 +132,22 @@ struct LLMProvider: Codable, Identifiable, Hashable {
 
     static let builtInProviders: [LLMProvider] = [.openRouter, .openAI, .deepSeek, .groq, .togetherAI, .ollama, .lmStudio]
 
+    // MARK: - Default Model
+
+    /// 給定 provider id 回傳適合該 provider 的「常用」預設模型名稱。
+    /// 給切換 provider 後預先填模型用，使用者仍可改成自己想用的。
+    /// 本地服務（ollama / lmstudio / 自訂）回 nil — 由抓回的 model list 決定。
+    static func defaultModel(for providerID: String) -> String? {
+        switch providerID {
+        case "openrouter": "openai/gpt-4.1-nano"
+        case "openai":     "gpt-4.1-nano"
+        case "deepseek":   "deepseek-chat"
+        case "groq":       "llama-3.3-70b-versatile"
+        case "together":   "meta-llama/Llama-3.3-70B-Instruct-Turbo"
+        default: nil
+        }
+    }
+
     // MARK: - Custom Provider Factory
 
     static func custom(id: String, name: String, baseURL: String) -> LLMProvider {
