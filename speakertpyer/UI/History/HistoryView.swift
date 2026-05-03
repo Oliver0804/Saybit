@@ -5,8 +5,10 @@
 //  Created by 顏國明 on 2026/1/27.
 //
 
+import AppKit
 import CoreData
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct HistoryView: View {
     @Environment(\.managedObjectContext) private var viewContext
@@ -73,6 +75,17 @@ struct HistoryView: View {
                     }
 
                     Spacer()
+
+                    Menu {
+                        Button("匯出為 JSON") { exportRecords(format: .json) }
+                        Button("匯出為 Markdown") { exportRecords(format: .markdown) }
+                        Button("匯出為 CSV") { exportRecords(format: .csv) }
+                    } label: {
+                        Label("匯出", systemImage: "square.and.arrow.up")
+                            .font(.caption)
+                    }
+                    .menuStyle(.borderlessButton)
+                    .fixedSize()
 
                     Menu {
                         Button(L10n.History.deleteOlder7) {
@@ -146,6 +159,13 @@ struct HistoryView: View {
                                             Label(L10n.History.outputTokens(record.completionTokens), systemImage: "arrow.down.circle")
                                             Spacer()
                                             Label(L10n.History.totalTokensLabel(record.totalTokens), systemImage: "number")
+                                        }
+                                        if let cost = ModelPricingTable.cost(
+                                            model: record.modelName ?? "",
+                                            promptTokens: Int(record.promptTokens),
+                                            completionTokens: Int(record.completionTokens)
+                                        ) {
+                                            Label("估算成本：\(ModelPricingTable.formatUSD(cost))", systemImage: "dollarsign.circle")
                                         }
                                     }
 
@@ -264,5 +284,123 @@ struct HistoryView: View {
         guard days > 0,
               let cutoff = Calendar.current.date(byAdding: .day, value: -days, to: Date()) else { return }
         try? PersistenceController.shared.deleteRecords(olderThan: cutoff)
+    }
+
+    // MARK: - Export
+
+    private enum ExportFormat {
+        case json, markdown, csv
+
+        var ext: String {
+            switch self {
+            case .json: return "json"
+            case .markdown: return "md"
+            case .csv: return "csv"
+            }
+        }
+
+        var contentType: UTType {
+            switch self {
+            case .json: return .json
+            case .markdown: return UTType(filenameExtension: "md") ?? .plainText
+            case .csv: return UTType(filenameExtension: "csv") ?? .commaSeparatedText
+            }
+        }
+    }
+
+    private func exportRecords(format: ExportFormat) {
+        let snapshot = Array(records)
+        let panel = NSSavePanel()
+        panel.title = "匯出歷史紀錄"
+        panel.allowedContentTypes = [format.contentType]
+        let stamp = ISO8601DateFormatter().string(from: Date())
+            .replacingOccurrences(of: ":", with: "-")
+        panel.nameFieldStringValue = "saybit-history-\(stamp).\(format.ext)"
+        panel.begin { response in
+            guard response == .OK, let url = panel.url else { return }
+            do {
+                let data: Data
+                switch format {
+                case .json:     data = Self.encodeJSON(snapshot)
+                case .markdown: data = Self.encodeMarkdown(snapshot).data(using: .utf8) ?? Data()
+                case .csv:      data = Self.encodeCSV(snapshot).data(using: .utf8) ?? Data()
+                }
+                try data.write(to: url)
+            } catch {
+                NSAlert(error: error).runModal()
+            }
+        }
+    }
+
+    private static func encodeJSON(_ records: [TranscriptionRecord]) -> Data {
+        let isoFormatter = ISO8601DateFormatter()
+        let arr: [[String: Any]] = records.map { r in
+            [
+                "id": r.id?.uuidString ?? "",
+                "timestamp": r.timestamp.map { isoFormatter.string(from: $0) } ?? "",
+                "appContext": r.appContext ?? "",
+                "mode": r.mode ?? "",
+                "rawTranscript": r.rawTranscript ?? "",
+                "processedText": r.processedText ?? "",
+                "duration": r.duration,
+                "modelName": r.modelName ?? "",
+                "promptTokens": Int(r.promptTokens),
+                "completionTokens": Int(r.completionTokens),
+                "totalTokens": Int(r.totalTokens),
+            ]
+        }
+        return (try? JSONSerialization.data(withJSONObject: arr,
+                                            options: [.prettyPrinted, .sortedKeys])) ?? Data()
+    }
+
+    private static func encodeMarkdown(_ records: [TranscriptionRecord]) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
+        var out = "# Saybit 歷史紀錄\n\n"
+        out += "共 \(records.count) 筆\n\n---\n\n"
+        for r in records {
+            let ts = r.timestamp.map(formatter.string(from:)) ?? "-"
+            out += "## \(ts)\n\n"
+            if let app = r.appContext, !app.isEmpty { out += "- App：`\(app)`\n" }
+            if let model = r.modelName, !model.isEmpty { out += "- Model：`\(model)`\n" }
+            if r.totalTokens > 0 {
+                out += "- Tokens：\(r.promptTokens) → \(r.completionTokens)（合計 \(r.totalTokens)）\n"
+            }
+            out += "- 時長：\(String(format: "%.1f", r.duration))s\n\n"
+            if let raw = r.rawTranscript, !raw.isEmpty {
+                out += "**原文**\n\n> \(raw.replacingOccurrences(of: "\n", with: "\n> "))\n\n"
+            }
+            if let processed = r.processedText, !processed.isEmpty {
+                out += "**處理後**\n\n\(processed)\n\n"
+            }
+            out += "---\n\n"
+        }
+        return out
+    }
+
+    private static func encodeCSV(_ records: [TranscriptionRecord]) -> String {
+        let formatter = ISO8601DateFormatter()
+        let header = "timestamp,app,mode,model,duration_s,prompt_tokens,completion_tokens,total_tokens,raw,processed\n"
+        func esc(_ s: String?) -> String {
+            let v = (s ?? "").replacingOccurrences(of: "\"", with: "\"\"")
+            return "\"\(v)\""
+        }
+        var rows = header
+        for r in records {
+            let ts = r.timestamp.map(formatter.string(from:)) ?? ""
+            rows += [
+                esc(ts),
+                esc(r.appContext),
+                esc(r.mode),
+                esc(r.modelName),
+                String(format: "%.2f", r.duration),
+                String(Int(r.promptTokens)),
+                String(Int(r.completionTokens)),
+                String(Int(r.totalTokens)),
+                esc(r.rawTranscript),
+                esc(r.processedText),
+            ].joined(separator: ",") + "\n"
+        }
+        return rows
     }
 }

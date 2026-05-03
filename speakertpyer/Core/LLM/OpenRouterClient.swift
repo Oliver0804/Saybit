@@ -27,11 +27,30 @@ actor OpenRouterClient {
         var errorDescription: String? {
             switch self {
             case .noAPIKey(let provider): return "未設定 \(provider) API Key"
-            case .invalidResponse(let code): return "API 回應錯誤: \(code)"
-            case .decodingError(let error): return "解碼錯誤: \(error.localizedDescription)"
-            case .networkError(let error): return "網路錯誤: \(error.localizedDescription)"
+            case .invalidResponse(let code): return Self.humanReadable(statusCode: code)
+            case .decodingError(let error): return "解碼錯誤：\(error.localizedDescription)"
+            case .networkError(let error): return "網路錯誤：\(error.localizedDescription)"
             case .retriesExhausted(let code, let attempts):
-                return "重試 \(attempts) 次後仍失敗 (HTTP \(code))"
+                return "重試 \(attempts) 次後仍失敗（\(Self.humanReadable(statusCode: code))）"
+            }
+        }
+
+        /// 把 HTTP status code 翻成使用者看得懂的訊息。
+        static func humanReadable(statusCode code: Int) -> String {
+            switch code {
+            case 400: return "HTTP 400：請求格式錯誤（可能是模型名稱不正確或參數不被支援）"
+            case 401: return "HTTP 401：API Key 無效或已失效"
+            case 402: return "HTTP 402：餘額不足，請至服務商儲值"
+            case 403: return "HTTP 403：權限不足（可能是模型未授權）"
+            case 404: return "HTTP 404：模型不存在或端點錯誤"
+            case 408: return "HTTP 408：請求逾時"
+            case 413: return "HTTP 413：請求內容過大"
+            case 429: return "HTTP 429：超過速率限制，稍候再試"
+            case 500: return "HTTP 500：服務商內部錯誤"
+            case 502: return "HTTP 502：上游服務無回應"
+            case 503: return "HTTP 503：服務暫時不可用"
+            case 504: return "HTTP 504：上游逾時"
+            default:  return "HTTP \(code)：API 回應錯誤"
             }
         }
     }

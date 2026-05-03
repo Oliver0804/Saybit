@@ -60,6 +60,9 @@ struct StatisticsView: View {
                 // MARK: - Summary Cards
                 summaryCards
 
+                // MARK: - Cost Estimate
+                costEstimateCard
+
                 // MARK: - Daily Usage Chart
                 dailyUsageChart
 
@@ -104,6 +107,53 @@ struct StatisticsView: View {
                 icon: "calendar",
                 color: .purple
             )
+        }
+    }
+
+    // MARK: - Cost Estimate
+
+    private var totalCostUSD: Double {
+        filteredRecords.reduce(0.0) { acc, r in
+            let model = r.modelName ?? ""
+            let prompt = Int(r.promptTokens)
+            let completion = Int(r.completionTokens)
+            let cost = ModelPricingTable.cost(model: model,
+                                              promptTokens: prompt,
+                                              completionTokens: completion) ?? 0
+            return acc + cost
+        }
+    }
+
+    private var unknownModelCount: Int {
+        filteredRecords.filter { r in
+            let model = r.modelName ?? ""
+            guard r.totalTokens > 0 else { return false }
+            return ModelPricingTable.price(for: model) == nil
+                && !model.lowercased().hasPrefix("local/")
+                && !model.lowercased().hasPrefix("ollama/")
+        }.count
+    }
+
+    private var costEstimateCard: some View {
+        GlassCard {
+            HStack(spacing: 12) {
+                Image(systemName: "dollarsign.circle.fill")
+                    .font(.title2)
+                    .foregroundStyle(.green)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("累計成本估算")
+                        .font(.headline)
+                    Text("\(ModelPricingTable.formatUSD(totalCostUSD)) USD")
+                        .font(.system(size: 22, weight: .bold))
+                        .monospacedDigit()
+                }
+                Spacer()
+                if unknownModelCount > 0 {
+                    Text("\(unknownModelCount) 筆未知模型已忽略")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
         }
     }
 

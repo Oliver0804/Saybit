@@ -10,6 +10,9 @@ import SwiftUI
 struct AboutView: View {
     @State private var tapCount = 0
     @State private var showEasterEgg = false
+    @State private var updateStatus: String = ""
+    @State private var updateURL: URL? = nil
+    @State private var isCheckingUpdate: Bool = false
 
     private var appVersion: String {
         Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
@@ -65,6 +68,34 @@ struct AboutView: View {
                 Text("v\(appVersion) (\(buildNumber))")
                     .font(.system(size: 14))
                     .foregroundColor(.secondary)
+
+                HStack(spacing: 8) {
+                    Button {
+                        checkForUpdate()
+                    } label: {
+                        if isCheckingUpdate {
+                            ProgressView().controlSize(.small)
+                        } else {
+                            Label("檢查更新", systemImage: "arrow.down.circle")
+                        }
+                    }
+                    .controlSize(.small)
+                    .buttonStyle(.bordered)
+                    .disabled(isCheckingUpdate)
+
+                    if let url = updateURL {
+                        Link("查看新版", destination: url)
+                            .font(.system(size: 12))
+                    }
+                }
+
+                if !updateStatus.isEmpty {
+                    Text(updateStatus)
+                        .font(.system(size: 12))
+                        .foregroundColor(.secondary)
+                        .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
 
             // Description
@@ -125,5 +156,35 @@ struct AboutView: View {
         .padding(.vertical, 20)
         .padding(.horizontal, 20)
         .frame(width: 420, height: 560)
+    }
+
+    // MARK: - Update Check
+
+    private func checkForUpdate() {
+        isCheckingUpdate = true
+        updateStatus = ""
+        updateURL = nil
+        Task {
+            do {
+                let result = try await UpdateChecker.shared.check()
+                await MainActor.run {
+                    isCheckingUpdate = false
+                    switch result {
+                    case .upToDate(let v):
+                        updateStatus = "已是最新版本（v\(v)）"
+                    case .newer(let cur, let latest):
+                        updateStatus = "發現新版 \(latest.tagName)（目前 v\(cur)）"
+                        updateURL = URL(string: latest.htmlUrl)
+                    case .ahead(let cur, let latest):
+                        updateStatus = "本地 v\(cur) 比遠端 v\(latest) 新（dev build）"
+                    }
+                }
+            } catch {
+                await MainActor.run {
+                    isCheckingUpdate = false
+                    updateStatus = error.localizedDescription
+                }
+            }
+        }
     }
 }
