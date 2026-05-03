@@ -18,6 +18,12 @@ struct OnboardingView: View {
     @State private var apiKey = ""
     @State private var testResult: String?
     @State private var isTesting = false
+    @State private var apiKeySaved = false
+
+    /// Onboarding 快速選擇用的常見雲端 provider 清單（不含本地）。
+    private let onboardingProviders: [LLMProvider] = [
+        .openRouter, .openAI, .deepSeek, .groq,
+    ]
 
     var onComplete: () -> Void
     var onStartTutorial: (() -> Void)?
@@ -298,23 +304,44 @@ struct OnboardingView: View {
 
                 Divider()
 
+                // Provider quick picker
+                Text(L10n.Onboarding.chooseProvider)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+
+                HStack(spacing: 6) {
+                    ForEach(onboardingProviders) { p in
+                        Button {
+                            settingsStore.selectedProviderID = p.id
+                            apiKey = KeychainHelper.loadAPIKey(for: p.id) ?? ""
+                            apiKeySaved = !apiKey.isEmpty
+                            testResult = nil
+                        } label: {
+                            Text(p.name)
+                        }
+                        .controlSize(.small)
+                        .buttonStyle(.bordered)
+                        .tint(settingsStore.selectedProviderID == p.id ? .accentColor : .secondary)
+                    }
+                }
+
                 // API Key input
                 Text(L10n.Onboarding.apiKeyHint)
                     .font(.caption)
                     .foregroundColor(.secondary)
 
-                SecureField("sk-or-... / sk-...", text: $apiKey)
+                SecureField(currentOnboardingProvider.keyPlaceholder, text: $apiKey)
                     .textFieldStyle(.roundedBorder)
 
                 HStack {
                     Button(L10n.Common.save) {
-                        if !apiKey.isEmpty {
-                            try? KeychainHelper.saveAPIKey(apiKey)
-                        }
+                        guard !apiKey.isEmpty else { return }
+                        try? KeychainHelper.saveAPIKey(apiKey, for: currentOnboardingProvider.id)
+                        apiKeySaved = true
                     }
                     .disabled(apiKey.isEmpty)
 
-                    if KeychainHelper.loadAPIKey() != nil {
+                    if apiKeySaved {
                         HStack(spacing: 4) {
                             Image(systemName: "checkmark.circle.fill")
                                 .foregroundColor(.green)
@@ -325,17 +352,33 @@ struct OnboardingView: View {
                     }
                 }
 
-                // Links to get API keys
-                HStack(spacing: 16) {
-                    Link(L10n.Onboarding.getOpenRouterKey,
-                         destination: URL(string: "https://openrouter.ai/keys")!)
-                        .font(.caption)
-
-                    Link(L10n.Onboarding.getOpenAIKey,
-                         destination: URL(string: "https://platform.openai.com/api-keys")!)
+                // Links to get API keys (動態根據選擇的 provider)
+                if let url = onboardingKeyPortalURL {
+                    Link(L10n.Onboarding.getProviderKey(currentOnboardingProvider.name),
+                         destination: url)
                         .font(.caption)
                 }
             }
+        }
+        .onAppear {
+            apiKey = KeychainHelper.loadAPIKey(for: currentOnboardingProvider.id) ?? ""
+            apiKeySaved = !apiKey.isEmpty
+        }
+    }
+
+    private var currentOnboardingProvider: LLMProvider {
+        settingsStore.allProviders.first(where: { $0.id == settingsStore.selectedProviderID })
+            ?? .openRouter
+    }
+
+    private var onboardingKeyPortalURL: URL? {
+        switch currentOnboardingProvider.id {
+        case "openrouter": URL(string: "https://openrouter.ai/keys")
+        case "openai":     URL(string: "https://platform.openai.com/api-keys")
+        case "deepseek":   URL(string: "https://platform.deepseek.com/api_keys")
+        case "groq":       URL(string: "https://console.groq.com/keys")
+        case "together":   URL(string: "https://api.together.xyz/settings/api-keys")
+        default:           nil
         }
     }
 
@@ -381,10 +424,14 @@ struct OnboardingView: View {
     private func runAPITest() {
         isTesting = true
         testResult = nil
+        let provider = currentOnboardingProvider
+        let model = settingsStore.selectedModel.isEmpty
+            ? defaultModel(for: provider.id)
+            : settingsStore.selectedModel
         let client = OpenRouterClient()
         Task {
             do {
-                try await client.testConnection(model: "openai/gpt-4.1-nano", provider: .openRouter)
+                try await client.testConnection(model: model, provider: provider)
                 await MainActor.run {
                     testResult = L10n.Onboarding.testSuccess
                     isTesting = false
@@ -395,6 +442,17 @@ struct OnboardingView: View {
                     isTesting = false
                 }
             }
+        }
+    }
+
+    private func defaultModel(for providerID: String) -> String {
+        switch providerID {
+        case "openrouter": "openai/gpt-4.1-nano"
+        case "openai":     "gpt-4.1-nano"
+        case "deepseek":   "deepseek-chat"
+        case "groq":       "llama-3.3-70b-versatile"
+        case "together":   "meta-llama/Llama-3.3-70B-Instruct-Turbo"
+        default:           settingsStore.selectedModel
         }
     }
 

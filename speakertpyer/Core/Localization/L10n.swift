@@ -433,6 +433,10 @@ enum L10n {
         static var apiKeyTitle: String { d("設定 API Key", "设置 API Key", "Set Up API Key", "API Key を設定") }
         static var apiKeyDesc: String { d("Saybit 使用 AI 處理語音轉文字，需要 API Key 才能運作。", "Saybit 使用 AI 处理语音转文字，需要 API Key 才能运作。", "Saybit uses AI to process speech-to-text and requires an API Key to work.", "Saybit は音声からテキストへの処理に AI を使用し、API Key が必要です。") }
         static var apiKeySaved: String { d("API Key 已儲存", "API Key 已保存", "API Key Saved", "API Key 保存済み") }
+        static var chooseProvider: String { d("選擇服務商", "选择服务商", "Choose Provider", "プロバイダーを選択") }
+        static func getProviderKey(_ name: String) -> String {
+            d("取得 \(name) API Key →", "获取 \(name) API Key →", "Get \(name) API Key →", "\(name) API Key を取得 →")
+        }
         static var getOpenRouterKey: String { d("取得 OpenRouter API Key →", "获取 OpenRouter API Key →", "Get OpenRouter API Key →", "OpenRouter API Key を取得 →") }
         static var getOpenAIKey: String { d("取得 OpenAI API Key →", "获取 OpenAI API Key →", "Get OpenAI API Key →", "OpenAI API Key を取得 →") }
         // Price comparison
