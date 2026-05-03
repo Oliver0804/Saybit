@@ -6,6 +6,12 @@ on:
   pull_request:
     branches: [main]
 
+# Project deployment target 是 macOS 26.2 (Tahoe)，但 GitHub 目前只有 macos-15 runner，
+# SDK 最高 15.5.99。CI 用 MACOSX_DEPLOYMENT_TARGET=15.0 override，僅供編譯與測試驗證；
+# 實際發行版本仍以 Xcode 專案設定為準。
+env:
+  CI_DEPLOYMENT_TARGET: "15.0"
+
 jobs:
   build-and-test:
     name: Build & Test (macOS)
@@ -22,13 +28,6 @@ jobs:
       - name: Show Xcode version
         run: xcodebuild -version
 
-      - name: Resolve dependencies
-        run: |
-          xcodebuild \
-            -project speakertpyer.xcodeproj \
-            -scheme Saybit \
-            -resolvePackageDependencies
-
       - name: Build
         run: |
           set -o pipefail
@@ -38,7 +37,8 @@ jobs:
             -configuration Debug \
             -destination 'platform=macOS' \
             CODE_SIGNING_ALLOWED=NO \
-            build | xcbeautify --renderer github-actions || true
+            MACOSX_DEPLOYMENT_TARGET=$CI_DEPLOYMENT_TARGET \
+            build | xcbeautify --renderer github-actions
 
       - name: Test
         run: |
@@ -49,4 +49,5 @@ jobs:
             -configuration Debug \
             -destination 'platform=macOS' \
             CODE_SIGNING_ALLOWED=NO \
-            test | xcbeautify --renderer github-actions || true
+            MACOSX_DEPLOYMENT_TARGET=$CI_DEPLOYMENT_TARGET \
+            test | xcbeautify --renderer github-actions
