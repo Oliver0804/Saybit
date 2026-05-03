@@ -145,6 +145,18 @@ struct AboutView: View {
 
                 Link(L10n.Common.visitWebsite, destination: URL(string: "https://bashcat.net")!)
                     .font(.system(size: 14))
+
+                HStack(spacing: 16) {
+                    Link(destination: URL(string: "https://github.com/Oliver0804/Saybit")!) {
+                        Label("GitHub", systemImage: "chevron.left.forwardslash.chevron.right")
+                    }
+                    .font(.system(size: 12))
+
+                    Link(destination: URL(string: "https://github.com/Oliver0804/Saybit/issues/new")!) {
+                        Label(L10n.About.reportIssue, systemImage: "exclamationmark.bubble")
+                    }
+                    .font(.system(size: 12))
+                }
             }
 
             // Copyright

@@ -273,7 +273,14 @@ struct CapsuleBarView: View {
                         .lineLimit(2)
                         .truncationMode(.tail)
                     if session.totalTokens > 0 {
-                        Text("\(session.totalTokens) tokens")
+                        let cost = ModelPricingTable.cost(
+                            model: session.modelName,
+                            promptTokens: session.promptTokens,
+                            completionTokens: session.completionTokens
+                        )
+                        Text(cost.map {
+                            "\(session.totalTokens) tokens · \(ModelPricingTable.formatUSD($0))"
+                        } ?? "\(session.totalTokens) tokens")
                             .font(.system(size: 9, design: .monospaced))
                             .foregroundStyle(.white.opacity(0.3))
                     }
