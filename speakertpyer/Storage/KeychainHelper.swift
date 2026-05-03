@@ -77,15 +77,20 @@ enum KeychainHelper {
     }
 
     // MARK: - Legacy (backward-compatible, defaults to openrouter)
+    // 這三個 method 永遠以 "openrouter" 為對象，會誤判其他 provider 的 key 狀態。
+    // 留著只是怕外部還有 caller，新 code 一律用 `for: providerId`。
 
+    @available(*, deprecated, message: "改用 saveAPIKey(_:for:) 並傳入 settingsStore.selectedProvider.id")
     static func saveAPIKey(_ apiKey: String) throws {
         try saveAPIKey(apiKey, for: "openrouter")
     }
 
+    @available(*, deprecated, message: "改用 loadAPIKey(for:) 並傳入 settingsStore.selectedProvider.id")
     static func loadAPIKey() -> String? {
         loadAPIKey(for: "openrouter")
     }
 
+    @available(*, deprecated, message: "改用 deleteAPIKey(for:) 並傳入 settingsStore.selectedProvider.id")
     static func deleteAPIKey() {
         deleteAPIKey(for: "openrouter")
     }

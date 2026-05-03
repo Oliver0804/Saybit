@@ -57,6 +57,8 @@ enum TextExtractor {
         if focusResult == .success,
            let focused = focusedElement,
            CFGetTypeID(focused) == AXUIElementGetTypeID() {
+            // 上面的 CFGetTypeID 比對已等同 type guard，
+            // 而 CFType conditional downcast 編譯器會警告 always succeeds，因此維持 as!。
             let focusedAX = focused as! AXUIElement
             var selText: AnyObject?
             let textResult = AXUIElementCopyAttributeValue(

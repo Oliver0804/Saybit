@@ -425,7 +425,8 @@ class VoicePipeline {
         let provider = settingsStore.selectedProvider
         let transcript = session.rawTranscript
         let selectedText = session.appContext.selectedText
-        let hasSelectedText = selectedText != nil && !selectedText!.isEmpty
+        let nonEmptySelectedText = selectedText.flatMap { $0.isEmpty ? nil : $0 }
+        let hasSelectedText = nonEmptySelectedText != nil
         let skills = loadSnippets() ?? [:]
 
         log.info("LLM 處理開始 (provider=\(provider.name), model=\(model), style=\(style.rawValue))", category: "LLM")
@@ -435,13 +436,13 @@ class VoicePipeline {
         let contentForLLM: String
         let existingTextForPayload: String?
 
-        if hasSelectedText {
+        if let pickedText = nonEmptySelectedText {
             // ── 有選取文字：單次 LLM 呼叫 ──
             // 既有 prompt 已能透過 existing_text 處理指令（翻譯、改寫等）
-            log.info("有選取文字 (\(selectedText!.count) 字), 單階段處理", category: "LLM")
+            log.info("有選取文字 (\(pickedText.count) 字), 單階段處理", category: "LLM")
             systemPrompt = SystemPrompts.forStyle(style)
             contentForLLM = transcript
-            existingTextForPayload = selectedText
+            existingTextForPayload = pickedText
         } else {
             // ── 無選取文字：Stage 1 意圖分類（帶 timeout）→ Stage 2 執行 ──
             let intentResult = await classifyIntentWithTimeout(

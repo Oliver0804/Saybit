@@ -88,7 +88,7 @@ class WhisperSTTClient: AudioBufferConsumer {
             throw WhisperError.noAPIKey
         }
 
-        let url = URL(string: "https://api.openai.com/v1/audio/transcriptions")!
+        let url = URL(staticString: "https://api.openai.com/v1/audio/transcriptions")
         let boundary = UUID().uuidString
 
         var request = URLRequest(url: url)
@@ -149,7 +149,7 @@ class WhisperSTTClient: AudioBufferConsumer {
         }
 
         // Send a minimal request to validate the key
-        let url = URL(string: "https://api.openai.com/v1/models")!
+        let url = URL(staticString: "https://api.openai.com/v1/models")
         var request = URLRequest(url: url)
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         request.timeoutInterval = 10

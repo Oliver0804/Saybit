@@ -87,8 +87,8 @@ struct PersistenceController {
 
     init(inMemory: Bool = false) {
         container = NSPersistentContainer(name: "speakertpyer")
-        if inMemory {
-            container.persistentStoreDescriptions.first!.url = URL(fileURLWithPath: "/dev/null")
+        if inMemory, let firstDescription = container.persistentStoreDescriptions.first {
+            firstDescription.url = URL(fileURLWithPath: "/dev/null")
         }
         // Enable lightweight migration for schema changes
         let description = container.persistentStoreDescriptions.first

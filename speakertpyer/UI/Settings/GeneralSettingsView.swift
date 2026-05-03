@@ -709,7 +709,7 @@ struct GeneralSettingsView: View {
         script?.executeAndReturnError(&error)
         automationAuthorized = (error == nil)
         if !automationAuthorized {
-            NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Automation")!)
+            NSWorkspace.shared.open(URL(staticString: "x-apple.systempreferences:com.apple.preference.security?Privacy_Automation"))
         }
     }
 
@@ -725,13 +725,13 @@ struct GeneralSettingsView: View {
                 await MainActor.run {
                     remindersAuthorized = granted
                     if !granted {
-                        NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Reminders")!)
+                        NSWorkspace.shared.open(URL(staticString: "x-apple.systempreferences:com.apple.preference.security?Privacy_Reminders"))
                     }
                 }
             } catch {
                 NSLog("[Permission] Reminders requestFullAccess error: %@", error.localizedDescription)
                 await MainActor.run {
-                    NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Reminders")!)
+                    NSWorkspace.shared.open(URL(staticString: "x-apple.systempreferences:com.apple.preference.security?Privacy_Reminders"))
                 }
             }
         }
@@ -746,7 +746,7 @@ struct GeneralSettingsView: View {
                 await MainActor.run {
                     calendarAuthorized = granted
                     if !granted {
-                        NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Calendars")!)
+                        NSWorkspace.shared.open(URL(staticString: "x-apple.systempreferences:com.apple.preference.security?Privacy_Calendars"))
                     }
                 }
             } catch {
@@ -758,13 +758,13 @@ struct GeneralSettingsView: View {
                     await MainActor.run {
                         calendarAuthorized = legacyGranted
                         if !legacyGranted {
-                            NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Calendars")!)
+                            NSWorkspace.shared.open(URL(staticString: "x-apple.systempreferences:com.apple.preference.security?Privacy_Calendars"))
                         }
                     }
                 } catch {
                     NSLog("[Permission] Calendar legacy requestAccess error: %@", error.localizedDescription)
                     await MainActor.run {
-                        NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Calendars")!)
+                        NSWorkspace.shared.open(URL(staticString: "x-apple.systempreferences:com.apple.preference.security?Privacy_Calendars"))
                     }
                 }
             }

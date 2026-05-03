@@ -267,17 +267,17 @@ struct TutorialView: View {
                 // Get API Key link based on selection
                 HStack(spacing: 8) {
                     if settingsStore.selectedProviderID == "openrouter" {
-                        Link(destination: URL(string: "https://openrouter.ai/keys")!) {
+                        Link(destination: URL(staticString: "https://openrouter.ai/keys")) {
                             Label(L10n.Onboarding.apiTutorialGetKey, systemImage: "link")
                                 .font(.callout)
                         }
                     } else if settingsStore.selectedProviderID == "openai" {
-                        Link(destination: URL(string: "https://platform.openai.com/api-keys")!) {
+                        Link(destination: URL(staticString: "https://platform.openai.com/api-keys")) {
                             Label(L10n.Onboarding.apiTutorialGetKey, systemImage: "link")
                                 .font(.callout)
                         }
                     } else {
-                        Link(destination: URL(string: "https://console.groq.com/keys")!) {
+                        Link(destination: URL(staticString: "https://console.groq.com/keys")) {
                             Label(L10n.Onboarding.apiTutorialGetKey, systemImage: "link")
                                 .font(.callout)
                         }
