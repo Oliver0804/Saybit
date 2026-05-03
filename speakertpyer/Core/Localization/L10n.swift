@@ -388,6 +388,9 @@ enum L10n {
             authorized ? d("輔助使用已授權", "辅助功能已授权", "Accessibility Authorized", "アクセシビリティ許可済み")
                        : d("輔助使用未授權", "辅助功能未授权", "Accessibility Not Authorized", "アクセシビリティ未許可")
         }
+        static func updateAvailable(_ tag: String) -> String {
+            d("有新版可用：\(tag)", "有新版可用：\(tag)", "Update available: \(tag)", "新バージョンあり：\(tag)")
+        }
     }
 
     // MARK: - Overlay

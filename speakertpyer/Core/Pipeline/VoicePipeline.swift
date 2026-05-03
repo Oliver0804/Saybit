@@ -521,7 +521,7 @@ class VoicePipeline {
             tone: effectiveTone,
             languagePreference: settingsStore.languagePreference,
             personalDictionary: loadPersonalDictionary(),
-            snippets: nil,
+            snippets: loadSnippets(),
             screenContext: nil,
             whisperMode: settingsStore.enableWhisperMode ? true : nil,
             existingText: existingTextForPayload

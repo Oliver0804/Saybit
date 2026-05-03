@@ -75,12 +75,12 @@ struct MenuBarView: View {
 
             Divider()
 
-            // API Key status
+            // API Key status (依目前選擇的 provider 判斷；本地服務不需 key 永遠視為已備妥)
             HStack {
                 Circle()
-                    .fill(KeychainHelper.loadAPIKey() != nil ? Color.green : Color.red)
+                    .fill(apiKeyReady ? Color.green : Color.red)
                     .frame(width: 8, height: 8)
-                Text(L10n.Menu.apiKeyStatus(KeychainHelper.loadAPIKey() != nil))
+                Text(L10n.Menu.apiKeyStatus(apiKeyReady))
                     .font(.caption)
                     .foregroundColor(.secondary)
             }
@@ -100,6 +100,25 @@ struct MenuBarView: View {
             .padding(.vertical, 4)
 
             Divider()
+
+            // Update notification (only shown when a new version is available)
+            if !settingsStore.availableUpdateTag.isEmpty {
+                if let url = URL(string: settingsStore.availableUpdateURL),
+                   !settingsStore.availableUpdateURL.isEmpty {
+                    Link(destination: url) {
+                        HStack {
+                            Image(systemName: "sparkles")
+                                .foregroundStyle(.green)
+                            Text(L10n.Menu.updateAvailable(settingsStore.availableUpdateTag))
+                                .font(.caption)
+                                .foregroundStyle(.green)
+                        }
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 4)
+                    Divider()
+                }
+            }
 
             // Settings
             SettingsLink {
@@ -125,5 +144,11 @@ struct MenuBarView: View {
             keyCode: UInt16(settingsStore.hotkeyKeyCode),
             modifiers: CGEventFlags(rawValue: UInt64(settingsStore.hotkeyModifiers))
         )
+    }
+
+    private var apiKeyReady: Bool {
+        let provider = settingsStore.selectedProvider
+        if !provider.requiresAPIKey { return true }
+        return KeychainHelper.loadAPIKey(for: provider.id)?.isEmpty == false
     }
 }
