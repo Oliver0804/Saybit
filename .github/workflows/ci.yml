@@ -40,9 +40,10 @@ jobs:
             MACOSX_DEPLOYMENT_TARGET=$CI_DEPLOYMENT_TARGET \
             build | xcbeautify --renderer github-actions
 
-      # 只跑單元測試。UI 測試會試圖將 LSUIElement menu bar app 帶到前景，
-      # 在 GitHub headless runner 上必失敗（"Failed to activate application ...
-      # current state: Running Background"）。
+      # 只跑單元測試。Saybit 是 LSUIElement = YES 的 menu bar app，
+      # 在 headless runner 上 host app 無法正常 foreground，XCTest runner
+      # 會卡在 "Test runner never began executing tests after launching"。
+      # 為了 CI 能跑：override INFOPLIST_KEY_LSUIElement=NO（僅影響 CI build）。
       - name: Test (unit only)
         run: |
           set -o pipefail
@@ -54,4 +55,5 @@ jobs:
             -only-testing:speakertpyerTests \
             CODE_SIGNING_ALLOWED=NO \
             MACOSX_DEPLOYMENT_TARGET=$CI_DEPLOYMENT_TARGET \
+            INFOPLIST_KEY_LSUIElement=NO \
             test | xcbeautify --renderer github-actions
