@@ -34,6 +34,35 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             requestPermissions()
             setupHotKey()
         }
+
+        runAutoUpdateCheckIfDue()
+    }
+
+    /// 啟動時檢查更新（24h 節流）。
+    private func runAutoUpdateCheckIfDue() {
+        guard settingsStore.enableAutoUpdateCheck else { return }
+        let elapsed = Date().timeIntervalSince(settingsStore.lastUpdateCheckAt)
+        guard elapsed >= 24 * 3600 else { return }
+
+        Task { [weak self] in
+            do {
+                let result = try await UpdateChecker.shared.check()
+                await MainActor.run {
+                    guard let self else { return }
+                    self.settingsStore.lastUpdateCheckAt = Date()
+                    if case .newer(_, let release) = result {
+                        self.settingsStore.availableUpdateTag = release.tagName
+                        self.settingsStore.availableUpdateURL = release.htmlUrl
+                        AppLogger.shared.info("Auto update found: \(release.tagName)", category: "Update")
+                    } else {
+                        self.settingsStore.availableUpdateTag = ""
+                        self.settingsStore.availableUpdateURL = ""
+                    }
+                }
+            } catch {
+                AppLogger.shared.debug("Auto update check failed: \(error.localizedDescription)", category: "Update")
+            }
+        }
     }
 
     // MARK: - Onboarding
@@ -124,13 +153,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private func requestPermissions() {
         AVAudioApplication.requestRecordPermission { granted in
             if !granted {
-                print("[Saybit] Microphone permission denied")
+                AppLogger.shared.error("Microphone permission denied", category: "Permission")
             }
         }
 
         SFSpeechRecognizer.requestAuthorization { status in
             if status != .authorized {
-                print("[Saybit] Speech recognition permission denied: \(status.rawValue)")
+                AppLogger.shared.error("Speech recognition permission denied: \(status.rawValue)", category: "Permission")
             }
         }
 

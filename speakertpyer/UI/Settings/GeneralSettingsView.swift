@@ -46,6 +46,36 @@ struct GeneralSettingsView: View {
                     }
                 }
 
+                if settingsMatchesSearch(["更新", "update", "version", "版本", "auto-update"], searchText: searchState.searchText) {
+                    GlassCard {
+                        VStack(alignment: .leading, spacing: 10) {
+                            GlassSectionHeader(title: L10n.Update.checkButton, icon: "arrow.down.circle")
+
+                            Toggle(L10n.General.enableAutoUpdateCheck, isOn: $settingsStore.enableAutoUpdateCheck)
+                            Text(L10n.General.autoUpdateCheckDesc)
+                                .font(.body)
+                                .foregroundStyle(.secondary)
+                                .padding(.leading, 2)
+
+                            if !settingsStore.availableUpdateTag.isEmpty {
+                                HStack(spacing: 6) {
+                                    Image(systemName: "sparkles")
+                                        .foregroundStyle(.green)
+                                    Text(L10n.Update.newer(latest: settingsStore.availableUpdateTag,
+                                                           current: UpdateChecker.shared.currentVersion()))
+                                        .font(.body)
+                                    if let url = URL(string: settingsStore.availableUpdateURL),
+                                       !settingsStore.availableUpdateURL.isEmpty {
+                                        Link(L10n.Update.viewRelease, destination: url)
+                                            .font(.body)
+                                    }
+                                }
+                                .padding(.top, 2)
+                            }
+                        }
+                    }
+                }
+
                 // MARK: - 語言
                 if settingsMatchesSearch(["語言", "语言", "language", "言語", "介面"], searchText: searchState.searchText) {
                     GlassCard {

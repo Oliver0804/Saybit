@@ -105,6 +105,27 @@ class SettingsStore: ObservableObject {
         didSet { UserDefaults.standard.set(toneStyle.rawValue, forKey: "toneStyle") }
     }
 
+    // MARK: - Updates
+
+    @Published var enableAutoUpdateCheck: Bool {
+        didSet { UserDefaults.standard.set(enableAutoUpdateCheck, forKey: "enableAutoUpdateCheck") }
+    }
+
+    /// 上一次自動檢查時間（用於做每日節流）。
+    @Published var lastUpdateCheckAt: Date {
+        didSet { UserDefaults.standard.set(lastUpdateCheckAt, forKey: "lastUpdateCheckAt") }
+    }
+
+    /// 從 GitHub 抓回的「最新可用版本」tag；用於 menu bar 顯示紅點。
+    @Published var availableUpdateTag: String {
+        didSet { UserDefaults.standard.set(availableUpdateTag, forKey: "availableUpdateTag") }
+    }
+
+    /// 對應 release 的 html_url。
+    @Published var availableUpdateURL: String {
+        didSet { UserDefaults.standard.set(availableUpdateURL, forKey: "availableUpdateURL") }
+    }
+
     // MARK: - HotKey
 
     @Published var hotkeyKeyCode: Int {
@@ -293,6 +314,10 @@ class SettingsStore: ObservableObject {
         self.languagePreference = defaults.string(forKey: "languagePreference") ?? "zh-TW"
         self.enableAutoLanguageDetection = defaults.object(forKey: "enableAutoLanguageDetection") as? Bool ?? false
         self.toneStyle = ToneStyle(rawValue: defaults.string(forKey: "toneStyle") ?? "") ?? .auto
+        self.enableAutoUpdateCheck = defaults.object(forKey: "enableAutoUpdateCheck") as? Bool ?? true
+        self.lastUpdateCheckAt = (defaults.object(forKey: "lastUpdateCheckAt") as? Date) ?? .distantPast
+        self.availableUpdateTag = defaults.string(forKey: "availableUpdateTag") ?? ""
+        self.availableUpdateURL = defaults.string(forKey: "availableUpdateURL") ?? ""
         self.hotkeyKeyCode = defaults.object(forKey: "hotkeyKeyCode") as? Int ?? 49 // Space
         self.hotkeyModifiers = defaults.object(forKey: "hotkeyModifiers") as? Int ?? 0x80000 // Option
         self.hotkeyTriggerMode = HotkeyTriggerMode(rawValue: defaults.string(forKey: "hotkeyTriggerMode") ?? "") ?? .toggle

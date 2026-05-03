@@ -91,6 +91,9 @@ enum L10n {
     // MARK: - General Settings
 
     enum General {
+        static var enableAutoUpdateCheck: String { d("啟動時自動檢查更新", "启动时自动检查更新", "Auto-check for updates on launch", "起動時に自動でアップデート確認") }
+        static var autoUpdateCheckDesc: String { d("每 24 小時詢問 GitHub Releases，新版本可用時於設定中提示。", "每 24 小时询问 GitHub Releases，新版本可用时于设置中提示。", "Polls GitHub Releases every 24 hours and notifies you here when a new version is available.", "24 時間ごとに GitHub Releases を確認し、新バージョンがある場合はここでお知らせします。") }
+
         static var language: String { d("語言", "语言", "Language", "言語") }
         static var preferredLanguage: String { d("偏好語言", "偏好语言", "Preferred Language", "表示言語") }
         static var autoLanguageDetection: String { d("自動語言偵測", "自动语言检测", "Auto Language Detection", "自動言語検出") }
