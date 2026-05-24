@@ -4,6 +4,52 @@ use tauri::menu::{Menu, MenuItem};
 use tauri::tray::TrayIconBuilder;
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 use enigo::{Enigo, Keyboard, Settings, Key, Direction};
+use std::fs::OpenOptions;
+use std::io::Write;
+
+fn log_startup(app: &AppHandle, msg: &str) {
+    if let Ok(dir) = app.path().app_data_dir() {
+        let _ = std::fs::create_dir_all(&dir);
+        if let Ok(mut f) = OpenOptions::new().create(true).append(true).open(dir.join("startup.log")) {
+            let _ = writeln!(f, "[{}] {}", chrono_like_ts(), msg);
+        }
+    }
+}
+
+fn chrono_like_ts() -> String {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs().to_string()).unwrap_or_else(|_| "?".into())
+}
+
+fn build_tray(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
+    let tray_menu = Menu::with_items(app, &[
+        &MenuItem::with_id(app, "show_settings", "設定 (Settings)", true, None::<&str>)?,
+        &MenuItem::with_id(app, "quit", "結束 (Quit)", true, None::<&str>)?,
+    ])?;
+
+    let icon = app.default_window_icon()
+        .ok_or("default_window_icon not available")?
+        .clone();
+
+    let _tray = TrayIconBuilder::new()
+        .icon(icon)
+        .menu(&tray_menu)
+        .on_menu_event(|app, event| {
+            match event.id.as_ref() {
+                "show_settings" => {
+                    if let Some(window) = app.get_webview_window("main") {
+                        let _ = window.show();
+                        let _ = window.set_focus();
+                    }
+                }
+                "quit" => app.exit(0),
+                _ => {}
+            }
+        })
+        .build(app)?;
+
+    Ok(())
+}
 
 #[tauri::command]
 async fn simulate_paste() -> Result<(), String> {
@@ -95,40 +141,34 @@ pub fn run() {
             hide_window
         ])
         .setup(|app| {
-            // 1. 初始化系統托盤
-            let tray_menu = Menu::with_items(app, &[
-                &MenuItem::with_id(app, "show_settings", "設定 (Settings)", true, None::<&str>)?,
-                &MenuItem::with_id(app, "quit", "結束 (Quit)", true, None::<&str>)?,
-            ])?;
+            let handle = app.handle().clone();
+            log_startup(&handle, "setup: begin");
 
-            let _tray = TrayIconBuilder::new()
-                .icon(app.default_window_icon().unwrap().clone())
-                .menu(&tray_menu)
-                .on_menu_event(|app, event| {
-                    match event.id.as_ref() {
-                        "show_settings" => {
-                            if let Some(window) = app.get_webview_window("main") {
-                                window.show().unwrap();
-                                window.set_focus().unwrap();
-                            }
-                        }
-                        "quit" => {
-                            app.exit(0);
-                        }
-                        _ => {}
-                    }
-                })
-                .build(app)?;
+            // 1. 初始化系統托盤（任一步失敗都不阻擋 app 啟動）
+            match build_tray(app) {
+                Ok(_) => log_startup(&handle, "setup: tray ok"),
+                Err(e) => log_startup(&handle, &format!("setup: tray FAILED: {e}")),
+            }
 
             // 2. 註冊預設全域熱鍵 Ctrl + Alt + Space
-            let shortcut = "Ctrl+Alt+Space".parse::<Shortcut>().unwrap();
-            let _ = app.global_shortcut().register(shortcut);
+            if let Ok(shortcut) = "Ctrl+Alt+Space".parse::<Shortcut>() {
+                match app.global_shortcut().register(shortcut) {
+                    Ok(_) => log_startup(&handle, "setup: hotkey ok"),
+                    Err(e) => log_startup(&handle, &format!("setup: hotkey FAILED: {e}")),
+                }
+            }
 
             // 3. 初始顯示主設定視窗（以利載入 Onboarding）
             if let Some(main_window) = app.get_webview_window("main") {
-                main_window.show().unwrap();
+                match main_window.show() {
+                    Ok(_) => log_startup(&handle, "setup: main window shown"),
+                    Err(e) => log_startup(&handle, &format!("setup: show main FAILED: {e}")),
+                }
+            } else {
+                log_startup(&handle, "setup: main window NOT FOUND");
             }
 
+            log_startup(&handle, "setup: done");
             Ok(())
         })
         .run(tauri::generate_context!())
