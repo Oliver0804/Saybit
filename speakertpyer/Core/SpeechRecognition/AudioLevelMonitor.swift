@@ -20,6 +20,7 @@ class AudioLevelMonitor: AudioBufferConsumer {
     private var tapCallbackCount = 0
     private var maxLevelSeen: Float = 0
     private let log = AppLogger.shared
+    private let levelThrottler = MainThreadThrottler(intervalMs: 50)
 
     init(id: String = UUID().uuidString) {
         self.consumerID = "AudioLevelMonitor-\(id)"
@@ -34,6 +35,7 @@ class AudioLevelMonitor: AudioBufferConsumer {
         tapCallbackCount = 0
         maxLevelSeen = 0
         isMonitoring = true
+        levelThrottler.reset()
 
         SharedAudioEngine.shared.addConsumer(self)
         log.info("AudioLevelMonitor 開始監聽", category: "SmartSend")
@@ -63,12 +65,14 @@ class AudioLevelMonitor: AudioBufferConsumer {
             maxLevelSeen = level
         }
 
+        // Audio tap 在 render thread；節流到 ~20Hz 派發到 main
         if let onLevel = onAudioLevel {
-            DispatchQueue.main.async {
+            levelThrottler.dispatch {
                 onLevel(level)
             }
         }
 
+        // 語音偵測是 one-shot 事件，不節流
         if level >= speechThreshold {
             DispatchQueue.main.async { [weak self] in
                 self?.log.info("語音偵測觸發 (level=\(String(format: "%.3f", level)))", category: "SmartSend")

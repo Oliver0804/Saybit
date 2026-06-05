@@ -478,16 +478,24 @@ struct CapsuleBarView: View {
 
 struct TypingDotsView: View {
     @State private var dotCount = 0
-
-    private let timer = Timer.publish(every: 0.4, on: .main, in: .common).autoconnect()
+    @State private var timer: Timer?
 
     var body: some View {
         Text(String(repeating: ".", count: dotCount + 1))
             .font(.system(size: 12, weight: .bold, design: .rounded))
             .foregroundStyle(.white.opacity(0.5))
             .frame(width: 20, alignment: .leading)
-            .onReceive(timer) { _ in
-                dotCount = (dotCount + 1) % 3
+            .onAppear {
+                // 用 onAppear/onDisappear 控管 Timer，避免 View struct 被重建時
+                // Timer.publish().autoconnect() 的 cancellable 滯留在記憶體
+                timer?.invalidate()
+                timer = Timer.scheduledTimer(withTimeInterval: 0.4, repeats: true) { _ in
+                    dotCount = (dotCount + 1) % 3
+                }
+            }
+            .onDisappear {
+                timer?.invalidate()
+                timer = nil
             }
     }
 }

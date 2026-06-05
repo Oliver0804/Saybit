@@ -11,19 +11,28 @@ import ApplicationServices
 enum TextExtractor {
     private static let log = AppLogger.shared
 
-    /// Get the current frontmost app context including selected text (async to avoid blocking main thread)
+    /// Get the current frontmost app context including selected text.
+    ///
+    /// 整段保證不在 caller 的 actor（含 MainActor）上跑：
+    /// - AX 同步 API 與 AppleScript 都可能卡 50–500ms（目標 app 卡住、繁忙）
+    /// - 用 Task.detached 把同步段隔離到 background priority pool
     static func getCurrentContext() async -> AppContext {
-        guard let frontApp = NSWorkspace.shared.frontmostApplication else {
-            return .empty
+        // NSWorkspace.frontmostApplication 必須在 main thread 讀
+        let (appName, bundleID, pid): (String, String?, pid_t) = await MainActor.run {
+            guard let app = NSWorkspace.shared.frontmostApplication else {
+                return ("Unknown", nil, pid_t(-1))
+            }
+            return (app.localizedName ?? "Unknown", app.bundleIdentifier, app.processIdentifier)
         }
 
-        let appName = frontApp.localizedName ?? "Unknown"
-        let bundleID = frontApp.bundleIdentifier
+        guard pid > 0 else { return .empty }
 
-        // Strategy 1: AX API — focused element → selected text (fast, no side effects)
-        var selectedText = getSelectedTextViaAX(for: frontApp)
+        // Strategy 1: AX API — 在 detached background pool 跑，不阻塞 caller actor
+        var selectedText: String? = await Task.detached(priority: .userInitiated) {
+            getSelectedTextViaAX(pid: pid)
+        }.value
 
-        // Strategy 2: Clipboard-based Cmd+C (AppleScript → CGEvent fallback)
+        // Strategy 2: Clipboard-based Cmd+C (內部自帶 async sleep)
         if selectedText == nil {
             log.info("AX API 未取得選取文字，嘗試 clipboard fallback", category: "TextExtract")
             selectedText = await getSelectedTextViaClipboard()
@@ -42,8 +51,7 @@ enum TextExtractor {
 
     // MARK: - Strategy 1: Accessibility API
 
-    private static func getSelectedTextViaAX(for app: NSRunningApplication) -> String? {
-        let pid = app.processIdentifier
+    private static func getSelectedTextViaAX(pid: pid_t) -> String? {
         let appElement = AXUIElementCreateApplication(pid)
 
         // Try 1a: focused element → selected text
@@ -105,21 +113,23 @@ enum TextExtractor {
             return nil
         } ?? []
 
-        // Try AppleScript first (more reliable for Electron apps)
-        var cmdCSent = false
-        let script = NSAppleScript(source: """
-            tell application "System Events"
-                keystroke "c" using command down
-            end tell
-        """)
-        var errorInfo: NSDictionary?
-        script?.executeAndReturnError(&errorInfo)
-        if let err = errorInfo {
-            log.info("AppleScript Cmd+C 失敗: \(err)", category: "TextExtract")
-        } else {
-            cmdCSent = true
-            log.info("AppleScript Cmd+C 已送出", category: "TextExtract")
-        }
+        // Try AppleScript first (more reliable for Electron apps).
+        // executeAndReturnError 是同步阻塞，放到 detached task 隔離不阻塞 caller。
+        var cmdCSent = await Task.detached(priority: .userInitiated) { () -> Bool in
+            let script = NSAppleScript(source: """
+                tell application "System Events"
+                    keystroke "c" using command down
+                end tell
+            """)
+            var errorInfo: NSDictionary?
+            script?.executeAndReturnError(&errorInfo)
+            if let err = errorInfo {
+                Self.log.info("AppleScript Cmd+C 失敗: \(err)", category: "TextExtract")
+                return false
+            }
+            Self.log.info("AppleScript Cmd+C 已送出", category: "TextExtract")
+            return true
+        }.value
 
         // If AppleScript failed, try CGEvent
         // Use nil source to avoid inheriting physical modifier keys (user may still hold hotkey)

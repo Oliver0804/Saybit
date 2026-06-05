@@ -8,7 +8,20 @@
 import Foundation
 
 actor OpenRouterClient {
-    private let session = URLSession.shared
+    /// 專用 URLSession：
+    /// - 不與 URLSession.shared 競爭全域 4-per-host quota
+    /// - 為 streaming 設定明確的 timeout（單次連線 30s、整段資源 5min）
+    /// - waitsForConnectivity 讓暫時離線時 OS 排隊而非立刻失敗
+    /// - HTTP/2 multiplexing 預設開啟
+    private let session: URLSession = {
+        let cfg = URLSessionConfiguration.default
+        cfg.timeoutIntervalForRequest = 30
+        cfg.timeoutIntervalForResource = 300
+        cfg.waitsForConnectivity = true
+        cfg.httpMaximumConnectionsPerHost = 6
+        cfg.requestCachePolicy = .reloadIgnoringLocalCacheData
+        return URLSession(configuration: cfg)
+    }()
     private let jsonEncoder = JSONEncoder()
     private let jsonDecoder = JSONDecoder()
 

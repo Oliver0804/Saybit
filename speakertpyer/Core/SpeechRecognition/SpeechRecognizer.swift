@@ -42,6 +42,7 @@ class SpeechRecognizer: AudioBufferConsumer {
         set { silenceDetector.silenceTimeoutDuration = newValue }
     }
     private let silenceDetector = SilenceDetector()
+    private let audioLevelThrottler = MainThreadThrottler(intervalMs: 50)
 
     private var speechRecognizer: SFSpeechRecognizer?
     private var recognitionRequest: SFSpeechAudioBufferRecognitionRequest?
@@ -81,6 +82,7 @@ class SpeechRecognizer: AudioBufferConsumer {
         isListening = true
         transcript = ""
         silenceDetector.start()
+        audioLevelThrottler.reset()
 
         recognitionTask = speechRecognizer.recognitionTask(with: request) { [weak self] result, error in
             guard let self else { return }
@@ -127,11 +129,12 @@ class SpeechRecognizer: AudioBufferConsumer {
         let displayLevel = AudioUtils.normalizedLevel(rms: rms, multiplier: 5.0 * micGain)
         let rawLevel = AudioUtils.normalizedLevel(rms: rms)
 
-        DispatchQueue.main.async { [weak self] in
+        // Audio tap 在 render thread；節流到 ~20Hz 後再回 main thread 更新 @Observable
+        audioLevelThrottler.dispatch { [weak self] in
             self?.audioLevel = displayLevel
         }
 
-        // 靜音偵測
+        // 靜音偵測（內部已 thread-safe）
         silenceDetector.update(rawLevel: rawLevel)
     }
 }

@@ -397,20 +397,29 @@ class VoicePipeline {
     private func observeTranscript() {
         Task { @MainActor in
             while case .recording = session.state {
+                // 去重：值相同不寫，避免不必要的 @Observable change notification
+                // 觸發整顆 OverlayView 重繪
                 if isUsingContinuousSTT, let bgSTT = backgroundSTT {
-                    session.rawTranscript = bgSTT.currentTranscript
-                    session.audioLevel = bgSTT.audioLevel
+                    let t = bgSTT.currentTranscript
+                    let lv = bgSTT.audioLevel
+                    if session.rawTranscript != t { session.rawTranscript = t }
+                    if session.audioLevel != lv { session.audioLevel = lv }
                 } else {
                     switch settingsStore.sttEngine {
                     case .appleSpeech:
-                        session.rawTranscript = speechRecognizer.transcript
-                        session.audioLevel = speechRecognizer.audioLevel
+                        let t = speechRecognizer.transcript
+                        let lv = speechRecognizer.audioLevel
+                        if session.rawTranscript != t { session.rawTranscript = t }
+                        if session.audioLevel != lv { session.audioLevel = lv }
                     case .whisperAPI:
                         // Whisper 不支援 partial results，只更新音量
-                        session.audioLevel = whisperClient.audioLevel
+                        let lv = whisperClient.audioLevel
+                        if session.audioLevel != lv { session.audioLevel = lv }
                     }
                 }
-                try? await Task.sleep(for: .milliseconds(100))
+                // 20Hz 輪詢，對齊 audio level 50ms 節流；
+                // 配合去重後 @Observable 寫入次數實際 ≈ 取樣率 / 兩倍 polling 頻
+                try? await Task.sleep(for: .milliseconds(50))
             }
         }
     }

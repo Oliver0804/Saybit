@@ -26,6 +26,7 @@ class WhisperSTTClient: AudioBufferConsumer {
         set { silenceDetector.silenceTimeoutDuration = newValue }
     }
     private let silenceDetector = SilenceDetector()
+    private let audioLevelThrottler = MainThreadThrottler(intervalMs: 50)
 
     private var audioBuffers: [AVAudioPCMBuffer] = []
     private var recordingFormat: AVAudioFormat?
@@ -43,6 +44,7 @@ class WhisperSTTClient: AudioBufferConsumer {
 
         // 必須先設定 isRecording，否則 pre-buffer 回放時 handleAudioBuffer 會被 guard 擋掉
         isRecording = true
+        audioLevelThrottler.reset()
         SharedAudioEngine.shared.addConsumer(self, replayPreBuffer: true)
         log.info("WhisperSTTClient 開始錄音", category: "STT")
     }
@@ -73,11 +75,12 @@ class WhisperSTTClient: AudioBufferConsumer {
         let displayLevel = AudioUtils.normalizedLevel(rms: rms, multiplier: 5.0 * micGain)
         let rawLevel = AudioUtils.normalizedLevel(rms: rms)
 
-        DispatchQueue.main.async { [weak self] in
+        // Audio tap 在 render thread；節流到 ~20Hz 派發到 main
+        audioLevelThrottler.dispatch { [weak self] in
             self?.audioLevel = displayLevel
         }
 
-        // 靜音偵測
+        // 靜音偵測（內部 thread-safe）
         silenceDetector.update(rawLevel: rawLevel)
     }
 
