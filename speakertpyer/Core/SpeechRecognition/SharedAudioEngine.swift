@@ -29,6 +29,16 @@ class SharedAudioEngine {
     private(set) var isRunning = false
     private(set) var inputFormat: AVAudioFormat?
 
+    /// 人聲帶通濾波器（80Hz – 8kHz）— 在 tap 內 in-place 處理 buffer
+    /// 對所有 consumer 與 pre-buffer 一致生效
+    private let voiceFilter = VoiceBandpassFilter()
+
+    /// 切換降噪開關（thread-safe — 內部 Bool 在 macOS 上 atomic）
+    func setVoiceBandpassEnabled(_ enabled: Bool) {
+        voiceFilter.isEnabled = enabled
+        log.info("VoiceBandpass \(enabled ? "啟用" : "停用")", category: "Audio")
+    }
+
     // MARK: - Pre-buffer（環形緩衝區）
     // 保留最近 ~3 秒的音訊，讓新消費者加入時可回放，避免開頭語音遺失
     // 需要足夠長以涵蓋：AudioLevelMonitor 偵測延遲 + startRecording() 前置作業 + STT 引擎初始化時間
@@ -64,9 +74,18 @@ class SharedAudioEngine {
             return
         }
 
+        // 初始化人聲帶通濾波器（依目前裝置取樣率與通道數配置 biquad 係數）
+        voiceFilter.prepare(
+            sampleRate: Float(recordingFormat.sampleRate),
+            channelCount: Int(recordingFormat.channelCount)
+        )
+
         // 用 nil format 讓系統自動匹配裝置原生格式，避免格式不匹配
         inputNode.installTap(onBus: 0, bufferSize: 1024, format: nil) { [weak self] buffer, time in
             guard let self else { return }
+
+            // 先做帶通濾波（in-place），下游 consumer 與 pre-buffer 拿到的都是降噪後音訊
+            self.voiceFilter.process(buffer)
 
             // 寫入 pre-buffer
             self.appendToPreBuffer(buffer, time: time)

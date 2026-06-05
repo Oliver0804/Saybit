@@ -174,6 +174,14 @@ struct GeneralSettingsView: View {
                                     .foregroundStyle(.secondary)
                                     .padding(.leading, 2)
                             }
+
+                            Divider().opacity(0.3)
+
+                            Toggle("人聲帶通降噪", isOn: $settingsStore.enableVoiceBandpass)
+                            Text("僅保留 80Hz – 8kHz 的人聲頻率，過濾低頻嗡嗡聲（風扇、電源 hum）與高頻 hiss，提升 STT 辨識率。CPU 開銷可忽略。")
+                                .font(.body)
+                                .foregroundStyle(.secondary)
+                                .padding(.leading, 2)
                         }
                     }
                 }

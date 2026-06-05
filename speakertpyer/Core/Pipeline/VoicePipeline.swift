@@ -46,11 +46,22 @@ class VoicePipeline {
         // 啟動全域共享 audio engine（一次性）
         SharedAudioEngine.shared.start(inputDeviceUID: settingsStore.selectedInputDeviceUID)
 
+        // 套用人聲帶通降噪當前設定
+        SharedAudioEngine.shared.setVoiceBandpassEnabled(settingsStore.enableVoiceBandpass)
+
         // 監聽輸入裝置變更
         settingsStore.$selectedInputDeviceUID
             .dropFirst()
             .sink { uid in
                 SharedAudioEngine.shared.switchInputDevice(uid: uid)
+            }
+            .store(in: &cancellables)
+
+        // 監聽降噪開關
+        settingsStore.$enableVoiceBandpass
+            .dropFirst()
+            .sink { enabled in
+                SharedAudioEngine.shared.setVoiceBandpassEnabled(enabled)
             }
             .store(in: &cancellables)
 

@@ -182,6 +182,11 @@ class SettingsStore: ObservableObject {
         didSet { UserDefaults.standard.set(enableWhisperMode, forKey: "enableWhisperMode") }
     }
 
+    /// 人聲帶通降噪（80Hz – 8kHz biquad band-pass，去除低頻嗡嗡聲與高頻 hiss）
+    @Published var enableVoiceBandpass: Bool {
+        didSet { UserDefaults.standard.set(enableVoiceBandpass, forKey: "enableVoiceBandpass") }
+    }
+
     // MARK: - Silence Detection
 
     @Published var silenceTimeout: Double {
@@ -336,6 +341,7 @@ class SettingsStore: ObservableObject {
         self.enableContinuousSTT = defaults.object(forKey: "enableContinuousSTT") as? Bool ?? false
         self.enableSoundFeedback = defaults.object(forKey: "enableSoundFeedback") as? Bool ?? true
         self.enableWhisperMode = defaults.object(forKey: "enableWhisperMode") as? Bool ?? false
+        self.enableVoiceBandpass = defaults.object(forKey: "enableVoiceBandpass") as? Bool ?? true
         self.silenceTimeout = defaults.object(forKey: "silenceTimeout") as? Double ?? 2.0
         self.enableAutoStop = defaults.object(forKey: "enableAutoStop") as? Bool ?? true
         self.lmStudioBaseURL = defaults.string(forKey: "lmStudioBaseURL") ?? "http://localhost:1234"
