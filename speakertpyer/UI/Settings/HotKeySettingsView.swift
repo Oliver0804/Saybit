@@ -14,6 +14,7 @@ struct HotKeySettingsView: View {
     @EnvironmentObject var searchState: SettingsSearchState
     @State private var isRecording = false
     @State private var recordingTimeRemaining: Int = 0
+    @State private var countdownTask: Task<Void, Never>?
     private let recordingTimeout = 10
 
     var body: some View {
@@ -195,18 +196,21 @@ struct HotKeySettingsView: View {
     }
 
     private func startCountdown() {
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
-            guard isRecording else { return }
-            recordingTimeRemaining -= 1
-            if recordingTimeRemaining <= 0 {
-                cancelRecording()
-            } else {
-                startCountdown()
+        // 用可取消的 Task 取代遞迴 asyncAfter，避免 view 重建時舊 closure 滯留產生多條並行倒數
+        countdownTask?.cancel()
+        countdownTask = Task { @MainActor in
+            while recordingTimeRemaining > 0 {
+                try? await Task.sleep(for: .seconds(1))
+                if Task.isCancelled || !isRecording { return }
+                recordingTimeRemaining -= 1
             }
+            if isRecording { cancelRecording() }
         }
     }
 
     private func cancelRecording() {
+        countdownTask?.cancel()
+        countdownTask = nil
         GlobalHotKeyManager.shared.cancelRecording()
         isRecording = false
         recordingTimeRemaining = 0

@@ -107,6 +107,7 @@ enum L10n {
         static var soundFeedback: String { d("音效回饋", "音效反馈", "Sound Feedback", "サウンドフィードバック") }
         static var whisperMode: String { "Whisper Mode" }
         static var whisperModeDesc: String { d("提示 LLM 過濾背景噪音與雜訊", "提示 LLM 过滤背景噪音与杂讯", "Hints LLM to filter background noise", "LLM にバックグラウンドノイズのフィルタリングを指示") }
+        static var continuousBackgroundSTT: String { d("持續背景辨識", "持续背景识别", "Continuous Background Recognition", "継続的バックグラウンド認識") }
 
         // STT Engine
         static var sttEngine: String { d("語音辨識引擎", "语音识别引擎", "Speech Recognition Engine", "音声認識エンジン") }

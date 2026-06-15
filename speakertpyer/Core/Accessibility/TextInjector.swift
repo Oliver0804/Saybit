@@ -44,7 +44,7 @@ enum TextInjector {
     /// Inject text via clipboard paste (Cmd+V) with clipboard save/restore
     private static func injectViaPaste(_ text: String) {
         let pasteboard = NSPasteboard.general
-        let previousContent = pasteboard.string(forType: .string)
+        let backup = ClipboardBackup.snapshot(pasteboard)
 
         pasteboard.clearContents()
         pasteboard.setString(text, forType: .string)
@@ -53,12 +53,11 @@ enum TextInjector {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
             simulatePaste()
 
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+            // 延長到 0.5s，給慢速 app（Electron / 大型文件）足夠時間完成貼上才還原
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                // 僅在剪貼簿仍是我們寫入的內容時還原，避免覆寫使用者期間的新複製
                 guard pasteboard.changeCount == ourChangeCount else { return }
-                if let previous = previousContent {
-                    pasteboard.clearContents()
-                    pasteboard.setString(previous, forType: .string)
-                }
+                ClipboardBackup.restore(backup, to: pasteboard)
             }
         }
     }

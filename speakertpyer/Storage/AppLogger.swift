@@ -60,6 +60,11 @@ class AppLogger {
     }()
     private let logRetentionDays = 7
 
+    // 常開的當日寫入 handle（僅在 serial queue 上存取），跨日才 rotate，
+    // 避免每條 log 都 open→seek→write→close 一輪 syscall（LLM 串流期間尤其密集）。
+    private var fileHandle: FileHandle?
+    private var openedDateString = ""
+
     var logDirectoryURL: URL {
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
         return appSupport.appendingPathComponent("Saybit/logs", isDirectory: true)
@@ -129,16 +134,29 @@ class AppLogger {
             guard let self,
                   let data = try? self.jsonEncoder.encode(entry) else { return }
             let line = data + Data("\n".utf8)
-            let fileURL = self.todayLogFileURL
 
-            if FileManager.default.fileExists(atPath: fileURL.path) {
-                if let handle = try? FileHandle(forWritingTo: fileURL) {
-                    handle.seekToEndOfFile()
-                    handle.write(line)
-                    handle.closeFile()
+            let today = Self.fileDateFormatter.string(from: Date())
+            if self.openedDateString != today {
+                // 跨日：關閉舊 handle，改寫當日新檔
+                try? self.fileHandle?.close()
+                self.fileHandle = nil
+                self.openedDateString = today
+            }
+            if self.fileHandle == nil {
+                let fileURL = self.logDirectoryURL.appendingPathComponent("saybit-\(today).jsonl")
+                if !FileManager.default.fileExists(atPath: fileURL.path) {
+                    FileManager.default.createFile(atPath: fileURL.path, contents: nil)
                 }
-            } else {
-                try? line.write(to: fileURL)
+                self.fileHandle = try? FileHandle(forWritingTo: fileURL)
+                _ = try? self.fileHandle?.seekToEnd()
+            }
+            guard let handle = self.fileHandle else { return }
+            do {
+                try handle.write(contentsOf: line)
+            } catch {
+                // 寫入失敗：重置 handle，下次重開
+                try? handle.close()
+                self.fileHandle = nil
             }
         }
     }
@@ -149,13 +167,16 @@ class AppLogger {
             let fm = FileManager.default
             let cutoff = Calendar.current.date(byAdding: .day, value: -self.logRetentionDays, to: Date())!
 
-            guard let files = try? fm.contentsOfDirectory(at: self.logDirectoryURL, includingPropertiesForKeys: [.creationDateKey]) else { return }
+            guard let files = try? fm.contentsOfDirectory(at: self.logDirectoryURL, includingPropertiesForKeys: nil) else { return }
 
             for file in files {
-                guard file.pathExtension == "jsonl",
-                      let attrs = try? fm.attributesOfItem(atPath: file.path),
-                      let created = attrs[.creationDate] as? Date,
-                      created < cutoff else { continue }
+                guard file.pathExtension == "jsonl" else { continue }
+                // 從檔名解析日期（saybit-yyyy-MM-dd.jsonl），不依賴 creationDate
+                // （Time Machine 還原 / 複製會重置 creationDate，導致清理失效或誤刪）
+                let name = file.deletingPathExtension().lastPathComponent
+                let dateStr = name.replacingOccurrences(of: "saybit-", with: "")
+                guard let fileDate = Self.fileDateFormatter.date(from: dateStr),
+                      fileDate < cutoff else { continue }
                 try? fm.removeItem(at: file)
             }
         }

@@ -380,7 +380,6 @@ struct APISettingsView: View {
                                     ForEach(filteredCloudModels, id: \.self) { model in
                                         Button(model) {
                                             settingsStore.selectedModel = model
-                                            testAPIConnection()
                                         }
                                         .controlSize(.mini)
                                         .buttonStyle(.bordered)

@@ -103,15 +103,8 @@ enum TextExtractor {
         let pasteboard = NSPasteboard.general
         let originalChangeCount = pasteboard.changeCount
 
-        // Save current clipboard content
-        let savedItems = pasteboard.pasteboardItems?.compactMap { item -> (String, NSPasteboard.PasteboardType)? in
-            for type in item.types {
-                if let data = item.string(forType: type) {
-                    return (data, type)
-                }
-            }
-            return nil
-        } ?? []
+        // Save current clipboard content（完整保留所有型別，含圖片/RTF）
+        let backup = ClipboardBackup.snapshot(pasteboard)
 
         // Try AppleScript first (more reliable for Electron apps).
         // executeAndReturnError 是同步阻塞，放到 detached task 隔離不阻塞 caller。
@@ -167,11 +160,8 @@ enum TextExtractor {
 
         let copiedText = pasteboard.string(forType: .string)
 
-        // Restore original clipboard
-        pasteboard.clearContents()
-        for (content, type) in savedItems {
-            pasteboard.setString(content, forType: type)
-        }
+        // Restore original clipboard（完整還原所有型別）
+        ClipboardBackup.restore(backup, to: pasteboard)
 
         guard let text = copiedText, !text.isEmpty else {
             return nil

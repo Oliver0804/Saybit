@@ -64,7 +64,7 @@ struct LLMProvider: Codable, Identifiable, Hashable {
             "X-Title": "Saybit",
         ],
         keyPlaceholder: "sk-or-v1-...",
-        modelHint: "openai/gpt-4.1-nano · anthropic/claude-sonnet-4 · google/gemini-2.5-flash",
+        modelHint: "deepseek/deepseek-v4-flash · deepseek/deepseek-v4-pro · openai/gpt-4.1-nano · google/gemini-2.5-flash",
         isBuiltIn: true
     )
 
@@ -139,7 +139,7 @@ struct LLMProvider: Codable, Identifiable, Hashable {
     /// 本地服務（ollama / lmstudio / 自訂）回 nil — 由抓回的 model list 決定。
     static func defaultModel(for providerID: String) -> String? {
         switch providerID {
-        case "openrouter": "openai/gpt-4.1-nano"
+        case "openrouter": "deepseek/deepseek-v4-flash"
         case "openai":     "gpt-4.1-nano"
         case "deepseek":   "deepseek-chat"
         case "groq":       "llama-3.3-70b-versatile"

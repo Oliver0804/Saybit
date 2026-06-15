@@ -43,6 +43,9 @@ class VoicePipeline {
         log.info("模型: \(settingsStore.selectedModel)", category: "Pipeline")
         log.info("Prompt 風格: \(settingsStore.promptStyle.rawValue)", category: "Pipeline")
 
+        // 先套用回音消除狀態（須在 engine 啟動前設定，才能在首次啟動就生效）
+        SharedAudioEngine.shared.setEchoCancellationEnabled(settingsStore.enableEchoCancellation)
+
         // 啟動全域共享 audio engine（一次性）
         SharedAudioEngine.shared.start(inputDeviceUID: settingsStore.selectedInputDeviceUID)
 
@@ -62,6 +65,14 @@ class VoicePipeline {
             .dropFirst()
             .sink { enabled in
                 SharedAudioEngine.shared.setVoiceBandpassEnabled(enabled)
+            }
+            .store(in: &cancellables)
+
+        // 監聽回音消除開關
+        settingsStore.$enableEchoCancellation
+            .dropFirst()
+            .sink { enabled in
+                SharedAudioEngine.shared.setEchoCancellationEnabled(enabled)
             }
             .store(in: &cancellables)
 
@@ -405,9 +416,13 @@ class VoicePipeline {
 
     // MARK: - Transcript Observation
 
+    private var transcriptObserveTask: Task<Void, Never>?
+
     private func observeTranscript() {
-        Task { @MainActor in
+        transcriptObserveTask?.cancel()
+        transcriptObserveTask = Task { @MainActor in
             while case .recording = session.state {
+                if Task.isCancelled { return }
                 // 去重：值相同不寫，避免不必要的 @Observable change notification
                 // 觸發整顆 OverlayView 重繪
                 if isUsingContinuousSTT, let bgSTT = backgroundSTT {
@@ -542,7 +557,7 @@ class VoicePipeline {
             tone: effectiveTone,
             languagePreference: settingsStore.languagePreference,
             personalDictionary: loadPersonalDictionary(),
-            snippets: loadSnippets(),
+            snippets: skills.isEmpty ? nil : skills,
             screenContext: nil,
             whisperMode: settingsStore.enableWhisperMode ? true : nil,
             existingText: existingTextForPayload
@@ -1100,10 +1115,12 @@ class VoicePipeline {
 
     private let records = RecordsRepository()
 
+    @MainActor
     private func loadPersonalDictionary() -> [String: String]? {
         records.loadPersonalDictionary()
     }
 
+    @MainActor
     private func loadSnippets() -> [String: String]? {
         records.loadSnippets()
     }

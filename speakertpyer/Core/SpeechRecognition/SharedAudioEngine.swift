@@ -23,7 +23,8 @@ class SharedAudioEngine {
     private let log = AppLogger.shared
 
     private var consumers: [AudioBufferConsumer] = []
-    private let consumersLock = NSLock()
+    // os_unfair_lock 支援優先級捐贈，避免 render thread 因 main thread 持鎖被降級（NSLock 無此保證）
+    private let consumersLock = os_unfair_lock_t.allocate(capacity: 1)
 
     private(set) var currentInputDeviceUID: String = ""
     private(set) var isRunning = false
@@ -39,14 +40,35 @@ class SharedAudioEngine {
         log.info("VoiceBandpass \(enabled ? "啟用" : "停用")", category: "Audio")
     }
 
+    /// 期望的 Voice Processing（AEC 回音消除 + 降噪）狀態
+    /// 在 start() 內套用於 inputNode；執行中切換需重啟 engine 才能生效
+    private var echoCancellationEnabled = false
+
+    /// 切換 Apple 原生 Voice Processing IO（聲學回音消除 / AEC）
+    /// 會把「喇叭播放洩漏進麥克風的聲音」用系統播放當參考訊號即時消除
+    /// 因屬於 audio unit 層級設定，執行中切換需完整重啟 engine
+    func setEchoCancellationEnabled(_ enabled: Bool) {
+        guard enabled != echoCancellationEnabled else { return }
+        echoCancellationEnabled = enabled
+        log.info("EchoCancellation \(enabled ? "啟用" : "停用")", category: "Audio")
+        if isRunning {
+            let uid = currentInputDeviceUID
+            stop()
+            start(inputDeviceUID: uid)
+        }
+    }
+
     // MARK: - Pre-buffer（環形緩衝區）
-    // 保留最近 ~3 秒的音訊，讓新消費者加入時可回放，避免開頭語音遺失
+    // 保留最近數秒的音訊，讓新消費者加入時可回放，避免開頭語音遺失
     // 需要足夠長以涵蓋：AudioLevelMonitor 偵測延遲 + startRecording() 前置作業 + STT 引擎初始化時間
-    private var preBuffer: [(buffer: AVAudioPCMBuffer, time: AVAudioTime)] = []
-    private let preBufferLock = NSLock()
-    private let preBufferDuration: TimeInterval = 2.0
+    private let preBufferRing = PreBufferRing()
 
     private init() {}
+
+    deinit {
+        consumersLock.deinitialize(count: 1)
+        consumersLock.deallocate()
+    }
 
     // MARK: - Lifecycle
 
@@ -55,6 +77,11 @@ class SharedAudioEngine {
 
         let inputNode = audioEngine.inputNode
         inputNode.removeTap(onBus: 0)
+
+        // Phase 0: 套用 Voice Processing IO（AEC 回音消除）
+        // 必須在 audio unit 被 prepare/初始化「之前」呼叫，否則拋 -10849 (kAudioUnitErr_Initialized)
+        // 啟用後 inputNode 會切換為 VPIO audio unit，輸出格式可能改變（通常 1ch），故隨後再讀格式
+        applyVoiceProcessing(on: inputNode)
 
         // Phase 1: prepare 讓 audioUnit 可用，再設定裝置
         audioEngine.prepare()
@@ -80,6 +107,9 @@ class SharedAudioEngine {
             channelCount: Int(recordingFormat.channelCount)
         )
 
+        // 依實際格式預配置 pre-buffer ring，讓 tap callback 只做 memcpy
+        preBufferRing.prepare(format: recordingFormat)
+
         // 用 nil format 讓系統自動匹配裝置原生格式，避免格式不匹配
         inputNode.installTap(onBus: 0, bufferSize: 1024, format: nil) { [weak self] buffer, time in
             guard let self else { return }
@@ -87,12 +117,13 @@ class SharedAudioEngine {
             // 先做帶通濾波（in-place），下游 consumer 與 pre-buffer 拿到的都是降噪後音訊
             self.voiceFilter.process(buffer)
 
-            // 寫入 pre-buffer
-            self.appendToPreBuffer(buffer, time: time)
+            // 寫入 pre-buffer（純 memcpy，無 heap 配置）
+            self.preBufferRing.write(buffer, time: time)
 
-            self.consumersLock.lock()
+            // 讀取 consumer 快照（os_unfair_lock 支援優先級捐贈）
+            os_unfair_lock_lock(self.consumersLock)
             let snapshot = self.consumers
-            self.consumersLock.unlock()
+            os_unfair_lock_unlock(self.consumersLock)
 
             for consumer in snapshot {
                 consumer.handleAudioBuffer(buffer, time: time)
@@ -108,6 +139,14 @@ class SharedAudioEngine {
             log.info("SharedAudioEngine 啟動 (\(inputFormat?.sampleRate ?? 0)Hz, \(inputFormat?.channelCount ?? 0)ch)", category: "Audio")
         } catch {
             log.error("SharedAudioEngine 啟動失敗: \(error.localizedDescription)", category: "Audio")
+            // 安全退路：若啟動失敗且 AEC 為開，極可能是 VPIO 問題 —— 自動關閉後重試，確保麥克風不會變啞
+            if echoCancellationEnabled {
+                log.error("疑似 VoiceProcessingIO 導致啟動失敗，自動關閉 AEC 後重試", category: "Audio")
+                echoCancellationEnabled = false
+                audioEngine.inputNode.removeTap(onBus: 0)
+                audioEngine.reset()
+                start(inputDeviceUID: inputDeviceUID)
+            }
         }
     }
 
@@ -116,43 +155,8 @@ class SharedAudioEngine {
         audioEngine.stop()
         audioEngine.inputNode.removeTap(onBus: 0)
         isRunning = false
-        clearPreBuffer()
+        preBufferRing.clear()
         log.info("SharedAudioEngine 已停止", category: "Audio")
-    }
-
-    // MARK: - Pre-buffer Management
-
-    private func appendToPreBuffer(_ buffer: AVAudioPCMBuffer, time: AVAudioTime) {
-        guard let copy = buffer.copy() as? AVAudioPCMBuffer else { return }
-        preBufferLock.lock()
-        preBuffer.append((buffer: copy, time: time))
-        trimPreBuffer()
-        preBufferLock.unlock()
-    }
-
-    /// 移除超過 preBufferDuration 的舊 buffer
-    private func trimPreBuffer() {
-        guard let format = inputFormat, format.sampleRate > 0 else { return }
-        let maxFrames = AVAudioFrameCount(preBufferDuration * format.sampleRate)
-        var totalFrames: AVAudioFrameCount = 0
-        // 從尾端累計，保留最近 maxFrames
-        var keepFrom = 0
-        for i in stride(from: preBuffer.count - 1, through: 0, by: -1) {
-            totalFrames += preBuffer[i].buffer.frameLength
-            if totalFrames >= maxFrames {
-                keepFrom = i
-                break
-            }
-        }
-        if keepFrom > 0 {
-            preBuffer.removeFirst(keepFrom)
-        }
-    }
-
-    private func clearPreBuffer() {
-        preBufferLock.lock()
-        preBuffer.removeAll()
-        preBufferLock.unlock()
     }
 
     // MARK: - Input Device
@@ -184,22 +188,36 @@ class SharedAudioEngine {
         }
     }
 
+    /// 套用 Voice Processing IO 狀態到 inputNode（AEC + 系統降噪）
+    /// 必須在 engine 停止、tap 安裝前呼叫，否則 setVoiceProcessingEnabled 會拋錯
+    private func applyVoiceProcessing(on inputNode: AVAudioInputNode) {
+        guard inputNode.isVoiceProcessingEnabled != echoCancellationEnabled else { return }
+        do {
+            try inputNode.setVoiceProcessingEnabled(echoCancellationEnabled)
+            if echoCancellationEnabled {
+                // 關閉 VPIO 內建 AGC，避免自動增益干擾 AudioLevelMonitor 與帶通濾波的位準判斷
+                inputNode.isVoiceProcessingAGCEnabled = false
+            }
+            log.info("VoiceProcessingIO 設為 \(echoCancellationEnabled)", category: "Audio")
+        } catch {
+            log.error("VoiceProcessingIO 設定失敗: \(error.localizedDescription)", category: "Audio")
+        }
+    }
+
     // MARK: - Consumer Management
 
     /// 加入消費者。`replayPreBuffer` 為 true 時會先回放最近 ~1.5 秒的音訊，避免開頭遺失。
     func addConsumer(_ consumer: AudioBufferConsumer, replayPreBuffer: Bool = false) {
-        consumersLock.lock()
+        os_unfair_lock_lock(consumersLock)
         guard !consumers.contains(where: { $0.consumerID == consumer.consumerID }) else {
-            consumersLock.unlock()
+            os_unfair_lock_unlock(consumersLock)
             return
         }
         consumers.append(consumer)
-        consumersLock.unlock()
+        os_unfair_lock_unlock(consumersLock)
 
         if replayPreBuffer {
-            preBufferLock.lock()
-            let snapshot = preBuffer
-            preBufferLock.unlock()
+            let snapshot = preBufferRing.snapshot()
             for entry in snapshot {
                 consumer.handleAudioBuffer(entry.buffer, time: entry.time)
             }
@@ -210,8 +228,8 @@ class SharedAudioEngine {
     }
 
     func removeConsumer(_ consumer: AudioBufferConsumer) {
-        consumersLock.lock()
-        defer { consumersLock.unlock() }
+        os_unfair_lock_lock(consumersLock)
+        defer { os_unfair_lock_unlock(consumersLock) }
         consumers.removeAll(where: { $0.consumerID == consumer.consumerID })
         log.info("Audio consumer 移除: \(consumer.consumerID) (total=\(consumers.count))", category: "Audio")
     }

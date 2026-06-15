@@ -182,6 +182,14 @@ struct GeneralSettingsView: View {
                                 .font(.body)
                                 .foregroundStyle(.secondary)
                                 .padding(.leading, 2)
+
+                            Divider().opacity(0.3)
+
+                            Toggle("回音消除（AEC）", isOn: $settingsStore.enableEchoCancellation)
+                            Text("使用 macOS 原生 Voice Processing，以系統播放的聲音為參考訊號，即時消除喇叭洩漏進麥克風的音樂 / 影片 / 視訊通話聲。邊放聲音邊講話時開啟最有效；用耳機時可關閉。切換會短暫重啟收音。")
+                                .font(.body)
+                                .foregroundStyle(.secondary)
+                                .padding(.leading, 2)
                         }
                     }
                 }

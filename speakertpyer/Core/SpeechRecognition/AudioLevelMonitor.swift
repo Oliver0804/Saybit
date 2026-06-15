@@ -19,6 +19,7 @@ class AudioLevelMonitor: AudioBufferConsumer {
     private var graceUntil: Date = .distantPast
     private var tapCallbackCount = 0
     private var maxLevelSeen: Float = 0
+    private var speechDetected = false
     private let log = AppLogger.shared
     private let levelThrottler = MainThreadThrottler(intervalMs: 50)
 
@@ -34,6 +35,7 @@ class AudioLevelMonitor: AudioBufferConsumer {
         }
         tapCallbackCount = 0
         maxLevelSeen = 0
+        speechDetected = false
         isMonitoring = true
         levelThrottler.reset()
 
@@ -72,8 +74,9 @@ class AudioLevelMonitor: AudioBufferConsumer {
             }
         }
 
-        // 語音偵測是 one-shot 事件，不節流
-        if level >= speechThreshold {
+        // 語音偵測是 one-shot 事件：用旗標確保只觸發一次，避免連續高音量 buffer 重複派發
+        if level >= speechThreshold, !speechDetected {
+            speechDetected = true
             DispatchQueue.main.async { [weak self] in
                 self?.log.info("語音偵測觸發 (level=\(String(format: "%.3f", level)))", category: "SmartSend")
                 self?.onSpeechDetected?()

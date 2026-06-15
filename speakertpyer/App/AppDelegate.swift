@@ -110,6 +110,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             backing: .buffered,
             defer: false
         )
+        window.isReleasedWhenClosed = false
         window.title = L10n.Onboarding.title
         window.contentView = NSHostingView(rootView: onboardingView)
         window.center()

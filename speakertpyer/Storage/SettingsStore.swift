@@ -22,10 +22,18 @@ class SettingsStore: ObservableObject {
         didSet { UserDefaults.standard.set(selectedProviderID, forKey: "selectedProviderID") }
     }
 
+    private var saveCustomProvidersTask: Task<Void, Never>?
+
     @Published var customProviders: [LLMProvider] {
         didSet {
-            if let data = try? JSONEncoder().encode(customProviders) {
-                UserDefaults.standard.set(data, forKey: "customProviders")
+            saveCustomProvidersTask?.cancel()
+            let snapshot = customProviders
+            saveCustomProvidersTask = Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(300))
+                guard !Task.isCancelled else { return }
+                if let data = try? JSONEncoder().encode(snapshot) {
+                    UserDefaults.standard.set(data, forKey: "customProviders")
+                }
             }
         }
     }
@@ -187,6 +195,11 @@ class SettingsStore: ObservableObject {
         didSet { UserDefaults.standard.set(enableVoiceBandpass, forKey: "enableVoiceBandpass") }
     }
 
+    /// 回音消除（Apple Voice Processing IO / AEC，消除喇叭播放洩漏進麥克風的聲音）
+    @Published var enableEchoCancellation: Bool {
+        didSet { UserDefaults.standard.set(enableEchoCancellation, forKey: "enableEchoCancellation") }
+    }
+
     // MARK: - Silence Detection
 
     @Published var silenceTimeout: Double {
@@ -277,10 +290,18 @@ class SettingsStore: ObservableObject {
 
     // MARK: - Context Rules
 
+    private var saveContextRulesTask: Task<Void, Never>?
+
     @Published var contextRules: [ContextRule] {
         didSet {
-            if let data = try? JSONEncoder().encode(contextRules) {
-                UserDefaults.standard.set(data, forKey: "contextRules")
+            saveContextRulesTask?.cancel()
+            let snapshot = contextRules
+            saveContextRulesTask = Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(300))
+                guard !Task.isCancelled else { return }
+                if let data = try? JSONEncoder().encode(snapshot) {
+                    UserDefaults.standard.set(data, forKey: "contextRules")
+                }
             }
         }
     }
@@ -342,6 +363,7 @@ class SettingsStore: ObservableObject {
         self.enableSoundFeedback = defaults.object(forKey: "enableSoundFeedback") as? Bool ?? true
         self.enableWhisperMode = defaults.object(forKey: "enableWhisperMode") as? Bool ?? false
         self.enableVoiceBandpass = defaults.object(forKey: "enableVoiceBandpass") as? Bool ?? true
+        self.enableEchoCancellation = defaults.object(forKey: "enableEchoCancellation") as? Bool ?? false
         self.silenceTimeout = defaults.object(forKey: "silenceTimeout") as? Double ?? 2.0
         self.enableAutoStop = defaults.object(forKey: "enableAutoStop") as? Bool ?? true
         self.lmStudioBaseURL = defaults.string(forKey: "lmStudioBaseURL") ?? "http://localhost:1234"

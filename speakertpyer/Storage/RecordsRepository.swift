@@ -21,6 +21,8 @@ struct RecordsRepository {
     // MARK: - Personal Dictionary
 
     /// 取出個人字典 [term → preferred]；空字典回 nil 方便 caller 用 `??` 串接。
+    /// 讀 viewContext 必須在主執行緒，以 @MainActor 強制保證。
+    @MainActor
     func loadPersonalDictionary() -> [String: String]? {
         let request = PersonalDictionaryEntry.fetchRequest()
         guard let entries = try? viewContext.fetch(request), !entries.isEmpty else {
@@ -38,6 +40,7 @@ struct RecordsRepository {
     // MARK: - Snippets
 
     /// 取出 snippets [trigger → content]；空字典回 nil。
+    @MainActor
     func loadSnippets() -> [String: String]? {
         let request = SnippetEntry.fetchRequest()
         guard let entries = try? viewContext.fetch(request), !entries.isEmpty else {
@@ -67,23 +70,28 @@ struct RecordsRepository {
         mode: String = "auto",
         timestamp: Date = .init()
     ) {
-        let record = TranscriptionRecord(context: viewContext)
-        record.id = UUID()
-        record.rawTranscript = rawTranscript
-        record.processedText = processedText
-        record.appContext = appName
-        record.mode = mode
-        record.timestamp = timestamp
-        record.duration = durationSec
-        record.modelName = modelName
-        record.promptTokens = Int32(promptTokens)
-        record.completionTokens = Int32(completionTokens)
-        record.totalTokens = Int32(totalTokens)
+        // 在 background context 非同步寫入，避免在主執行緒同步 save（含 WAL flush 磁碟 I/O）阻塞 UI。
+        // viewContext 已開啟 automaticallyMergesChangesFromParent，儲存後 @FetchRequest 會自動更新。
+        let context = container.newBackgroundContext()
+        context.perform {
+            let record = TranscriptionRecord(context: context)
+            record.id = UUID()
+            record.rawTranscript = rawTranscript
+            record.processedText = processedText
+            record.appContext = appName
+            record.mode = mode
+            record.timestamp = timestamp
+            record.duration = durationSec
+            record.modelName = modelName
+            record.promptTokens = Int32(promptTokens)
+            record.completionTokens = Int32(completionTokens)
+            record.totalTokens = Int32(totalTokens)
 
-        do {
-            try viewContext.save()
-        } catch {
-            AppLogger.shared.error("歷史記錄儲存失敗：\(error.localizedDescription)", category: "History")
+            do {
+                try context.save()
+            } catch {
+                AppLogger.shared.error("歷史記錄儲存失敗：\(error.localizedDescription)", category: "History")
+            }
         }
     }
 }

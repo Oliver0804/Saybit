@@ -38,7 +38,8 @@ struct AppContext {
         // Chat & Messaging
         if name.contains("slack") || bundleID.contains("slack") { return "slack" }
         if name.contains("discord") || bundleID.contains("discord") { return "discord" }
-        if name.contains("line") || bundleID.contains("line") { return "line" }
+        // 用 bundle ID 或精確 app 名比對，避免 Timeline / Streamline / Baseline 等被誤判為 LINE
+        if bundleID.contains("naver.line") || bundleID.hasSuffix(".line") || name == "line" { return "line" }
         if name.contains("messages") || bundleID.contains("imessage") { return "imessage" }
         if name.contains("telegram") || bundleID.contains("telegram") { return "telegram" }
         if name.contains("wechat") || bundleID.contains("wechat") { return "wechat" }

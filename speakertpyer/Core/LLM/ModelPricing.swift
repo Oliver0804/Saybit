@@ -53,6 +53,8 @@ enum ModelPricingTable {
         ("gemini-2.0-flash",               .init(inputPer1K: 0.0001,   outputPer1K: 0.0004)),
 
         // DeepSeek
+        ("deepseek-v4-flash",              .init(inputPer1K: 0.00014, outputPer1K: 0.00028)),
+        ("deepseek-v4-pro",                .init(inputPer1K: 0.00055, outputPer1K: 0.00219)),
         ("deepseek-reasoner",              .init(inputPer1K: 0.00055, outputPer1K: 0.00219)),
         ("deepseek-chat",                  .init(inputPer1K: 0.00014, outputPer1K: 0.00028)),
         ("deepseek-flash",                 .init(inputPer1K: 0.00007, outputPer1K: 0.00028)),

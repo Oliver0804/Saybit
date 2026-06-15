@@ -10,8 +10,10 @@ import SwiftUI
 
 // MARK: - Waveform View
 
+/// 持有 session 並自行讀取 `audioLevel`，把高頻音量更新隔離在此 view 內，
+/// 避免每次音量變化都觸發整個 CapsuleBarView.body 重算（含漸層、邊框、陰影等昂貴計算）。
 struct WaveformView: View {
-    let audioLevel: Float
+    let session: TranscriptionSession
 
     @State private var levels: [CGFloat] = Array(repeating: 0, count: 20)
 
@@ -23,12 +25,42 @@ struct WaveformView: View {
                     .frame(width: 2, height: max(2, levels[i] * 20))
             }
         }
-        .onChange(of: audioLevel) { _, newLevel in
+        .onChange(of: session.audioLevel) { _, newLevel in
             withAnimation(.linear(duration: 0.08)) {
                 levels.removeFirst()
                 levels.append(CGFloat(newLevel))
             }
         }
+    }
+}
+
+/// 錄音中的內容：波形（自讀 audioLevel）＋ 計時（TimelineView 每秒驅動，不依賴 audioLevel）＋ 字數。
+/// 整段獨立於 CapsuleBarView，rawTranscript / duration 更新只重繪此小 view。
+struct RecordingContentView: View {
+    let session: TranscriptionSession
+
+    var body: some View {
+        HStack(spacing: 6) {
+            WaveformView(session: session)
+                .frame(width: 80, height: 20)
+            TimelineView(.periodic(from: .now, by: 1.0)) { _ in
+                Text(formattedDuration)
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundStyle(.white.opacity(0.5))
+            }
+            if !session.rawTranscript.isEmpty {
+                Text("\(session.rawTranscript.count) \(L10n.Overlay.chars)")
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundStyle(.white.opacity(0.35))
+            }
+        }
+    }
+
+    private var formattedDuration: String {
+        let duration = session.duration
+        let seconds = Int(duration) % 60
+        let minutes = Int(duration) / 60
+        return String(format: "%d:%02d", minutes, seconds)
     }
 }
 
@@ -115,6 +147,8 @@ struct CapsuleBarView: View {
             handleAnimations(from: oldState, to: newState)
         }
     }
+
+    // 計時顯示已移至 RecordingContentView（由 TimelineView 獨立驅動）
 
     // MARK: - Layouts
 
@@ -233,7 +267,7 @@ struct CapsuleBarView: View {
                 .foregroundStyle(.white.opacity(0.7))
         case .listening:
             HStack(spacing: 6) {
-                WaveformView(audioLevel: session.audioLevel)
+                WaveformView(session: session)
                     .frame(width: 40, height: 16)
                     .clipped()
                 Text(L10n.Overlay.listening)
@@ -241,18 +275,7 @@ struct CapsuleBarView: View {
                     .foregroundStyle(.orange.opacity(0.8))
             }
         case .recording:
-            HStack(spacing: 6) {
-                WaveformView(audioLevel: session.audioLevel)
-                    .frame(width: 80, height: 20)
-                Text(formattedDuration)
-                    .font(.system(size: 11, design: .monospaced))
-                    .foregroundStyle(.white.opacity(0.5))
-                if !session.rawTranscript.isEmpty {
-                    Text("\(session.rawTranscript.count) \(L10n.Overlay.chars)")
-                        .font(.system(size: 10, design: .monospaced))
-                        .foregroundStyle(.white.opacity(0.35))
-                }
-            }
+            RecordingContentView(session: session)
         case .processing:
             HStack(spacing: 4) {
                 Text(L10n.Overlay.processing)
@@ -477,25 +500,15 @@ struct CapsuleBarView: View {
 // MARK: - Typing Dots Animation
 
 struct TypingDotsView: View {
-    @State private var dotCount = 0
-    @State private var timer: Timer?
-
     var body: some View {
-        Text(String(repeating: ".", count: dotCount + 1))
-            .font(.system(size: 12, weight: .bold, design: .rounded))
-            .foregroundStyle(.white.opacity(0.5))
-            .frame(width: 20, alignment: .leading)
-            .onAppear {
-                // 用 onAppear/onDisappear 控管 Timer，避免 View struct 被重建時
-                // Timer.publish().autoconnect() 的 cancellable 滯留在記憶體
-                timer?.invalidate()
-                timer = Timer.scheduledTimer(withTimeInterval: 0.4, repeats: true) { _ in
-                    dotCount = (dotCount + 1) % 3
-                }
-            }
-            .onDisappear {
-                timer?.invalidate()
-                timer = nil
-            }
+        // 由 SwiftUI render pipeline 驅動，view 移除時自動停止，
+        // 無需手動管理 Timer 生命週期（避免 view 重建時 Timer 滯留）。
+        TimelineView(.periodic(from: .now, by: 0.4)) { context in
+            let step = Int(context.date.timeIntervalSinceReferenceDate / 0.4) % 3
+            Text(String(repeating: ".", count: step + 1))
+                .font(.system(size: 12, weight: .bold, design: .rounded))
+                .foregroundStyle(.white.opacity(0.5))
+                .frame(width: 20, alignment: .leading)
+        }
     }
 }

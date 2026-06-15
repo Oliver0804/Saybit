@@ -24,6 +24,9 @@ class BackgroundSTTEngine: AudioBufferConsumer {
     /// 當前 session 的音量（供 UI 顯示）
     private(set) var audioLevel: Float = 0.0
 
+    /// 節流 audio→main 的音量更新（比照 SpeechRecognizer，避免每 21ms 派發一次）
+    private let audioLevelThrottler = MainThreadThrottler(intervalMs: 50)
+
     // MARK: - Speech Recognition
 
     private var speechRecognizer: SFSpeechRecognizer?
@@ -176,7 +179,7 @@ class BackgroundSTTEngine: AudioBufferConsumer {
             let displayLevel = AudioUtils.normalizedLevel(rms: rms, multiplier: 5.0 * micGain)
             let rawLevel = AudioUtils.normalizedLevel(rms: rms)
 
-            DispatchQueue.main.async { [weak self] in
+            audioLevelThrottler.dispatch { [weak self] in
                 self?.audioLevel = displayLevel
             }
 

@@ -292,21 +292,21 @@ class OverlayWindowController: NSObject {
         menu.addItem(.separator())
 
         // Whisper Mode toggle
-        let whisperItem = NSMenuItem(title: "Whisper Mode", action: #selector(toggleWhisperMode(_:)), keyEquivalent: "")
+        let whisperItem = NSMenuItem(title: L10n.General.whisperMode, action: #selector(toggleWhisperMode(_:)), keyEquivalent: "")
         whisperItem.target = self
         whisperItem.state = (settingsStore?.enableWhisperMode == true) ? .on : .off
         menu.addItem(whisperItem)
 
         // Continuous STT toggle (only for Apple Speech)
         if settingsStore?.sttEngine == .appleSpeech {
-            let continuousItem = NSMenuItem(title: "持續背景辨識", action: #selector(toggleContinuousSTT(_:)), keyEquivalent: "")
+            let continuousItem = NSMenuItem(title: L10n.General.continuousBackgroundSTT, action: #selector(toggleContinuousSTT(_:)), keyEquivalent: "")
             continuousItem.target = self
             continuousItem.state = (settingsStore?.enableContinuousSTT == true) ? .on : .off
             menu.addItem(continuousItem)
         }
 
         // Context Awareness toggle
-        let contextItem = NSMenuItem(title: "Context Awareness", action: #selector(toggleContextAwareness(_:)), keyEquivalent: "")
+        let contextItem = NSMenuItem(title: L10n.General.contextAwareness, action: #selector(toggleContextAwareness(_:)), keyEquivalent: "")
         contextItem.target = self
         contextItem.state = (settingsStore?.enableContextAwareness == true) ? .on : .off
         menu.addItem(contextItem)
@@ -318,7 +318,7 @@ class OverlayWindowController: NSObject {
         menu.addItem(soundItem)
 
         // Smart Send toggle
-        let smartSendItem = NSMenuItem(title: "Smart Send", action: #selector(toggleSmartSend(_:)), keyEquivalent: "")
+        let smartSendItem = NSMenuItem(title: L10n.General.smartSend, action: #selector(toggleSmartSend(_:)), keyEquivalent: "")
         smartSendItem.target = self
         smartSendItem.state = (settingsStore?.enableSmartSend == true) ? .on : .off
         menu.addItem(smartSendItem)

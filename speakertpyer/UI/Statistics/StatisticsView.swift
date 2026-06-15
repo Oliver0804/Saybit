@@ -34,7 +34,12 @@ struct StatisticsView: View {
         }
     }
 
-    private var filteredRecords: [TranscriptionRecord] {
+    // 快取過濾結果：原本 filteredRecords 是 computed property，單次 body 重算會被
+    // summaryCards / costSummary / dailyUsageData… 各自呼叫，對全部記錄重複做 7+ 次 O(n) filter。
+    // 改為僅在 timeRange 或記錄數變動時重算一次。
+    @State private var cachedRecords: [TranscriptionRecord] = []
+
+    private func recomputeFilteredRecords() {
         let cutoff: Date? = {
             switch timeRange {
             case .week: return Calendar.current.date(byAdding: .day, value: -7, to: Date())
@@ -42,8 +47,11 @@ struct StatisticsView: View {
             case .all: return nil
             }
         }()
-        guard let cutoff else { return Array(allRecords) }
-        return allRecords.filter { ($0.timestamp ?? .distantPast) >= cutoff }
+        if let cutoff {
+            cachedRecords = allRecords.filter { ($0.timestamp ?? .distantPast) >= cutoff }
+        } else {
+            cachedRecords = Array(allRecords)
+        }
     }
 
     var body: some View {
@@ -77,6 +85,9 @@ struct StatisticsView: View {
             }
             .padding(20)
         }
+        .onAppear { recomputeFilteredRecords() }
+        .onChange(of: timeRange) { _, _ in recomputeFilteredRecords() }
+        .onChange(of: allRecords.count) { _, _ in recomputeFilteredRecords() }
     }
 
     // MARK: - Summary Cards
@@ -85,13 +96,13 @@ struct StatisticsView: View {
         HStack(spacing: 12) {
             StatCard(
                 title: L10n.Stats.totalCount,
-                value: "\(filteredRecords.count)",
+                value: "\(cachedRecords.count)",
                 icon: "number",
                 color: .blue
             )
             StatCard(
                 title: L10n.Stats.totalTokens,
-                value: formatNumber(filteredRecords.reduce(0) { $0 + Int($1.totalTokens) }),
+                value: formatNumber(cachedRecords.reduce(0) { $0 + Int($1.totalTokens) }),
                 icon: "bitcoinsign.circle",
                 color: .orange
             )
@@ -112,12 +123,12 @@ struct StatisticsView: View {
 
     // MARK: - Cost Estimate
 
-    /// 一次掃過 filteredRecords 算總成本和未知模型數，避免兩次 reduce
+    /// 一次掃過 cachedRecords 算總成本和未知模型數，避免兩次 reduce
     /// 加上對 ModelPricingTable.price 的線性掃描（每 record 需比對 ~20 個 pattern）。
     private var costSummary: (total: Double, unknown: Int) {
         var total = 0.0
         var unknown = 0
-        for r in filteredRecords {
+        for r in cachedRecords {
             let model = r.modelName ?? ""
             let cost = ModelPricingTable.cost(
                 model: model,
@@ -298,17 +309,17 @@ struct StatisticsView: View {
     // MARK: - Computed Data
 
     private var averageDuration: Double {
-        guard !filteredRecords.isEmpty else { return 0 }
-        return filteredRecords.reduce(0.0) { $0 + $1.duration } / Double(filteredRecords.count)
+        guard !cachedRecords.isEmpty else { return 0 }
+        return cachedRecords.reduce(0.0) { $0 + $1.duration } / Double(cachedRecords.count)
     }
 
     private var todayCount: Int {
         let startOfDay = Calendar.current.startOfDay(for: Date())
-        return filteredRecords.filter { ($0.timestamp ?? .distantPast) >= startOfDay }.count
+        return cachedRecords.filter { ($0.timestamp ?? .distantPast) >= startOfDay }.count
     }
 
     private var dailyUsageData: [DailyCount] {
-        let grouped = Dictionary(grouping: filteredRecords) { record -> Date in
+        let grouped = Dictionary(grouping: cachedRecords) { record -> Date in
             Calendar.current.startOfDay(for: record.timestamp ?? Date())
         }
         return grouped.map { DailyCount(date: $0.key, count: $0.value.count) }
@@ -316,7 +327,7 @@ struct StatisticsView: View {
     }
 
     private var dailyTokenData: [DailyTokens] {
-        let grouped = Dictionary(grouping: filteredRecords) { record -> Date in
+        let grouped = Dictionary(grouping: cachedRecords) { record -> Date in
             Calendar.current.startOfDay(for: record.timestamp ?? Date())
         }
         return grouped.map { date, records in
@@ -326,7 +337,7 @@ struct StatisticsView: View {
     }
 
     private var topApps: [AppUsage] {
-        let grouped = Dictionary(grouping: filteredRecords) { $0.appContext ?? "Unknown" }
+        let grouped = Dictionary(grouping: cachedRecords) { $0.appContext ?? "Unknown" }
         let sorted = grouped.map { AppUsage(app: $0.key, count: $0.value.count) }
             .sorted { $0.count > $1.count }
         let maxCount = sorted.first?.count ?? 1
@@ -334,7 +345,7 @@ struct StatisticsView: View {
     }
 
     private var modeDistribution: [ModeUsage] {
-        let grouped = Dictionary(grouping: filteredRecords) { $0.mode ?? "dictation" }
+        let grouped = Dictionary(grouping: cachedRecords) { $0.mode ?? "dictation" }
         return grouped.map { mode, records in
             ModeUsage(mode: mode, count: records.count)
         }
