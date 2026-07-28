@@ -4,8 +4,10 @@
 // `getContextAndSelection()` 直接回傳寫死的 "active-app"，導致 context-aware
 // prompt、per-app 語氣規則、歷史紀錄的來源欄位全部失效。這個模組補上真正的實作。
 
+// 注意：只有單一平台會用到的 import 一定要放進該平台的函式裡（例如下面 macOS
+// 分支的 mpsc）。放在頂層會讓其他平台編出 unused_imports，而在 macOS 上本機
+// 開發完全看不到 —— 這是三平台 CI 的 clippy 抓到的。
 use serde::Serialize;
-use std::sync::mpsc;
 use std::time::Duration;
 use tauri::AppHandle;
 
@@ -25,6 +27,8 @@ pub struct ForegroundApp {
 // 用 channel 把結果送回呼叫端。
 #[cfg(target_os = "macos")]
 fn query_foreground(app: &AppHandle) -> ForegroundApp {
+    use std::sync::mpsc;
+
     let (tx, rx) = mpsc::channel::<ForegroundApp>();
     let dispatched = app.run_on_main_thread(move || {
         use objc2_app_kit::NSWorkspace;

@@ -34,7 +34,7 @@ export interface AudioChainOptions {
 }
 
 /// 錄音期間每收到一塊音訊就呼叫一次，給串流辨識即時往外推。
-/// 收到的一律是 16kHz mono f32（AudioContext 直接開在 16k，見 start()）。
+/// 收到的一律是已降頻到 16kHz 的 mono f32（由 IncrementalResampler 處理）。
 export type LiveTap = (chunk: Float32Array) => void;
 
 export interface CapturedAudio {
@@ -64,10 +64,16 @@ export class AudioChain {
 
   private options: AudioChainOptions | null = null;
   private liveTap: LiveTap | null = null;
+  private liveResampler: IncrementalResampler | null = null;
 
   /// 設定即時音訊回呼。傳 null 取消。
   setLiveTap(tap: LiveTap | null): void {
     this.liveTap = tap;
+    // 每次重新掛載都要新的重採樣器，否則會沿用上一段錄音的相位與邊界樣本
+    this.liveResampler =
+      tap && this.sampleRate !== TARGET_SAMPLE_RATE
+        ? new IncrementalResampler(this.sampleRate, TARGET_SAMPLE_RATE)
+        : null;
   }
 
   get isRunning(): boolean {
@@ -109,17 +115,13 @@ export class AudioChain {
 
     this.stream = await navigator.mediaDevices.getUserMedia({ audio: constraints });
 
-    // 直接把 AudioContext 開在 16kHz，讓瀏覽器用它自己的高品質重採樣把麥克風
-    // 輸入降到 Whisper 系列要的取樣率。這樣批次與串流兩條路都不必自己重採樣
-    // （自己做線性內插在串流時還要處理區塊邊界的接縫）。
-    // 少數環境不接受指定 sampleRate，退回預設值後 resampleTo16k 仍會補上。
+    // ⚠️ 一定要用硬體預設取樣率，不要指定 sampleRate: 16000。
+    // WebKit 的 createMediaStreamSource() 不會把 48kHz 的麥克風串流重採樣進
+    // 不同取樣率的 AudioContext —— 它會直接輸出全零樣本（實測 peak 精確為
+    // 0.0000）。降到 16k 一律由我們自己做：批次路徑用 resampleTo16k，
+    // 串流路徑用 IncrementalResampler（跨區塊保留狀態，避免接縫）。
     const AudioContextCtor = window.AudioContext || (window as any).webkitAudioContext;
-    let ctx: AudioContext;
-    try {
-      ctx = new AudioContextCtor({ sampleRate: TARGET_SAMPLE_RATE });
-    } catch {
-      ctx = new AudioContextCtor();
-    }
+    const ctx: AudioContext = new AudioContextCtor();
     this.context = ctx;
 
     this.sourceNode = ctx.createMediaStreamSource(this.stream);
@@ -223,11 +225,15 @@ export class AudioChain {
       this.captureChunks.push(samples);
       this.captureLength += samples.length;
 
-      // 串流辨識即時推送。包在 try 裡：推送失敗（連線斷了）不能拖垮錄音本身，
-      // 使用者至少還能拿到錄完整段後的結果。
+      // 串流辨識即時推送。context 跑在硬體取樣率，這裡要先降到 16k 才送出去。
+      // 包在 try 裡：推送失敗（連線斷了）不能拖垮錄音本身，使用者至少還能
+      // 拿到錄完整段後的結果。
       if (this.liveTap) {
         try {
-          this.liveTap(samples);
+          const resampled = this.liveResampler
+            ? this.liveResampler.process(samples)
+            : samples;
+          if (resampled.length > 0) this.liveTap(resampled);
         } catch {
           /* 串流推送失敗不影響錄音 */
         }
@@ -323,6 +329,44 @@ export class AudioChain {
     this.ringFilled = 0;
     this.ringWrite = 0;
     this.options = null;
+  }
+}
+
+/// 跨區塊保留狀態的線性內插重採樣器。
+///
+/// 串流時音訊是一塊一塊進來的，每塊各自獨立重採樣會在邊界產生相位跳動與
+/// 取樣點遺漏（可聽見的破音，也會讓辨識變差）。這裡把小數位置與前一塊的
+/// 最後一個樣本帶到下一次呼叫，接縫處就跟連續處理同一條長訊號一樣。
+class IncrementalResampler {
+  private readonly ratio: number;
+  /// 下一個輸出點在「這一塊」座標系裡的位置，可能是負的（落在前一塊尾端）
+  private position = 0;
+  /// 前一塊的最後一個樣本，供 position 為負時內插用
+  private previous = 0;
+
+  constructor(sourceRate: number, targetRate: number) {
+    this.ratio = sourceRate / targetRate;
+  }
+
+  process(input: Float32Array): Float32Array {
+    if (input.length === 0) return input;
+
+    const out: number[] = [];
+    let position = this.position;
+
+    for (;;) {
+      const index = Math.floor(position);
+      // 內插需要 index 與 index+1 兩點，後者要等下一塊才有
+      if (index + 1 >= input.length) break;
+      const left = index < 0 ? this.previous : input[index];
+      const right = input[index + 1];
+      out.push(left + (right - left) * (position - index));
+      position += this.ratio;
+    }
+
+    this.previous = input[input.length - 1];
+    this.position = position - input.length;
+    return Float32Array.from(out);
   }
 }
 
