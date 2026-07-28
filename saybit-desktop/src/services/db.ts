@@ -4,14 +4,23 @@ export interface HistoryRecord {
   id?: number;
   rawTranscript: string;
   processedText: string;
+  /// 正規化後的 context identifier，例如 "slack"
   appContext: string;
+  /// 使用者看得到的 App 名稱，例如 "Slack"
+  appName?: string;
   mode: 'dictation' | 'command' | 'edit';
+  /// 意圖分類結果：dictation / translate / rewrite / compose / skill / …
+  intent?: string;
+  /// 實際套用的語氣（含 per-app 規則覆寫後的結果）
+  tone?: string | null;
   timestamp: number;
   duration: number; // 錄音時長（秒）
   modelName: string;
   promptTokens: number;
   completionTokens: number;
   totalTokens: number;
+  /// 粗估成本（USD）。未知模型為 null。
+  costUsd?: number | null;
 }
 
 export interface DictionaryEntry {
@@ -38,10 +47,24 @@ export class SaybitDatabase extends Dexie {
       dictionary: '++id, &word',
       skills: '++id, &triggerWord',
     });
+    // v2：歷史紀錄新增 intent 索引（統計頁要按意圖分組）。
+    // 新增的欄位本身是 schema-less 的，只有要建索引的欄位需要列出來。
+    this.version(2).stores({
+      history: '++id, timestamp, appContext, mode, intent',
+      dictionary: '++id, &word',
+      skills: '++id, &triggerWord',
+    });
   }
 }
 
 export const db = new SaybitDatabase();
+
+/// 依保留天數清理歷史紀錄。回傳刪除筆數。
+export async function cleanupHistory(retentionDays: number): Promise<number> {
+  if (retentionDays <= 0) return 0;
+  const cutoff = Date.now() - retentionDays * 24 * 60 * 60 * 1000;
+  return db.history.where('timestamp').below(cutoff).delete();
+}
 
 // 預填初始資料
 export async function initDefaultData() {

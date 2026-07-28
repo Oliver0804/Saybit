@@ -19,9 +19,11 @@ function App() {
       const currentWindow = getCurrentWindow();
       setWindowLabel(currentWindow.label);
 
-      // 3. 呼叫 Rust 後端為此視窗套用 Acrylic 磨砂玻璃效果
-      invoke('apply_vibrancy', { label: currentWindow.label })
-        .catch((e) => console.log('磨砂玻璃效果套用失敗或在此平台不支援：', e));
+      // 3. 呼叫 Rust 後端為此視窗套用 Acrylic 磨砂玻璃效果（overlay 保持完全透明，不套）
+      if (currentWindow.label !== 'overlay') {
+        invoke('apply_vibrancy', { label: currentWindow.label })
+          .catch((e) => console.log('磨砂玻璃效果套用失敗或在此平台不支援：', e));
+      }
     } catch (e) {
       console.error('無法獲取視窗標籤：', e);
       setWindowLabel('main');

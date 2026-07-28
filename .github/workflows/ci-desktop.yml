@@ -1,0 +1,84 @@
+name: CI (Saybit Desktop)
+
+# 與 ci.yml 分開：那支只編原生 Xcode app（speakertpyer/），跟這個 Tauri app
+# 沒有共用程式碼，改一邊不該去跑另一邊的 runner。
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'saybit-desktop/**'
+      - '.github/workflows/ci-desktop.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'saybit-desktop/**'
+      - '.github/workflows/ci-desktop.yml'
+
+defaults:
+  run:
+    working-directory: ./saybit-desktop
+
+jobs:
+  frontend:
+    name: Frontend (typecheck + build)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: saybit-desktop/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npx tsc --noEmit
+
+      - name: Build
+        run: npm run build
+
+  rust:
+    name: Rust (${{ matrix.platform }})
+    runs-on: ${{ matrix.platform }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [macos-latest, windows-latest, ubuntu-22.04]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      # 三個平台走各自的 platform.rs / secure_store.rs 分支，所以三個都要編到，
+      # 不然 Windows 的 GetForegroundWindow 或 Linux 的 secret-service 壞掉不會有人發現。
+      - name: Install Linux dependencies
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev \
+            librsvg2-dev patchelf libxdo-dev libdbus-1-dev
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: './saybit-desktop/src-tauri -> target'
+
+      # tauri build 會去讀 ../dist，cargo check 不需要真的前端產物，
+      # 但 tauri-build 的 codegen 會驗證 frontendDist 存在
+      - name: Stub frontend dist
+        run: mkdir -p dist && echo '<!doctype html><title>ci</title>' > dist/index.html
+        shell: bash
+
+      - name: cargo check
+        working-directory: ./saybit-desktop/src-tauri
+        run: cargo check --all-targets
+
+      - name: clippy
+        working-directory: ./saybit-desktop/src-tauri
+        run: cargo clippy --all-targets -- -D warnings

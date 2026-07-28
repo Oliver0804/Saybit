@@ -18,7 +18,7 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = ["tray-icon"] }
+tauri = { version = "2", features = ["tray-icon", "macos-private-api"] }
 tauri-plugin-opener = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -27,5 +27,66 @@ tauri-plugin-clipboard-manager = "2"
 tauri-plugin-store = "2"
 enigo = { version = "0.2", features = ["serde"] }
 window-vibrancy = "0.5"
+tauri-plugin-http = "2.5.9"
+whisper-rs = "0.16.0"
+reqwest = { version = "0.13.4", features = ["stream"] }
+futures-util = "0.3.32"
+
+tauri-plugin-autostart = "2"
+
+# 串流 STT：WebSocket 必須放 Rust —— 阿里雲的認證走 handshake header，
+# 瀏覽器的 WebSocket API 設不了自訂 header。
+tokio-tungstenite = { version = "0.24", features = ["rustls-tls-webpki-roots"] }
+tokio = { version = "1", features = ["rt", "sync", "time", "macros"] }
+hmac = "0.12"
+sha1 = "0.10"
+md-5 = "0.10"
+base64 = "0.22"
+uuid = { version = "1", features = ["v4"] }
+
+# 前景視窗查詢與系統金鑰庫：各平台走各自的原生 API
+# （見 src/platform.rs、src/secure_store.rs）
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6"
+objc2-app-kit = { version = "0.3", features = ["NSWorkspace", "NSRunningApplication"] }
+objc2-foundation = { version = "0.3", features = [
+    "NSString",
+    "NSDate",
+    "NSCalendar",
+    "NSError",
+    "NSISO8601DateFormatter",
+    "NSFormatter",
+    "NSLocale",
+] }
+objc2-event-kit = { version = "0.3", features = [
+    "EKEventStore",
+    "EKEvent",
+    "EKReminder",
+    "EKCalendar",
+    "EKCalendarItem",
+    "EKObject",
+    "EKTypes",
+] }
+objc2-speech = { version = "0.3", features = [
+    "SFSpeechRecognizer",
+    "SFSpeechRecognitionRequest",
+    "SFSpeechRecognitionResult",
+    "SFSpeechRecognitionTask",
+    "SFTranscription",
+] }
+objc2-avf-audio = "0.3"
+block2 = "0.6"
+keyring = { version = "4", default-features = false, features = ["v1", "apple-native-keyring-store"] }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+windows = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_UI_WindowsAndMessaging",
+    "Win32_System_Threading",
+] }
+keyring = { version = "4", default-features = false, features = ["v1", "windows-native-keyring-store"] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+keyring = { version = "4", default-features = false, features = ["v1", "zbus-secret-service-keyring-store"] }
 
 

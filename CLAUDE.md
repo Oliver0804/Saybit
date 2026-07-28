@@ -2,6 +2,11 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Two separate apps in this repo
+
+- **`speakertpyer/`** — the native macOS SwiftUI menu-bar app (bundle `com.bashcat.speakertpyer`). Everything below in this file describes it.
+- **`saybit-desktop/`** — a **separate** Tauri 2.0 cross-platform (Windows/macOS/Linux) app (bundle `com.oliver.saybit-desktop`), React + Rust. Same product concept, no shared code. It has its own `saybit-desktop/CLAUDE.md` — read that when working there. Don't confuse the two: launching `/Applications/Saybit.app` runs the native app, not the Tauri build.
+
 ## Build & Run
 
 ```bash
