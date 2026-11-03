@@ -27,7 +27,7 @@ struct ModelPricing {
 enum ModelPricingTable {
     static let zero = ModelPricing(inputPer1K: 0, outputPer1K: 0)
 
-    /// 內建價目表。Key 採模型 ID 子字串比對（小寫）。
+    /// 內建價目表。比對方式見 `price(for:)`：去掉 `provider/` 前綴後做前綴比對（含邊界）。
     /// 第一個命中的 entry 會被採用，故順序由「具體 → 通用」排列。
     private static let table: [(pattern: String, price: ModelPricing)] = [
         // OpenAI
@@ -44,7 +44,10 @@ enum ModelPricingTable {
         ("claude-sonnet-4-7",              .init(inputPer1K: 0.003,  outputPer1K: 0.015)),
         ("claude-sonnet-4-6",              .init(inputPer1K: 0.003,  outputPer1K: 0.015)),
         ("claude-sonnet-4",                .init(inputPer1K: 0.003,  outputPer1K: 0.015)),
-        ("claude-opus-4-7",                .init(inputPer1K: 0.015,  outputPer1K: 0.075)),
+        // Opus 4.5 起降價為 $5 / $25 per 1M；4.0 / 4.1 仍為 $15 / $75
+        ("claude-opus-4-7",                .init(inputPer1K: 0.005,  outputPer1K: 0.025)),
+        ("claude-opus-4-6",                .init(inputPer1K: 0.005,  outputPer1K: 0.025)),
+        ("claude-opus-4-5",                .init(inputPer1K: 0.005,  outputPer1K: 0.025)),
         ("claude-opus-4",                  .init(inputPer1K: 0.015,  outputPer1K: 0.075)),
 
         // Google
@@ -72,12 +75,26 @@ enum ModelPricingTable {
     ]
 
     /// 從模型名稱推估單價；找不到回傳 nil（呼叫端可決定要不要當免費）。
+    /// 去掉 `provider/` 前綴（如 `openai/`、`meta-llama/`）與 `:tag` 後綴，`.` 視同 `-`，
+    /// 再做前綴比對且要求邊界（下一字元非英數），避免 `sao10k/...` 被 `o1` 之類的子字串誤配。
     static func price(for model: String) -> ModelPricing? {
-        let lower = model.lowercased()
+        let name = normalize(model)
+        guard !name.isEmpty else { return nil }
         for (pattern, price) in table {
-            if lower.contains(pattern) { return price }
+            let p = normalize(pattern)
+            guard name.hasPrefix(p) else { continue }
+            let rest = name.dropFirst(p.count)
+            if let next = rest.first, next.isLetter || next.isNumber { continue }
+            return price
         }
         return nil
+    }
+
+    private static func normalize(_ model: String) -> String {
+        var lower = model.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+        if let slash = lower.lastIndex(of: "/") { lower = String(lower[lower.index(after: slash)...]) }
+        if let colon = lower.firstIndex(of: ":") { lower = String(lower[..<colon]) }
+        return lower.replacingOccurrences(of: ".", with: "-")
     }
 
     /// 計算成本：本地服務（ollama/lmstudio prefix）視為 0；未知模型回 nil。
@@ -88,6 +105,8 @@ enum ModelPricingTable {
         if lower.hasPrefix("local/") || lower.hasPrefix("ollama/") {
             return 0
         }
+        // OpenRouter 免費版模型（`…:free`）
+        if lower.hasSuffix(":free") { return 0 }
         guard let p = price(for: model) else { return nil }
         return p.cost(promptTokens: promptTokens, completionTokens: completionTokens)
     }

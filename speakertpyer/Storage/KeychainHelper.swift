@@ -17,7 +17,33 @@ enum KeychainHelper {
 
     // MARK: - Per-provider API Key
 
+    #if os(iOS)
+    /// iOS 背景處理（鍵盤待命）時可能已鎖機；預設的 WhenUnlocked 會讀不到 key，
+    /// 被誤判為「未設定 API Key」。macOS 的檔案型 keychain 不使用此屬性。
+    private static let accessibility = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+    private static let accessibilityMigratedKey = "keychainAccessibilityMigrated_v1"
+
+    /// 既有項目一次性改成 AfterFirstUnlockThisDeviceOnly（鎖機時 update 會失敗，下次再試）。
+    private static func migrateAccessibilityIfNeeded() {
+        guard !UserDefaults.standard.bool(forKey: accessibilityMigratedKey) else { return }
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+        ]
+        let attrs: [String: Any] = [kSecAttrAccessible as String: accessibility]
+        let status = SecItemUpdate(query as CFDictionary, attrs as CFDictionary)
+        if status == errSecSuccess || status == errSecItemNotFound {
+            UserDefaults.standard.set(true, forKey: accessibilityMigratedKey)
+        }
+    }
+    #endif
+
+    /// 空字串（含只有空白）視為「清除」：刪除該 provider 的 key，而不是寫入空值。
     static func saveAPIKey(_ apiKey: String, for providerId: String) throws {
+        if apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            deleteAPIKey(for: providerId)
+            return
+        }
         guard let data = apiKey.data(using: .utf8) else { return }
         let acct = account(for: providerId)
 
@@ -27,30 +53,40 @@ enum KeychainHelper {
             kSecAttrService as String: service,
             kSecAttrAccount as String: acct,
         ]
-        let updateAttributes: [String: Any] = [
+        var updateAttributes: [String: Any] = [
             kSecValueData as String: data,
         ]
+        #if os(iOS)
+        updateAttributes[kSecAttrAccessible as String] = accessibility
+        #endif
         var status = SecItemUpdate(updateQuery as CFDictionary, updateAttributes as CFDictionary)
 
         if status == errSecItemNotFound {
             // Item doesn't exist, add new one
-            let addQuery: [String: Any] = [
+            var addQuery: [String: Any] = [
                 kSecClass as String: kSecClassGenericPassword,
                 kSecAttrService as String: service,
                 kSecAttrAccount as String: acct,
                 kSecValueData as String: data,
             ]
+            #if os(iOS)
+            addQuery[kSecAttrAccessible as String] = accessibility
+            #endif
             status = SecItemAdd(addQuery as CFDictionary, nil)
         }
 
         guard status == errSecSuccess else {
-            print("[Keychain] Save failed for \(providerId): OSStatus \(status)")
+            AppLogger.shared.error("Keychain 儲存失敗 (\(providerId)): OSStatus \(status)", category: "Keychain")
             throw KeychainError.saveFailed(status)
         }
-        print("[Keychain] Saved API key for \(providerId)")
+        AppLogger.shared.info("已儲存 \(providerId) 的 API Key", category: "Keychain")
     }
 
+    /// 找不到或內容為空（舊版可能存過空字串）都回 nil。
     static func loadAPIKey(for providerId: String) -> String? {
+        #if os(iOS)
+        migrateAccessibilityIfNeeded()
+        #endif
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
@@ -61,10 +97,12 @@ enum KeychainHelper {
 
         var result: AnyObject?
         let status = SecItemCopyMatching(query as CFDictionary, &result)
-        guard status == errSecSuccess, let data = result as? Data else {
+        guard status == errSecSuccess, let data = result as? Data, !data.isEmpty,
+              let key = String(data: data, encoding: .utf8),
+              !key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             return nil
         }
-        return String(data: data, encoding: .utf8)
+        return key
     }
 
     static func deleteAPIKey(for providerId: String) {

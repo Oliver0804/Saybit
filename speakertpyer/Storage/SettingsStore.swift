@@ -329,9 +329,22 @@ class SettingsStore: ObservableObject {
 
     @Published var voiceModes: [VoiceMode] {
         didSet {
-            if let data = try? JSONEncoder().encode(voiceModes) {
-                UserDefaults.standard.set(data, forKey: "voiceModes")
-            }
+            // 編輯指令時每個按鍵都會觸發；debounce 0.4 秒再整包編碼寫入
+            voiceModesSaveWork?.cancel()
+            let work = DispatchWorkItem { [weak self] in self?.flushVoiceModes() }
+            voiceModesSaveWork = work
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4, execute: work)
+        }
+    }
+
+    private var voiceModesSaveWork: DispatchWorkItem?
+
+    /// 立即寫入尚未落盤的 voiceModes（debounce 期間要結束時可呼叫）
+    func flushVoiceModes() {
+        voiceModesSaveWork?.cancel()
+        voiceModesSaveWork = nil
+        if let data = try? JSONEncoder().encode(voiceModes) {
+            UserDefaults.standard.set(data, forKey: "voiceModes")
         }
     }
 
@@ -356,6 +369,25 @@ class SettingsStore: ObservableObject {
 
     @Published var hasCustomOverlayPosition: Bool {
         didSet { UserDefaults.standard.set(hasCustomOverlayPosition, forKey: "hasCustomOverlayPosition") }
+    }
+
+    // MARK: - URL Scheme / 捷徑控制
+
+    /// 允許其他 App 透過 saybit:// URL 或「捷徑」控制錄音（saybit://settings 不受影響）
+    @Published var enableURLSchemeControl: Bool = UserDefaults.standard.object(forKey: "enableURLSchemeControl") as? Bool ?? true {
+        didSet { UserDefaults.standard.set(enableURLSchemeControl, forKey: "enableURLSchemeControl") }
+    }
+
+    /// 不用詢問即可透過 saybit:// 控制錄音的來源 App（bundle ID）
+    static let defaultURLSchemeAllowedSenders = [
+        "com.apple.shortcuts",
+        "com.raycast.macos",
+        "com.runningwithcrayons.Alfred",
+        "com.elgato.StreamDeck",
+    ]
+
+    @Published var urlSchemeAllowedSenders: [String] = UserDefaults.standard.stringArray(forKey: "urlSchemeAllowedSenders") ?? SettingsStore.defaultURLSchemeAllowedSenders {
+        didSet { UserDefaults.standard.set(urlSchemeAllowedSenders, forKey: "urlSchemeAllowedSenders") }
     }
 
     // MARK: - Init
@@ -397,7 +429,7 @@ class SettingsStore: ObservableObject {
         self.enableWhisperMode = defaults.object(forKey: "enableWhisperMode") as? Bool ?? false
         self.enableVoiceBandpass = defaults.object(forKey: "enableVoiceBandpass") as? Bool ?? true
         self.enableScreenContext = defaults.bool(forKey: "enableScreenContext")
-        self.enableAutoLearnDictionary = defaults.object(forKey: "enableAutoLearnDictionary") as? Bool ?? true
+        self.enableAutoLearnDictionary = defaults.object(forKey: "enableAutoLearnDictionary") as? Bool ?? false
         self.enableDuckingWhileRecording = defaults.object(forKey: "enableDuckingWhileRecording") as? Bool ?? true
         self.enableEchoCancellation = defaults.object(forKey: "enableEchoCancellation") as? Bool ?? false
         self.silenceTimeout = defaults.object(forKey: "silenceTimeout") as? Double ?? 2.0

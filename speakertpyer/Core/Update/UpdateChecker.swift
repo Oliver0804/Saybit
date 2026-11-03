@@ -108,23 +108,50 @@ actor UpdateChecker {
         return s
     }
 
-    /// Semver 比較（只比 major.minor.patch，pre-release 後綴忽略）。
+    /// Semver 比較（semver 2.0 precedence）：先比 major.minor.patch（缺項補 0），
+    /// 相同時有 pre-release 的版本較舊（`1.5.0-beta.1 < 1.5.0`），兩者都有則逐段比較識別字；
+    /// `+build` metadata 忽略。
     static func compareSemver(_ lhs: String, _ rhs: String) -> ComparisonResult {
-        let lParts = parts(lhs)
-        let rParts = parts(rhs)
-        let count = max(lParts.count, rParts.count)
+        let (lCore, lPre) = split(lhs)
+        let (rCore, rPre) = split(rhs)
+        let count = max(lCore.count, rCore.count)
         for i in 0..<count {
-            let a = i < lParts.count ? lParts[i] : 0
-            let b = i < rParts.count ? rParts[i] : 0
+            let a = i < lCore.count ? lCore[i] : 0
+            let b = i < rCore.count ? rCore[i] : 0
             if a < b { return .orderedAscending }
             if a > b { return .orderedDescending }
         }
-        return .orderedSame
+        switch (lPre, rPre) {
+        case (nil, nil): return .orderedSame
+        case (nil, _): return .orderedDescending
+        case (_, nil): return .orderedAscending
+        case let (l?, r?): return comparePreRelease(l, r)
+        }
     }
 
-    private static func parts(_ s: String) -> [Int] {
-        // 取主版號段（去掉 "-beta.1" 之類）
-        let core = s.split(separator: "-").first.map(String.init) ?? s
-        return core.split(separator: ".").compactMap { Int($0) }
+    /// 拆成數字核心與 pre-release 識別字（nil 代表正式版）。
+    private static func split(_ raw: String) -> (core: [Int], pre: [Substring]?) {
+        let noBuild = normalize(raw).split(separator: "+", maxSplits: 1, omittingEmptySubsequences: false).first ?? ""
+        let pieces = noBuild.split(separator: "-", maxSplits: 1, omittingEmptySubsequences: false)
+        let core = (pieces.first ?? "").split(separator: ".").compactMap { Int($0) }
+        let pre: [Substring]? = pieces.count > 1 && !pieces[1].isEmpty
+            ? pieces[1].split(separator: ".", omittingEmptySubsequences: false)
+            : nil
+        return (core, pre)
+    }
+
+    private static func comparePreRelease(_ l: [Substring], _ r: [Substring]) -> ComparisonResult {
+        for (a, b) in zip(l, r) {
+            switch (Int(a), Int(b)) {
+            case let (x?, y?):
+                if x != y { return x < y ? .orderedAscending : .orderedDescending }
+            case (.some, nil): return .orderedAscending   // 數字識別字 < 文字識別字
+            case (nil, .some): return .orderedDescending
+            case (nil, nil):
+                if a != b { return a < b ? .orderedAscending : .orderedDescending }
+            }
+        }
+        if l.count == r.count { return .orderedSame }
+        return l.count < r.count ? .orderedAscending : .orderedDescending
     }
 }

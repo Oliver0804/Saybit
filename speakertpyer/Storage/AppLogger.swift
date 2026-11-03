@@ -23,18 +23,53 @@ struct LogEntry: Identifiable, Codable {
     let timestamp: Date
     let level: LogLevel
     let category: String
+    /// 完整內容（只存在記憶體，供日誌頁顯示）。
     let message: String
+    /// 含使用者內容（轉錄、LLM 結果、字典替換）。落盤與匯出（`formatted`）一律遮罩。
+    let isSensitive: Bool
 
-    init(level: LogLevel, category: String, message: String) {
+    init(level: LogLevel, category: String, message: String, isSensitive: Bool = false) {
         self.id = UUID()
         self.timestamp = Date()
         self.level = level
         self.category = category
         self.message = message
+        self.isSensitive = isSensitive
     }
 
+    /// 落盤 / 匯出用的訊息：敏感內容以 `[內容已遮罩, N 字]` 取代。
+    var redactedMessage: String {
+        isSensitive ? "[內容已遮罩, \(message.count) 字]" : message
+    }
+
+    /// 匯出用（LogsView / iOS 分享都走這裡），敏感內容已遮罩。
     var formatted: String {
-        "[\(Self.timeFormatter.string(from: timestamp))] [\(level.rawValue)] [\(category)] \(message)"
+        "[\(Self.timeFormatter.string(from: timestamp))] [\(level.rawValue)] [\(category)] \(redactedMessage)"
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, timestamp, level, category, message, isSensitive
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(UUID.self, forKey: .id)
+        timestamp = try c.decode(Date.self, forKey: .timestamp)
+        level = try c.decode(LogLevel.self, forKey: .level)
+        category = try c.decode(String.self, forKey: .category)
+        message = try c.decode(String.self, forKey: .message)
+        isSensitive = try c.decodeIfPresent(Bool.self, forKey: .isSensitive) ?? false
+    }
+
+    /// 編碼（寫入 JSONL）時只寫遮罩後的訊息，確保敏感內容不落盤。
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(id, forKey: .id)
+        try c.encode(timestamp, forKey: .timestamp)
+        try c.encode(level, forKey: .level)
+        try c.encode(category, forKey: .category)
+        try c.encode(redactedMessage, forKey: .message)
+        if isSensitive { try c.encode(true, forKey: .isSensitive) }
     }
 
     private static let timeFormatter: DateFormatter = {
@@ -100,6 +135,12 @@ class AppLogger {
 
     func debug(_ message: String, category: String = "App") {
         append(LogEntry(level: .debug, category: category, message: message))
+    }
+
+    /// 含使用者內容的日誌：完整內容只進記憶體（日誌頁可見），
+    /// 寫檔與匯出都以 `[內容已遮罩, N 字]` 取代；Xcode console 也只印遮罩版。
+    func sensitive(_ message: String, category: String = "App", level: LogLevel = .debug) {
+        append(LogEntry(level: level, category: category, message: message, isSensitive: true))
     }
 
     func clear() {

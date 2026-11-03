@@ -54,6 +54,10 @@ final class TextRefiner {
     private let records: RecordsRepository
     private let log = AppLogger.shared
 
+    /// 最近一次回 `.needsSelection` 時的轉錄（字典替換後），讓 UI 能提供「改以口述輸入」
+    /// 而不是丟掉整段口述；下一次走到 Stage 2 時清為 nil。
+    private(set) var lastUnhandledTranscript: String?
+
     init(
         settingsStore: SettingsStore,
         llmClient: OpenRouterClient? = nil,
@@ -83,7 +87,7 @@ final class TextRefiner {
         DictionaryHints.refresh(records: records)
         let transcript = DictionaryHints.apply(request.transcript)
         if transcript != request.transcript {
-            log.info("字典替換: \(request.transcript.prefix(60)) → \(transcript.prefix(60))", category: "LLM")
+            log.sensitive("字典替換: \(request.transcript.prefix(60)) → \(transcript.prefix(60))", category: "LLM", level: .info)
         }
         let nonEmptySelectedText = request.selectedText.flatMap { $0.isEmpty ? nil : $0 }
         let hasSelectedText = nonEmptySelectedText != nil
@@ -100,7 +104,7 @@ final class TextRefiner {
         if let instructions = request.modeInstructions?.trimmingCharacters(in: .whitespacesAndNewlines),
            !instructions.isEmpty {
             // ── 語音模式：使用者指定的指令，單次 LLM 呼叫 ──
-            log.info("語音模式指令處理 (\(instructions.prefix(30)))", category: "LLM")
+            log.info("語音模式指令處理 (\(instructions.count) 字)", category: "LLM")
             systemPrompt = SystemPrompts.forMode(instructions: instructions, hasSelectedText: hasSelectedText)
             contentForLLM = transcript
             existingTextForPayload = nonEmptySelectedText
@@ -112,7 +116,7 @@ final class TextRefiner {
             existingTextForPayload = pickedText
         } else {
             // ── 無選取文字：Stage 1 意圖分類（帶 timeout）→ Stage 2 執行 ──
-            let intentResult = await classifyIntentWithTimeout(
+            let intentResult = try await classifyIntentWithTimeout(
                 transcript: transcript, skills: skills,
                 model: model, provider: provider, contextId: contextId
             )
@@ -136,8 +140,9 @@ final class TextRefiner {
                 }
                 contentForLLM = content
                 existingTextForPayload = nil
-            } else if intentResult.intent != "dictation" {
-                // 有動作意圖但沒有內容 → 提示使用者選取文字
+            } else if intentResult.intent != "dictation",
+                      Self.looksLikeBareCommand(transcript) {
+                // 有動作意圖但沒有內容，且轉錄很短（像是單純的指令）→ 提示使用者選取文字
                 log.info("Stage 1 意圖=\(intentResult.intent) 但無可操作內容，提示使用者", category: "LLM")
                 let hint: String
                 switch intentResult.intent {
@@ -151,8 +156,13 @@ final class TextRefiner {
                 default:
                     hint = "請先選取要操作的文字"
                 }
+                lastUnhandledTranscript = transcript
                 return .needsSelection(hint: hint)
             } else {
+                if intentResult.intent != "dictation" {
+                    // 有動作意圖但沒有內容、轉錄又長：多半是誤判，當口述處理而不是吞掉整段
+                    log.info("Stage 1 意圖=\(intentResult.intent) 但無內容且轉錄較長，改以口述處理", category: "LLM")
+                }
                 systemPrompt = SystemPrompts.forStyle(style)
                 contentForLLM = transcript
                 existingTextForPayload = nil
@@ -177,6 +187,7 @@ final class TextRefiner {
             finalSystemPrompt += "\n\n" + SystemPrompts.screenContextRule
         }
 
+        lastUnhandledTranscript = nil
         let payload = LLMPayload(
             transcript: contentForLLM,
             context: contextId.isEmpty ? nil : contextId,
@@ -212,6 +223,8 @@ final class TextRefiner {
                 onUsage(usage)
             }
         }
+        // 取消時串流可能只是提早結束：丟 CancellationError，別被當成「AI 沒有回應」
+        try Task.checkCancellation()
 
         guard !accumulated.isEmpty else {
             log.error("LLM 回傳空結果", category: "LLM")
@@ -220,17 +233,20 @@ final class TextRefiner {
 
         // LLM 可能誤回 JSON command 格式，此時提取 replacement 欄位
         accumulated = extractReplacementIfCommandJSON(accumulated)
-        log.info("LLM 結果: \(accumulated.prefix(100))\(accumulated.count > 100 ? "..." : "")", category: "LLM")
+        log.sensitive("LLM 結果: \(accumulated.prefix(100))\(accumulated.count > 100 ? "..." : "")", category: "LLM", level: .info)
         return .text(accumulated)
     }
 
     // MARK: - Intent Classification (Stage 1)
 
-    /// Stage 1 意圖分類，帶 8 秒 timeout。逾時或失敗時 fallback 為 dictation。
+    private struct IntentTimeout: Error {}
+
+    /// Stage 1 意圖分類，帶 8 秒 timeout。逾時或失敗時 fallback 為 dictation；
+    /// 外部取消（使用者按取消）則 rethrow CancellationError，不繼續 Stage 2。
     private func classifyIntentWithTimeout(
         transcript: String, skills: [String: String],
         model: String, provider: LLMProvider, contextId: String
-    ) async -> LLMIntentResponse {
+    ) async throws -> LLMIntentResponse {
         let dictationFallback = LLMIntentResponse(
             intent: "dictation", language: nil, style: nil,
             format: nil, skillName: nil, content: nil
@@ -259,12 +275,12 @@ final class TextRefiner {
                 }
                 group.addTask {
                     try await Task.sleep(for: .seconds(8))
-                    throw CancellationError()
+                    throw IntentTimeout()
                 }
+                defer { group.cancelAll() }
                 guard let result = try await group.next() else {
-                    throw CancellationError()
+                    throw IntentTimeout()
                 }
-                group.cancelAll()
                 return result
             }
 
@@ -278,11 +294,15 @@ final class TextRefiner {
                          category: "LLM")
                 return parsed
             } else {
-                log.info("Stage 1 JSON 解析失敗，fallback dictation: \(raw.prefix(100))", category: "LLM")
+                log.sensitive("Stage 1 JSON 解析失敗，fallback dictation: \(raw.prefix(100))", category: "LLM", level: .info)
                 return dictationFallback
             }
         } catch {
-            if error is CancellationError {
+            // 只有外部取消才 rethrow；逾時造成的子任務取消已轉成 IntentTimeout
+            if Task.isCancelled {
+                throw CancellationError()
+            }
+            if error is IntentTimeout {
                 log.error("Stage 1 逾時 (8s)，fallback dictation", category: "LLM")
             } else {
                 log.error("Stage 1 失敗: \(error)，fallback dictation", category: "LLM")
@@ -307,7 +327,7 @@ final class TextRefiner {
             whisperMode: nil, existingText: nil
         )
 
-        log.info("Action intent: \(intentResult.intent), content: \(content.prefix(80))", category: "Action")
+        log.sensitive("Action intent: \(intentResult.intent), content: \(content.prefix(80))", category: "Action", level: .info)
 
         do {
             let raw = try await llmClient.send(
@@ -324,14 +344,15 @@ final class TextRefiner {
             switch intentResult.intent {
             case "create_event":
                 let r = try JSONDecoder().decode(LLMEventResponse.self, from: jsonData)
-                log.info("Event preview: \(r.title) @ \(r.date)", category: "Action")
+                log.sensitive("Event preview: \(r.title) @ \(r.date)", category: "Action", level: .info)
                 return .action(.createEvent(r), confirmation: r.confirmationText)
             default:
                 let r = try JSONDecoder().decode(LLMReminderResponse.self, from: jsonData)
-                log.info("Reminder preview: \(r.title)", category: "Action")
+                log.sensitive("Reminder preview: \(r.title)", category: "Action", level: .info)
                 return .action(.createReminder(r), confirmation: r.confirmationText)
             }
         } catch {
+            if error is CancellationError || Task.isCancelled { throw CancellationError() }
             let msg = L10n.Errors.actionExecutionFailed(error.localizedDescription)
             log.error(msg, category: "Action")
             throw RefinerError.actionFailed(msg)
@@ -376,7 +397,7 @@ final class TextRefiner {
                 notes: response.notes
             )
             _ = try await eventKit.createEvent(params)
-            log.info("行事曆事件已建立: \(response.title)", category: "Action")
+            log.sensitive("行事曆事件已建立: \(response.title)", category: "Action", level: .info)
 
         case .createReminder(let response):
             if !eventKit.reminderAuthorized {
@@ -395,11 +416,34 @@ final class TextRefiner {
                 notes: response.notes
             )
             _ = try await eventKit.createReminder(params)
-            log.info("提醒事項已建立: \(response.title)", category: "Action")
+            log.sensitive("提醒事項已建立: \(response.title)", category: "Action", level: .info)
         }
     }
 
     // MARK: - Helpers
+
+    /// 轉錄是否短到像「單純指令」（例如「翻譯成日文」）。CJK 字元每字算 1、其他以空白分詞每詞算 1。
+    /// 超過門檻的長句即使 Stage 1 判成翻譯 / 改寫但沒抽出內容，也當口述處理，避免整段被吞。
+    nonisolated static func looksLikeBareCommand(_ transcript: String, maxUnits: Int = 25) -> Bool {
+        var units = 0
+        var inWord = false
+        for scalar in transcript.unicodeScalars {
+            let v = scalar.value
+            let isCJK = (0x3040...0x30FF).contains(v) || (0x3400...0x4DBF).contains(v)
+                || (0x4E00...0x9FFF).contains(v) || (0xAC00...0xD7AF).contains(v)
+                || (0xF900...0xFAFF).contains(v)
+            if isCJK {
+                units += 1
+                inWord = false
+            } else if scalar.properties.isAlphabetic || CharacterSet.decimalDigits.contains(scalar) {
+                if !inWord { units += 1; inWord = true }
+            } else {
+                inWord = false
+            }
+            if units > maxUnits { return false }
+        }
+        return true
+    }
 
     private static func stripCodeFence(_ raw: String) -> String {
         raw.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -444,6 +488,19 @@ final class TextRefiner {
                 return L10n.Errors.networkError
             case .retriesExhausted(let code, let attempts):
                 return L10n.Errors.retriesExhausted(attempts, code)
+            case .httpError(let code, let body):
+                let base: String
+                switch code {
+                case 401: base = L10n.Errors.invalidAPIKey
+                case 402: base = L10n.Errors.insufficientBalance
+                case 429: base = L10n.Errors.rateLimited
+                case 500...599: base = L10n.Errors.serverUnavailable
+                default: base = L10n.Errors.apiError(code)
+                }
+                let detail = OpenRouterClient.ClientError.extractErrorMessage(fromBody: body)
+                return detail.isEmpty ? base : "\(base)（\(detail.prefix(120))）"
+            case .streamError, .insecureEndpoint:
+                return clientError.errorDescription ?? error.localizedDescription
             }
         }
         return error.localizedDescription

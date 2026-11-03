@@ -31,6 +31,16 @@ struct LLMPayload: Encodable {
         case whisperMode = "whisper_mode"
         case existingText = "existing_text"
     }
+
+    /// 給 JSON metadata 用的副本：`existing_text` / `screen_context` 改由 user message 中的
+    /// `<existing_text>` / `<screen_context>` 標籤傳遞（資料與指令分離），不再重複放進 JSON。
+    nonisolated func withoutTaggedBlocks() -> LLMPayload {
+        LLMPayload(
+            transcript: transcript, context: context, mode: mode, tone: tone,
+            languagePreference: languagePreference, personalDictionary: personalDictionary,
+            snippets: snippets, screenContext: nil, whisperMode: whisperMode, existingText: nil
+        )
+    }
 }
 
 struct LLMCommandResponse: Decodable {
@@ -105,6 +115,40 @@ struct OpenRouterChatRequest: Encodable {
 struct OpenRouterStreamChunk: Decodable {
     let choices: [Choice]?
     let usage: LLMUsage?
+    /// 串流中途伺服器送來的錯誤（例如 `{"error":{"message":"…","code":502}}`）
+    let error: StreamError?
+
+    /// 非 nil 表示這個 chunk 是錯誤，應中止串流
+    nonisolated var errorMessage: String? {
+        guard let error else { return nil }
+        let msg = error.message?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if !msg.isEmpty { return msg }
+        if let code = error.code { return "error \(code)" }
+        return "unknown error"
+    }
+
+    /// `error` 可能是物件（message / code，code 可為數字或字串）或單純字串
+    struct StreamError: Decodable {
+        let message: String?
+        let code: String?
+
+        private enum CodingKeys: String, CodingKey { case message, code }
+
+        init(from decoder: Decoder) throws {
+            if let single = try? decoder.singleValueContainer(), let str = try? single.decode(String.self) {
+                message = str
+                code = nil
+                return
+            }
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            message = try c.decodeIfPresent(String.self, forKey: .message)
+            if let i = try? c.decodeIfPresent(Int.self, forKey: .code) {
+                code = String(i)
+            } else {
+                code = try? c.decodeIfPresent(String.self, forKey: .code)
+            }
+        }
+    }
 
     struct Choice: Decodable {
         let delta: Delta?

@@ -176,6 +176,67 @@ struct LLMProvider: Codable, Identifiable, Hashable {
         )
     }
 
+    // MARK: - Base URL Validation
+
+    enum BaseURLValidation: Equatable {
+        /// https，或 http 但 host 在本機 / 區網
+        case ok
+        /// http 且 host 為公開位址：API key 會明文外送
+        case insecureRemote
+        /// 無法解析出 scheme + host，或 scheme 不是 http(s)
+        case invalid
+    }
+
+    /// 送出 API key 前檢查端點：https → ok；http 只允許 localhost / 127.0.0.0/8 / ::1 /
+    /// 10.x / 172.16–31.x / 192.168.x / *.local；其他 http → insecureRemote；解析失敗 → invalid。
+    nonisolated static func validateBaseURL(_ raw: String) -> BaseURLValidation {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let comps = URLComponents(string: trimmed),
+              let scheme = comps.scheme?.lowercased(),
+              let rawHost = comps.host, !rawHost.isEmpty else { return .invalid }
+        switch scheme {
+        case "https":
+            return .ok
+        case "http":
+            return isLocalHost(rawHost) ? .ok : .insecureRemote
+        default:
+            return .invalid
+        }
+    }
+
+    nonisolated private static func isLocalHost(_ rawHost: String) -> Bool {
+        var host = rawHost.lowercased()
+        if host.hasPrefix("[") && host.hasSuffix("]") { host = String(host.dropFirst().dropLast()) }
+        if host.hasSuffix(".") { host.removeLast() }
+        if host == "localhost" || host.hasSuffix(".localhost") || host.hasSuffix(".local") { return true }
+        if host == "::1" || host == "0:0:0:0:0:0:0:1" { return true }
+
+        let parts = host.split(separator: ".", omittingEmptySubsequences: false)
+        guard parts.count == 4 else { return false }
+        var octets: [Int] = []
+        for p in parts {
+            guard !p.isEmpty, p.count <= 3, p.allSatisfy(\.isASCII), p.allSatisfy(\.isNumber),
+                  let v = Int(p), (0...255).contains(v) else { return false }
+            octets.append(v)
+        }
+        switch (octets[0], octets[1]) {
+        case (127, _), (10, _), (192, 168): return true
+        case (172, 16...31): return true
+        default: return false
+        }
+    }
+
+    /// `validateBaseURL` 的中文說明（.ok 回 nil）
+    nonisolated static func baseURLValidationMessage(_ v: BaseURLValidation, url: String) -> String? {
+        switch v {
+        case .ok: return nil
+        case .insecureRemote:
+            return "端點 \(url) 使用未加密的 http:// 連到外部主機，API Key 與內容會以明文傳送；請改用 https://（http 僅允許本機或區網位址）"
+        case .invalid:
+            return "端點 URL 無效：\(url)（需為 https://… 或本機 / 區網的 http://…）"
+        }
+    }
+
     // MARK: - OpenAI-Compatible Models Endpoint
 
     /// 從 chat/completions 的 baseURL 推導出 /models 端點。
@@ -200,6 +261,11 @@ struct LLMProvider: Codable, Identifiable, Hashable {
         guard let url = provider.modelsEndpoint else {
             throw NSError(domain: "LLMProvider", code: -1,
                           userInfo: [NSLocalizedDescriptionKey: "無法解析 models 端點：\(provider.baseURL)"])
+        }
+        let validation = validateBaseURL(provider.baseURL)
+        if let msg = baseURLValidationMessage(validation, url: provider.baseURL) {
+            throw NSError(domain: "LLMProvider", code: -2,
+                          userInfo: [NSLocalizedDescriptionKey: msg])
         }
         var request = URLRequest(url: url)
         request.timeoutInterval = 15
