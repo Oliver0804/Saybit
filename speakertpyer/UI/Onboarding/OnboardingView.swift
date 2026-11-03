@@ -406,7 +406,8 @@ struct OnboardingView: View {
                         Text(L10n.Onboarding.testAPI)
                     }
                 }
-                .disabled(isTesting || KeychainHelper.loadAPIKey(for: currentOnboardingProvider.id) == nil)
+                // 用 state 判斷，不在 body 裡讀 Keychain
+                .disabled(isTesting || !apiKeySaved)
 
                 if let result = testResult {
                     HStack(spacing: 4) {
@@ -418,6 +419,9 @@ struct OnboardingView: View {
                     }
                 }
             }
+        }
+        .onAppear {
+            apiKeySaved = !(KeychainHelper.loadAPIKey(for: currentOnboardingProvider.id) ?? "").isEmpty
         }
     }
 

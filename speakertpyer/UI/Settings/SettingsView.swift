@@ -43,7 +43,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         case .api: return L10n.Tabs.ai
         case .hotkey: return L10n.Tabs.hotkey
         case .dictionary: return L10n.Tabs.dictionary
-        case .transcribe: return "檔案轉錄"
+        case .transcribe: return L10n.Tabs.transcribe
         case .history: return L10n.Tabs.history
         case .statistics: return L10n.Tabs.statistics
         case .logs: return L10n.Tabs.logs
@@ -133,6 +133,8 @@ struct SettingsView: View {
     @EnvironmentObject var settingsStore: SettingsStore
     @StateObject private var searchState = SettingsSearchState()
     @ObservedObject private var navigation = SettingsNavigation.shared
+    /// 檔案轉錄狀態放在這層，切到其他分頁再回來不會遺失進度或結果
+    @State private var fileTranscription = FileTranscriptionModel()
     private var selectedTab: SettingsTab { navigation.tab }
 
     var body: some View {
@@ -156,6 +158,8 @@ struct SettingsView: View {
                                 .foregroundStyle(.tertiary)
                         }
                         .buttonStyle(.plain)
+                        .help(L10n.Common.clearSearch)
+                        .accessibilityLabel(L10n.Common.clearSearch)
                     }
                 }
                 .padding(7)
@@ -224,7 +228,7 @@ struct SettingsView: View {
                     DictionarySettingsView()
                         .environmentObject(searchState)
                 case .transcribe:
-                    FileTranscriptionView()
+                    FileTranscriptionView(model: fileTranscription)
                 case .history:
                     HistoryView()
                 case .statistics:

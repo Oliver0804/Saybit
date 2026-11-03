@@ -21,7 +21,10 @@ struct TutorialView: View {
     // Hotkey recording states
     @State private var isRecordingHotkey = false
     @State private var recordingTimeRemaining = 0
+    @State private var countdownTask: Task<Void, Never>?
     private let recordingTimeout = 10
+
+    @State private var tutorialKeySaved = false
 
     // Pages: 0=Hotkey, 1=API, 2=Audio, 3=Features, 4-7=Practice 1-4
     private let totalPages = 8
@@ -255,32 +258,25 @@ struct TutorialView: View {
                 HStack(spacing: 12) {
                     Text(L10n.API.provider)
                         .font(.body)
+                    // 列出所有需要 key 的服務商，key 才會存到使用者實際選的那一家
                     Picker("", selection: $settingsStore.selectedProviderID) {
-                        Text("OpenRouter").tag("openrouter")
-                        Text("OpenAI").tag("openai")
-                        Text("Groq").tag("groq")
+                        ForEach(settingsStore.allProviders.filter(\.requiresAPIKey)) { provider in
+                            Text(provider.name).tag(provider.id)
+                        }
                     }
-                    .pickerStyle(.segmented)
+                    .pickerStyle(.menu)
                     .frame(width: 280)
+                    .onChange(of: settingsStore.selectedProviderID) { _, _ in
+                        apiKeyInput = ""
+                        refreshTutorialKeyStatus()
+                    }
                 }
 
                 // Get API Key link based on selection
-                HStack(spacing: 8) {
-                    if settingsStore.selectedProviderID == "openrouter" {
-                        Link(destination: URL(staticString: "https://openrouter.ai/keys")) {
-                            Label(L10n.Onboarding.apiTutorialGetKey, systemImage: "link")
-                                .font(.callout)
-                        }
-                    } else if settingsStore.selectedProviderID == "openai" {
-                        Link(destination: URL(staticString: "https://platform.openai.com/api-keys")) {
-                            Label(L10n.Onboarding.apiTutorialGetKey, systemImage: "link")
-                                .font(.callout)
-                        }
-                    } else {
-                        Link(destination: URL(staticString: "https://console.groq.com/keys")) {
-                            Label(L10n.Onboarding.apiTutorialGetKey, systemImage: "link")
-                                .font(.callout)
-                        }
+                if let url = Self.keyPortalURL(for: settingsStore.selectedProviderID) {
+                    Link(destination: url) {
+                        Label(L10n.Onboarding.apiTutorialGetKey, systemImage: "link")
+                            .font(.callout)
                     }
                 }
 
@@ -297,6 +293,7 @@ struct TutorialView: View {
                         if let preset = LLMProvider.defaultModel(for: settingsStore.selectedProviderID) {
                             settingsStore.selectedModel = preset
                         }
+                        refreshTutorialKeyStatus()
                     }
                     .buttonStyle(.borderedProminent)
                     .disabled(apiKeyInput.isEmpty)
@@ -304,7 +301,7 @@ struct TutorialView: View {
                 .padding(.horizontal, 50)
 
                 // Status
-                if KeychainHelper.loadAPIKey(for: settingsStore.selectedProvider.id) != nil {
+                if tutorialKeySaved {
                     HStack(spacing: 6) {
                         Image(systemName: "checkmark.circle.fill")
                             .foregroundColor(.green)
@@ -321,6 +318,23 @@ struct TutorialView: View {
             }
         }
         .padding()
+        .onAppear { refreshTutorialKeyStatus() }
+    }
+
+    /// Keychain 只在切換服務商 / 儲存 / 進頁時查，不在 body 裡查
+    private func refreshTutorialKeyStatus() {
+        tutorialKeySaved = !(KeychainHelper.loadAPIKey(for: settingsStore.selectedProvider.id) ?? "").isEmpty
+    }
+
+    private static func keyPortalURL(for providerID: String) -> URL? {
+        switch providerID {
+        case "openrouter": URL(string: "https://openrouter.ai/keys")
+        case "openai":     URL(string: "https://platform.openai.com/api-keys")
+        case "deepseek":   URL(string: "https://platform.deepseek.com/api_keys")
+        case "groq":       URL(string: "https://console.groq.com/keys")
+        case "together":   URL(string: "https://api.together.xyz/settings/api-keys")
+        default:           nil
+        }
     }
 
     private func priceRow(text: String, highlight: Bool) -> some View {
@@ -360,6 +374,11 @@ struct TutorialView: View {
                     Text(L10n.General.systemDefault).tag("")
                     ForEach(inputDevices) { device in
                         Text(device.name).tag(device.uid)
+                    }
+                    // 已選的裝置拔掉後仍要有對應項目，否則選單顯示空白
+                    let uid = settingsStore.selectedInputDeviceUID
+                    if !uid.isEmpty && !inputDevices.contains(where: { $0.uid == uid }) {
+                        Text(L10n.General.deviceUnavailable).tag(uid)
                     }
                 }
                 .labelsHidden()
@@ -458,18 +477,21 @@ struct TutorialView: View {
     }
 
     private func startCountdown() {
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
-            guard isRecordingHotkey else { return }
-            recordingTimeRemaining -= 1
-            if recordingTimeRemaining <= 0 {
-                cancelRecording()
-            } else {
-                startCountdown()
+        // 可取消的 Task 取代遞迴 asyncAfter，避免重複開始錄製時多條倒數同時跑
+        countdownTask?.cancel()
+        countdownTask = Task { @MainActor in
+            while recordingTimeRemaining > 0 {
+                try? await Task.sleep(for: .seconds(1))
+                if Task.isCancelled || !isRecordingHotkey { return }
+                recordingTimeRemaining -= 1
             }
+            if isRecordingHotkey { cancelRecording() }
         }
     }
 
     private func cancelRecording() {
+        countdownTask?.cancel()
+        countdownTask = nil
         GlobalHotKeyManager.shared.cancelRecording()
         isRecordingHotkey = false
         recordingTimeRemaining = 0

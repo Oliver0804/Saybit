@@ -36,6 +36,8 @@ struct ContextRulesView: View {
                             .foregroundStyle(.secondary)
                     }
                     .buttonStyle(.plain)
+                    .help(L10n.Common.close)
+                    .accessibilityLabel(L10n.Common.close)
                 }
 
                 Text(L10n.General.contextRulesDesc)
@@ -50,19 +52,18 @@ struct ContextRulesView: View {
             // Scrollable rules list
             ScrollView {
                 if settingsStore.contextRules.isEmpty {
-                    Text(L10n.Common.noResults)
+                    Text(L10n.General.contextRulesEmpty)
                         .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
                         .padding(.vertical, 20)
                 } else {
                     VStack(spacing: 8) {
-                        ForEach(Array(settingsStore.contextRules.enumerated()), id: \.element.id) { index, rule in
+                        // 用 id 綁定，刪除後其他列的 Binding 不會指到錯位或越界的索引
+                        ForEach($settingsStore.contextRules) { $rule in
                             ContextRuleRow(
-                                rule: Binding(
-                                    get: { settingsStore.contextRules[index] },
-                                    set: { settingsStore.contextRules[index] = $0 }
-                                ),
-                                onDelete: {
-                                    settingsStore.contextRules.remove(at: index)
+                                rule: $rule,
+                                onDelete: { [id = rule.id] in
+                                    settingsStore.contextRules.removeAll { $0.id == id }
                                 }
                             )
                         }
@@ -124,6 +125,8 @@ struct ContextRuleRow: View {
                             .foregroundStyle(.secondary)
                     }
                     .buttonStyle(.plain)
+                    .help(L10n.General.expand)
+                    .accessibilityLabel(L10n.General.expand)
                 }
 
                 if isExpanded {

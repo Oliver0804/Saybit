@@ -47,10 +47,11 @@ struct StatisticsView: View {
             case .all: return nil
             }
         }()
+        // 沒有時間戳的紀錄放不進任何一天，各範圍一律排除，彙總數字才會和圖表一致
         if let cutoff {
-            cachedRecords = allRecords.filter { ($0.timestamp ?? .distantPast) >= cutoff }
+            cachedRecords = allRecords.filter { $0.timestamp.map { $0 >= cutoff } ?? false }
         } else {
-            cachedRecords = Array(allRecords)
+            cachedRecords = allRecords.filter { $0.timestamp != nil }
         }
     }
 
@@ -179,8 +180,8 @@ struct StatisticsView: View {
 
                 Chart(dailyUsageData, id: \.date) { item in
                     BarMark(
-                        x: .value("日期", item.date, unit: .day),
-                        y: .value("次數", item.count)
+                        x: .value(L10n.Stats.chartDate,item.date, unit: .day),
+                        y: .value(L10n.Stats.chartCount,item.count)
                     )
                     .foregroundStyle(.blue.gradient)
                     .cornerRadius(3)
@@ -239,14 +240,14 @@ struct StatisticsView: View {
 
                 Chart(dailyTokenData, id: \.date) { item in
                     LineMark(
-                        x: .value("日期", item.date, unit: .day),
+                        x: .value(L10n.Stats.chartDate,item.date, unit: .day),
                         y: .value("Tokens", item.tokens)
                     )
                     .foregroundStyle(.orange.gradient)
                     .interpolationMethod(.catmullRom)
 
                     AreaMark(
-                        x: .value("日期", item.date, unit: .day),
+                        x: .value(L10n.Stats.chartDate,item.date, unit: .day),
                         y: .value("Tokens", item.tokens)
                     )
                     .foregroundStyle(.orange.opacity(0.1))
@@ -278,11 +279,11 @@ struct StatisticsView: View {
                     HStack(spacing: 16) {
                         Chart(modeDistribution, id: \.mode) { item in
                             SectorMark(
-                                angle: .value("次數", item.count),
+                                angle: .value(L10n.Stats.chartCount,item.count),
                                 innerRadius: .ratio(0.5),
                                 angularInset: 1.5
                             )
-                            .foregroundStyle(by: .value("模式", item.displayName))
+                            .foregroundStyle(by: .value(L10n.Stats.chartMode,item.displayName))
                             .cornerRadius(4)
                         }
                         .frame(width: 120, height: 120)
@@ -329,8 +330,8 @@ struct StatisticsView: View {
         case .week: start = cal.date(byAdding: .day, value: -6, to: today) ?? today
         case .month: start = cal.date(byAdding: .day, value: -29, to: today) ?? today
         case .all:
-            let first = cachedRecords.compactMap(\.timestamp).min().map { cal.startOfDay(for: $0) } ?? today
-            start = max(first, cal.date(byAdding: .day, value: -364, to: today) ?? first)
+            // 不再截在 365 天：圖表範圍要涵蓋彙總卡片算進去的所有紀錄
+            start = cachedRecords.compactMap(\.timestamp).min().map { cal.startOfDay(for: $0) } ?? today
         }
         var days: [Date] = []
         var d = start
@@ -343,7 +344,7 @@ struct StatisticsView: View {
     }
 
     private var recordsByDay: [Date: [TranscriptionRecord]] {
-        Dictionary(grouping: cachedRecords) { Calendar.current.startOfDay(for: $0.timestamp ?? Date()) }
+        Dictionary(grouping: cachedRecords) { Calendar.current.startOfDay(for: $0.timestamp ?? .distantPast) }
     }
 
     private var dailyUsageData: [DailyCount] {

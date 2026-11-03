@@ -34,11 +34,26 @@ struct APISettingsView: View {
         settingsStore.selectedProvider
     }
 
+    // 每張卡片的搜尋關鍵字（卡片顯示與「沒有結果」共用同一份）
+    private enum Keys {
+        static let provider = ["API", "provider", "模型", "model", "服務商", "服务商", "OpenRouter", "Ollama", "LM Studio",
+                               "自訂", "custom", "key", "金鑰", "密钥", "本地", "local", "連線", "connection", "test", "測試",
+                               "apple", "本機", "離線"]
+        static let advanced = ["進階", "advanced", "max_tokens", "penalty", "top_p", "參數", "参数", "高级"]
+        static let prompt = ["prompt", "風格", "style", "提示詞", "提示词", "模式"]
+        static let tone = ["語氣", "tone", "語調", "语气"]
+        static let all = [provider, advanced, prompt, tone]
+    }
+
+    private func shows(_ keys: [String]) -> Bool {
+        settingsMatchesSearch(keys, searchText: searchState.searchText)
+    }
+
     var body: some View {
         ScrollView {
             VStack(spacing: 16) {
                 // MARK: - API 設定（合併：服務商 + API Key + 模型）
-                if settingsMatchesSearch(["API", "provider", "模型", "model", "服務商", "服务商", "OpenRouter", "Ollama", "LM Studio", "自訂", "custom", "key", "金鑰", "密钥"], searchText: searchState.searchText) {
+                if shows(Keys.provider) {
                     GlassCard {
                         VStack(alignment: .leading, spacing: 14) {
                             GlassSectionHeader(title: L10n.API.provider, icon: "server.rack")
@@ -81,6 +96,8 @@ struct APISettingsView: View {
                                             .controlSize(.small)
                                             .buttonStyle(.bordered)
                                             .tint(.red)
+                                            .help(L10n.API.removeProvider(cp.name))
+                                            .accessibilityLabel(L10n.API.removeProvider(cp.name))
                                         }
                                     }
                                 }
@@ -109,9 +126,11 @@ struct APISettingsView: View {
 
                                 HStack(spacing: 8) {
                                     Button(L10n.Common.save) {
+                                        guard !trimmedAPIKey.isEmpty else { return }
                                         do {
-                                            try KeychainHelper.saveAPIKey(apiKey, for: currentProvider.id)
-                                            hasKey = true
+                                            try KeychainHelper.saveAPIKey(trimmedAPIKey, for: currentProvider.id)
+                                            apiKey = trimmedAPIKey
+                                            hasKey = !apiKey.isEmpty
                                             showTemporaryStatus(L10n.Common.saved)
                                         } catch {
                                             showTemporaryStatus(L10n.Common.saveFailed)
@@ -119,6 +138,7 @@ struct APISettingsView: View {
                                     }
                                     .buttonStyle(.borderedProminent)
                                     .controlSize(.small)
+                                    .disabled(trimmedAPIKey.isEmpty)
 
                                     Button(L10n.API.clear) {
                                         KeychainHelper.deleteAPIKey(for: currentProvider.id)
@@ -165,7 +185,7 @@ struct APISettingsView: View {
                             } else if currentProvider.id == "lmstudio" {
                                 // LM Studio: URL + optional API key + status
                                 VStack(alignment: .leading, spacing: 8) {
-                                    Text("伺服器位址")
+                                    Text(L10n.API.serverAddress)
                                         .font(.headline)
 
                                     TextField("http://192.168.0.147:1234", text: $settingsStore.lmStudioBaseURL)
@@ -178,7 +198,7 @@ struct APISettingsView: View {
                                             lmStudioModels = []
                                         }
 
-                                    Text("API Key（選填）")
+                                    Text(L10n.API.apiKeyOptional)
                                         .font(.headline)
                                         .padding(.top, 4)
 
@@ -202,7 +222,13 @@ struct APISettingsView: View {
                                     HStack(spacing: 8) {
                                         Button(L10n.Common.save) {
                                             do {
-                                                try KeychainHelper.saveAPIKey(apiKey, for: currentProvider.id)
+                                                // 選填：清空後儲存等同移除，不在 Keychain 留空字串
+                                                apiKey = trimmedAPIKey
+                                                if apiKey.isEmpty {
+                                                    KeychainHelper.deleteAPIKey(for: currentProvider.id)
+                                                } else {
+                                                    try KeychainHelper.saveAPIKey(apiKey, for: currentProvider.id)
+                                                }
                                                 hasKey = !apiKey.isEmpty
                                                 showTemporaryStatus(L10n.Common.saved)
                                             } catch {
@@ -279,10 +305,39 @@ struct APISettingsView: View {
                                     }
                                 }
 
-                                Text("連接 LM Studio 本地伺服器，支援所有 OpenAI 相容模型。")
+                                Text(L10n.API.lmStudioHint)
                                     .font(.body)
                                     .foregroundStyle(.secondary)
-                            } else {
+                            } else if currentProvider.id == AppleOnDeviceLLM.providerID {
+                                // Apple 本機模型：不走 Ollama 偵測，也不改 selectedModel
+                                VStack(alignment: .leading, spacing: 6) {
+                                    if let reason = AppleOnDeviceLLM.unavailableReason {
+                                        Label(reason, systemImage: "exclamationmark.triangle.fill")
+                                            .foregroundStyle(.orange)
+                                    } else {
+                                        Label(L10n.API.appleAvailable, systemImage: "checkmark.circle.fill")
+                                            .foregroundStyle(.green)
+                                    }
+                                    SettingDescription(L10n.API.appleDesc)
+                                }
+                                .font(.callout)
+
+                                HStack {
+                                    Spacer()
+                                    Button {
+                                        testAPIConnection()
+                                    } label: {
+                                        if isTesting {
+                                            ProgressView().controlSize(.small)
+                                        } else {
+                                            Text(L10n.Common.testConnection)
+                                        }
+                                    }
+                                    .controlSize(.small)
+                                    .buttonStyle(.bordered)
+                                    .disabled(isTesting || AppleOnDeviceLLM.unavailableReason != nil)
+                                }
+                            } else if currentProvider.id == "ollama" {
                                 // Ollama status
                                 HStack(spacing: 8) {
                                     Circle()
@@ -339,20 +394,6 @@ struct APISettingsView: View {
                                         .foregroundStyle(testResult.starts(with: "✓") ? .green : .red)
                                     Text(testResult)
                                         .foregroundStyle(testResult.starts(with: "✓") ? .green : .red)
-                                }
-                                .font(.callout)
-                                .transition(.opacity)
-                            } else if currentProvider.id == AppleOnDeviceLLM.providerID {
-                                VStack(alignment: .leading, spacing: 6) {
-                                    if let reason = AppleOnDeviceLLM.unavailableReason {
-                                        Label(reason, systemImage: "exclamationmark.triangle.fill")
-                                            .foregroundStyle(.orange)
-                                    } else {
-                                        Label("Apple Intelligence 本機模型可用", systemImage: "checkmark.circle.fill")
-                                            .foregroundStyle(.green)
-                                    }
-                                    Text("完全在這台 Mac 上處理，不連網、不需 API Key、不收費。搭配 SenseVoice 離線辨識時整條流程都是離線的。本機模型較小，複雜指令（翻譯長文、寫信）品質不如雲端模型。")
-                                        .foregroundStyle(.secondary)
                                 }
                                 .font(.callout)
                                 .transition(.opacity)
@@ -425,7 +466,7 @@ struct APISettingsView: View {
                 }
 
                 // MARK: - 進階參數
-                if settingsMatchesSearch(["進階", "advanced", "max_tokens", "penalty", "top_p", "參數", "参数", "高级"], searchText: searchState.searchText) {
+                if shows(Keys.advanced) {
                     GlassCard {
                         VStack(alignment: .leading, spacing: 10) {
                             GlassSectionHeader(title: L10n.API.advancedParams, icon: "slider.horizontal.3")
@@ -482,7 +523,7 @@ struct APISettingsView: View {
                 }
 
                 // MARK: - Prompt 風格
-                if settingsMatchesSearch(["prompt", "風格", "style", "提示詞", "提示词", "模式"], searchText: searchState.searchText) {
+                if shows(Keys.prompt) {
                     GlassCard {
                         VStack(alignment: .leading, spacing: 10) {
                             GlassSectionHeader(title: L10n.Prompt.promptStyle, icon: "text.bubble")
@@ -503,7 +544,7 @@ struct APISettingsView: View {
                 }
 
                 // MARK: - 語調
-                if settingsMatchesSearch(["語氣", "tone", "語調", "语气"], searchText: searchState.searchText) {
+                if shows(Keys.tone) {
                     GlassCard {
                         VStack(alignment: .leading, spacing: 10) {
                             GlassSectionHeader(title: L10n.Prompt.tone, icon: "theatermasks")
@@ -524,18 +565,8 @@ struct APISettingsView: View {
                 }
 
                 // No results
-                if !searchState.searchText.isEmpty
-                    && !settingsMatchesSearch(["API", "provider", "模型", "model", "服務商", "服务商", "OpenRouter", "Ollama", "自訂", "custom"], searchText: searchState.searchText)
-                    && !settingsMatchesSearch(["API key", "金鑰", "密钥", "Ollama", "本地", "local", "連線", "connection", "test", "測試"], searchText: searchState.searchText)
-                    && !settingsMatchesSearch(["模型", "model", "CPU", "選擇", "select"], searchText: searchState.searchText)
-                    && !settingsMatchesSearch(["進階", "advanced", "max_tokens", "penalty", "top_p", "參數", "参数", "高级"], searchText: searchState.searchText)
-                    && !settingsMatchesSearch(["prompt", "風格", "style", "提示詞", "提示词", "模式"], searchText: searchState.searchText)
-                    && !settingsMatchesSearch(["語氣", "tone", "語調", "语气"], searchText: searchState.searchText)
-                {
-                    Text(L10n.Common.noResults)
-                        .foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity)
-                        .padding(.top, 40)
+                if !searchState.searchText.isEmpty && !Keys.all.contains(where: shows) {
+                    SettingsNoResults()
                 }
             }
             .padding(20)
@@ -561,6 +592,27 @@ struct APISettingsView: View {
             TextField(L10n.API.baseURLHint, text: $customBaseURL)
                 .textFieldStyle(.roundedBorder)
 
+            switch Self.customURLStatus(customBaseURL) {
+            case .empty, .secure:
+                EmptyView()
+            case .localHTTP:
+                Label(L10n.API.localHTTPNote, systemImage: "info.circle")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            case .insecure:
+                Label(L10n.API.insecureURLWarning, systemImage: "exclamationmark.triangle.fill")
+                    .font(.callout)
+                    .foregroundStyle(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            case .invalid:
+                Label(L10n.API.invalidURL, systemImage: "exclamationmark.triangle.fill")
+                    .font(.callout)
+                    .foregroundStyle(.orange)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+
             HStack {
                 Button(L10n.Common.cancel) {
                     showAddCustom = false
@@ -573,11 +625,45 @@ struct APISettingsView: View {
                     addCustomProvider()
                 }
                 .buttonStyle(.borderedProminent)
-                .disabled(customName.isEmpty || customBaseURL.isEmpty)
+                .disabled(customName.trimmingCharacters(in: .whitespaces).isEmpty
+                          || !Self.customURLStatus(customBaseURL).isAllowed)
             }
         }
         .padding(24)
         .frame(width: 420)
+    }
+
+    // MARK: - Custom endpoint URL check
+
+    private enum CustomURLStatus {
+        case empty, secure, localHTTP, insecure, invalid
+        var isAllowed: Bool { self == .secure || self == .localHTTP }
+    }
+
+    /// https 一律允許；http 只允許本機 / 區網（localhost、127.x、10.x、172.16–31.x、192.168.x、*.local），
+    /// 避免 API Key 以明文送到公網
+    private static func customURLStatus(_ raw: String) -> CustomURLStatus {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return .empty }
+        guard let comps = URLComponents(string: trimmed),
+              let scheme = comps.scheme?.lowercased(),
+              let host = comps.host?.lowercased(), !host.isEmpty else { return .invalid }
+        switch scheme {
+        case "https": return .secure
+        case "http": return isLocalHost(host) ? .localHTTP : .insecure
+        default: return .invalid
+        }
+    }
+
+    private static func isLocalHost(_ host: String) -> Bool {
+        if host == "localhost" || host.hasSuffix(".local") || host == "[::1]" || host == "::1" { return true }
+        let parts = host.split(separator: ".", omittingEmptySubsequences: false).compactMap { UInt8($0) }
+        guard parts.count == 4 else { return false }
+        switch (parts[0], parts[1]) {
+        case (127, _), (10, _), (192, 168): return true
+        case (172, let b): return (16...31).contains(b)
+        default: return false
+        }
     }
 
     // MARK: - Actions
@@ -654,7 +740,8 @@ struct APISettingsView: View {
         if currentProvider.requiresAPIKey {
             if let key = KeychainHelper.loadAPIKey(for: currentProvider.id) {
                 apiKey = key
-                hasKey = true
+                // 舊版可能存過空字串，空的不算已設定
+                hasKey = !key.isEmpty
             } else {
                 apiKey = ""
                 hasKey = false
@@ -671,11 +758,19 @@ struct APISettingsView: View {
             }
             showKey = false
             checkLMStudioStatus()
-        } else {
+        } else if currentProvider.id == "ollama" {
             hasKey = true
             apiKey = ""
             checkOllamaStatus()
+        } else {
+            // Apple 本機模型等不需 key 的 provider：不要跑 Ollama 偵測（它會改掉 selectedModel）
+            hasKey = true
+            apiKey = ""
         }
+    }
+
+    private var trimmedAPIKey: String {
+        apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     private func updateModelForProvider(_ providerID: String) {
@@ -717,8 +812,11 @@ struct APISettingsView: View {
     }
 
     private func addCustomProvider() {
+        guard Self.customURLStatus(customBaseURL).isAllowed else { return }
         let id = "custom-\(UUID().uuidString.prefix(8).lowercased())"
-        let provider = LLMProvider.custom(id: id, name: customName, baseURL: customBaseURL)
+        let provider = LLMProvider.custom(id: id,
+                                          name: customName.trimmingCharacters(in: .whitespaces),
+                                          baseURL: customBaseURL.trimmingCharacters(in: .whitespacesAndNewlines))
         settingsStore.customProviders.append(provider)
         settingsStore.selectedProviderID = provider.id
         showAddCustom = false

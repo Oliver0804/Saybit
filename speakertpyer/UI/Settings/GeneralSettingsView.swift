@@ -6,6 +6,7 @@
 //
 
 import EventKit
+import Speech
 import SwiftUI
 
 struct GeneralSettingsView: View {
@@ -13,6 +14,9 @@ struct GeneralSettingsView: View {
     @EnvironmentObject var searchState: SettingsSearchState
     @State private var accessibilityAuthorized = AccessibilityManager.shared.isAuthorized
     @State private var micAuthorized = AudioSessionManager.isMicrophoneAuthorized
+    @State private var speechAuthorized = SFSpeechRecognizer.authorizationStatus() == .authorized
+    /// Keychain 查詢結果快取，避免 body 每次重繪（麥克風測試時很頻繁）都讀 Keychain
+    @State private var whisperKeySet = false
     @State private var automationAuthorized = false
     @State private var remindersAuthorized = false
     @State private var calendarAuthorized = false
@@ -39,12 +43,17 @@ struct GeneralSettingsView: View {
         static let output = ["輸出", "注入", "inject", "貼上", "paste", "keypress", "逐字", "取代", "replace", "預覽", "preview", "预览", "smart send", "智慧送出", "倒數", "countdown", "自動送出", "自动发送", "enter"]
         static let interface = ["介面", "語言", "语言", "language", "言語", "膠囊", "胶囊", "capsule", "大小", "size", "縮放", "scale"]
         static let system = ["系統", "開機", "啟動", "登入", "launch", "login", "startup", "开机", "启动", "更新", "update", "version", "版本", "歷史", "history", "清理", "cleanup", "保留", "retention", "历史", "教學", "tutorial", "教程"]
-        static let permissions = ["權限", "permission", "accessibility", "輔助使用", "麥克風", "microphone", "权限", "螢幕錄製", "screen recording", "提醒事項", "行事曆", "calendar", "reminders", "自動化", "automation"]
+        static let permissions = ["權限", "permission", "accessibility", "輔助使用", "麥克風", "microphone", "权限", "螢幕錄製", "screen recording", "提醒事項", "行事曆", "calendar", "reminders", "自動化", "automation", "語音辨識", "speech"]
         static let all = [recording, recognition, ai, output, interface, system, permissions]
     }
 
     private func shows(_ keys: [String]) -> Bool {
         settingsMatchesSearch(keys, searchText: searchState.searchText)
+    }
+
+    private var isSelectedDeviceMissing: Bool {
+        let uid = settingsStore.selectedInputDeviceUID
+        return !uid.isEmpty && !inputDevices.contains { $0.uid == uid }
     }
 
     var body: some View {
@@ -71,6 +80,7 @@ struct GeneralSettingsView: View {
         .onAppear {
             refreshPermissions()
             inputDevices = AudioSessionManager.listInputDevices()
+            refreshWhisperKeyStatus()
         }
         .onDisappear {
             if isMicTesting { toggleMicTest() }
@@ -93,6 +103,10 @@ struct GeneralSettingsView: View {
                         Text(L10n.General.systemDefault).tag("")
                         ForEach(inputDevices) { device in
                             Text(device.name).tag(device.uid)
+                        }
+                        // 已選的裝置拔掉後仍要有對應的項目，否則選單會顯示空白
+                        if isSelectedDeviceMissing {
+                            Text(L10n.General.deviceUnavailable).tag(settingsStore.selectedInputDeviceUID)
                         }
                     }
                     .labelsHidden()
@@ -230,6 +244,8 @@ struct GeneralSettingsView: View {
                     Image(systemName: showWhisperKey ? "eye.slash" : "eye")
                 }
                 .buttonStyle(.borderless)
+                .help(showWhisperKey ? L10n.Common.hide : L10n.Common.show)
+                .accessibilityLabel(showWhisperKey ? L10n.Common.hide : L10n.Common.show)
 
                 Button(L10n.Common.save) {
                     saveWhisperAPIKey()
@@ -384,11 +400,14 @@ struct GeneralSettingsView: View {
                     .labelsHidden()
                     .pickerStyle(.segmented)
                     .fixedSize()
-                    .disabled(settingsStore.enableAutoLanguageDetection)
+                    .disabled(settingsStore.sttEngine == .whisperAPI && settingsStore.enableAutoLanguageDetection)
                 }
 
-                SettingToggle(title: L10n.General.autoLanguageDetection, description: L10n.General.autoLanguageDetectionDesc,
-                              isOn: $settingsStore.enableAutoLanguageDetection)
+                // 自動語言偵測只對 Whisper API 有效，其他引擎不顯示
+                if settingsStore.sttEngine == .whisperAPI {
+                    SettingToggle(title: L10n.General.autoLanguageDetection, description: L10n.General.autoLanguageDetectionDesc,
+                                  isOn: $settingsStore.enableAutoLanguageDetection)
+                }
 
                 SettingDivider()
 
@@ -490,6 +509,11 @@ struct GeneralSettingsView: View {
                     openPrivacyPane("Privacy_Microphone")
                 }
                 SettingDivider()
+                permissionRow(icon: "waveform", title: L10n.General.speechRecognition,
+                              granted: speechAuthorized, required: settingsStore.sttEngine == .appleSpeech) {
+                    requestSpeechAccess()
+                }
+                SettingDivider()
                 permissionRow(icon: "rectangle.dashed.badge.record", title: L10n.General.screenRecording,
                               granted: screenRecordingAuthorized, required: settingsStore.enableScreenContext) {
                     openScreenRecordingSettings()
@@ -566,6 +590,7 @@ struct GeneralSettingsView: View {
         accessibilityAuthorized = AccessibilityManager.shared.isAuthorized
         screenRecordingAuthorized = ScreenContextCapture.hasPermission
         micAuthorized = AudioSessionManager.isMicrophoneAuthorized
+        speechAuthorized = SFSpeechRecognizer.authorizationStatus() == .authorized
         automationAuthorized = checkAutomationPermission()
         remindersAuthorized = EKEventStore.authorizationStatus(for: .reminder) == .fullAccess
             || EKEventStore.authorizationStatus(for: .reminder) == .authorized
@@ -573,15 +598,52 @@ struct GeneralSettingsView: View {
             || EKEventStore.authorizationStatus(for: .event) == .authorized
     }
 
+    /// 只查詢、不跳授權對話框、不執行 AppleScript（主執行緒上跑 AppleScript 會卡住，且首次會彈「自動化」詢問）。
+    /// System Events 沒在執行時回 procNotFound，視為未授權；使用者按「請求授權」才會真的觸發。
     private func checkAutomationPermission() -> Bool {
-        let script = NSAppleScript(source: """
-            tell application "System Events"
-                return name of first process
-            end tell
-        """)
-        var error: NSDictionary?
-        script?.executeAndReturnError(&error)
-        return error == nil
+        var target = AEAddressDesc()
+        let bundleID = "com.apple.systemevents"
+        let created = bundleID.withCString { ptr in
+            AECreateDesc(DescType(typeApplicationBundleID), ptr, strlen(ptr), &target)
+        }
+        guard created == noErr else { return false }
+        defer { AEDisposeDesc(&target) }
+        let status = AEDeterminePermissionToAutomateTarget(&target, AEEventClass(typeWildCard), AEEventID(typeWildCard), false)
+        if status == OSStatus(procNotFound) {
+            // System Events 平常不一定在執行，查不到不代表未授權：背景啟動它（不搶焦點、不彈窗）後再查一次，
+            // 這段期間維持上一次的顯示結果，避免已授權的使用者看到「請求授權」
+            launchSystemEventsAndRecheck()
+            return automationAuthorized
+        }
+        return status == noErr
+    }
+
+    @State private var systemEventsLaunchAttempted = false
+
+    private func launchSystemEventsAndRecheck() {
+        guard !systemEventsLaunchAttempted,
+              let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.apple.systemevents") else { return }
+        systemEventsLaunchAttempted = true
+        let config = NSWorkspace.OpenConfiguration()
+        config.activates = false
+        config.hides = true
+        NSWorkspace.shared.openApplication(at: url, configuration: config) { _, _ in
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+                refreshPermissions()
+            }
+        }
+    }
+
+    private func requestSpeechAccess() {
+        if SFSpeechRecognizer.authorizationStatus() == .notDetermined {
+            SFSpeechRecognizer.requestAuthorization { status in
+                DispatchQueue.main.async {
+                    speechAuthorized = status == .authorized
+                }
+            }
+        } else {
+            openPrivacyPane("Privacy_SpeechRecognition")
+        }
     }
 
     private func requestAutomationAccess() {
@@ -661,7 +723,7 @@ struct GeneralSettingsView: View {
 
     @ViewBuilder
     private var whisperAPIKeyStatus: some View {
-        if KeychainHelper.loadAPIKey(for: "whisper_api") != nil {
+        if whisperKeySet {
             Label(L10n.Common.set, systemImage: "checkmark.circle.fill")
                 .font(.title3)
                 .foregroundStyle(.green)
@@ -676,6 +738,11 @@ struct GeneralSettingsView: View {
         try? KeychainHelper.saveAPIKey(whisperAPIKeyInput, for: "whisper_api")
         whisperAPIKeyInput = ""
         whisperTestStatus = nil
+        refreshWhisperKeyStatus()
+    }
+
+    private func refreshWhisperKeyStatus() {
+        whisperKeySet = !(KeychainHelper.loadAPIKey(for: "whisper_api") ?? "").isEmpty
     }
 
     private func testWhisperConnection() {
@@ -711,32 +778,34 @@ private struct SherpaModelPanel: View {
 
     var body: some View {
         SettingRow(
-            title: "SenseVoice 離線模型",
-            description: "完全在本機辨識：速度快、中英夾雜表現好、不需網路。每句講完才定稿，字幕會比 Apple 稍晚出現。"
+            title: L10n.Sherpa.modelTitle,
+            description: L10n.Sherpa.modelDesc
         ) {
             switch models.state {
             case .installed:
                 HStack(spacing: 8) {
-                    Label("已安裝", systemImage: "checkmark.circle.fill")
+                    Label(L10n.Sherpa.installed, systemImage: "checkmark.circle.fill")
                         .foregroundStyle(.green)
                     Menu {
-                        Button("在 Finder 中顯示") {
+                        Button(L10n.Sherpa.showInFinder) {
                             NSWorkspace.shared.activateFileViewerSelecting([SherpaModelManager.shared.directory])
                         }
                         Divider()
-                        Button("刪除模型（\(sizeText)）…", role: .destructive) { confirmDelete = true }
+                        Button(L10n.Sherpa.deleteModel(sizeText), role: .destructive) { confirmDelete = true }
                     } label: {
                         Image(systemName: "ellipsis.circle")
                     }
                     .menuStyle(.borderlessButton)
                     .menuIndicator(.hidden)
                     .fixedSize()
+                    .help(L10n.Sherpa.moreActions)
+                    .accessibilityLabel(L10n.Sherpa.moreActions)
                 }
             case .notInstalled:
                 Button {
                     models.download()
                 } label: {
-                    Label("下載模型（\(sizeText)）", systemImage: "arrow.down.circle")
+                    Label(L10n.Sherpa.download(sizeText), systemImage: "arrow.down.circle")
                 }
                 .controlSize(.small)
                 .buttonStyle(.borderedProminent)
@@ -748,7 +817,7 @@ private struct SherpaModelPanel: View {
                         .monospacedDigit()
                         .foregroundStyle(.secondary)
                         .frame(width: 36, alignment: .trailing)
-                    Button("取消") { models.cancelDownload() }
+                    Button(L10n.Common.cancel) { models.cancelDownload() }
                         .controlSize(.small)
                 }
             case .failed(let message):
@@ -757,15 +826,15 @@ private struct SherpaModelPanel: View {
                         .foregroundStyle(.orange)
                         .lineLimit(1)
                         .help(message)
-                    Button("重試") { models.download() }
+                    Button(L10n.Sherpa.retry) { models.download() }
                         .controlSize(.small)
                 }
             }
         }
-        .confirmationDialog("刪除 SenseVoice 模型？", isPresented: $confirmDelete) {
-            Button("刪除", role: .destructive) { models.delete() }
+        .confirmationDialog(L10n.Sherpa.deleteConfirmTitle, isPresented: $confirmDelete) {
+            Button(L10n.Common.delete, role: .destructive) { models.delete() }
         } message: {
-            Text("刪除後要重新下載（\(sizeText)）才能使用離線辨識。")
+            Text(L10n.Sherpa.deleteConfirmMessage(sizeText))
         }
     }
 }

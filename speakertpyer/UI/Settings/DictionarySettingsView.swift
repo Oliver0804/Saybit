@@ -84,7 +84,7 @@ struct DictionarySettingsView: View {
                                     .disabled(!canAddDictionaryEntry)
                             }
                             if isDuplicateTerm {
-                                Label("「\(newTerm.trimmingCharacters(in: .whitespaces))」已在字典裡，新增會覆蓋原本的寫法", systemImage: "info.circle")
+                                Label(L10n.Dict.duplicateTerm(newTerm.trimmingCharacters(in: .whitespaces)), systemImage: "info.circle")
                                     .font(.callout)
                                     .foregroundStyle(.orange)
                             } else {
@@ -94,8 +94,8 @@ struct DictionarySettingsView: View {
                             SettingDivider()
 
                             SettingToggle(
-                                title: "自動學習更正",
-                                description: "文字輸入後 30 秒內，你手動把某個詞改掉（例如「鄭」→「John」），Saybit 會把這組更正加進字典，學到時有提示音。只學單一短詞的修改。",
+                                title: L10n.Dict.autoLearn,
+                                description: L10n.Dict.autoLearnDesc,
                                 isOn: $settingsStore.enableAutoLearnDictionary
                             )
 
@@ -106,7 +106,7 @@ struct DictionarySettingsView: View {
                                     HStack(spacing: 6) {
                                         Image(systemName: "line.3.horizontal.decrease")
                                             .foregroundStyle(.tertiary)
-                                        TextField("篩選詞條", text: $dictFilter)
+                                        TextField(L10n.Dict.filterPlaceholder, text: $dictFilter)
                                             .textFieldStyle(.plain)
                                     }
                                     .padding(6)
@@ -125,7 +125,7 @@ struct DictionarySettingsView: View {
                                     }
                                 }
                                 if filteredDictEntries.isEmpty {
-                                    SettingDescription("沒有符合「\(dictFilter)」的詞條")
+                                    SettingDescription(L10n.Dict.noFilterMatch(dictFilter))
                                         .frame(maxWidth: .infinity)
                                         .padding(.vertical, 8)
                                 }
@@ -230,6 +230,8 @@ struct DictionarySettingsView: View {
                                                 .foregroundStyle(.red.opacity(0.7))
                                         }
                                         .buttonStyle(.plain)
+                                        .help(L10n.Dict.deleteSkill)
+                                        .accessibilityLabel(L10n.Dict.deleteSkill)
                                     }
                                     .padding(.vertical, 2)
 
@@ -311,6 +313,7 @@ private struct DictionaryEntryRow: View {
             .buttonStyle(.borderless)
             .opacity(isHovered ? 1 : 0)
             .help(L10n.Common.delete)
+            .accessibilityLabel(L10n.Common.delete)
         }
         .padding(.vertical, 6)
         .padding(.horizontal, 6)

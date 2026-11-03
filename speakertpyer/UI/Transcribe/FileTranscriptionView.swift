@@ -13,19 +13,9 @@ import UniformTypeIdentifiers
 struct FileTranscriptionView: View {
     @EnvironmentObject var settingsStore: SettingsStore
     @State private var models = SherpaModelManager.shared
-
-    @State private var fileURL: URL?
-    @State private var segments: [SherpaFileTranscriber.Segment] = []
-    @State private var progress: Double = 0
-    @State private var isTranscribing = false
-    @State private var errorMessage: String?
-    @State private var elapsed: TimeInterval = 0
-    @State private var showTimestamps = true
+    /// 轉錄狀態由 SettingsView 持有，切分頁回來仍在
+    @Bindable var model: FileTranscriptionModel
     @State private var isDropTargeted = false
-    @State private var job: Task<Void, Never>?
-
-    @State private var notes = ""
-    @State private var isSummarizing = false
 
     private static let types: [UTType] = [.audio, .movie, .mpeg4Movie, .quickTimeMovie, .mp3, .wav, .aiff, .mpeg4Audio]
 
@@ -35,16 +25,15 @@ struct FileTranscriptionView: View {
                 header
                 if !models.isInstalled {
                     GlassCard {
-                        Label("檔案轉錄使用 SenseVoice 離線模型，請先到「一般 › 語音辨識引擎」選 SenseVoice 並下載模型。",
-                              systemImage: "exclamationmark.triangle.fill")
+                        Label(L10n.Transcribe.modelMissing, systemImage: "exclamationmark.triangle.fill")
                             .foregroundStyle(.orange)
                     }
                 }
                 dropZone
-                if isTranscribing || !segments.isEmpty || errorMessage != nil {
+                if model.isTranscribing || !model.segments.isEmpty || model.errorMessage != nil {
                     transcriptCard
                 }
-                if !notes.isEmpty || isSummarizing {
+                if !model.notes.isEmpty || model.isSummarizing {
                     notesCard
                 }
             }
@@ -56,8 +45,8 @@ struct FileTranscriptionView: View {
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text("檔案轉錄").font(.title.bold())
-            Text("把會議錄音、語音備忘錄、影片拖進來，在這台 Mac 上轉成逐字稿，不上傳音訊。")
+            Text(L10n.Transcribe.title).font(.title.bold())
+            Text(L10n.Transcribe.subtitle)
                 .foregroundStyle(.secondary)
         }
     }
@@ -67,16 +56,16 @@ struct FileTranscriptionView: View {
             Image(systemName: "waveform.badge.plus")
                 .font(.system(size: 36))
                 .foregroundStyle(isDropTargeted ? Color.accentColor : .secondary)
-            if let fileURL {
+            if let fileURL = model.fileURL {
                 Text(fileURL.lastPathComponent).font(.headline)
             } else {
-                Text("拖入音檔或影片").font(.headline)
+                Text(L10n.Transcribe.dropHint).font(.headline)
             }
             Text("m4a · mp3 · wav · aiff · mov · mp4").font(.caption).foregroundStyle(.secondary)
             HStack {
-                Button("選擇檔案…") { chooseFile() }
-                if isTranscribing {
-                    Button("停止", role: .cancel) { job?.cancel() }
+                Button(L10n.Transcribe.chooseFile) { chooseFile() }
+                if model.isTranscribing {
+                    Button(L10n.Transcribe.stop, role: .cancel) { model.stop() }
                 }
             }
             .disabled(!models.isInstalled)
@@ -101,41 +90,45 @@ struct FileTranscriptionView: View {
         GlassCard {
             VStack(alignment: .leading, spacing: 10) {
                 HStack {
-                    GlassSectionHeader(title: "逐字稿", icon: "text.alignleft")
+                    GlassSectionHeader(title: L10n.Transcribe.transcript, icon: "text.alignleft")
                     Spacer()
-                    Toggle("時間戳", isOn: $showTimestamps).toggleStyle(.checkbox)
+                    Toggle(L10n.Transcribe.timestamps, isOn: $model.showTimestamps).toggleStyle(.checkbox)
                 }
-                if isTranscribing {
-                    ProgressView(value: progress) {
-                        Text("轉錄中 \(Int(progress * 100))%（已 \(Int(elapsed)) 秒）").font(.caption)
+                if model.isTranscribing {
+                    ProgressView(value: model.progress) {
+                        Text(L10n.Transcribe.progress(Int(model.progress * 100), Int(model.elapsed))).font(.caption)
                     }
-                } else if let errorMessage {
+                } else if let errorMessage = model.errorMessage {
                     Label(errorMessage, systemImage: "xmark.octagon.fill").foregroundStyle(.red)
-                } else if !segments.isEmpty {
-                    Text("完成：\(segments.count) 段，花費 \(String(format: "%.1f", elapsed)) 秒")
+                } else if !model.segments.isEmpty {
+                    Text(L10n.Transcribe.finished(model.segments.count, String(format: "%.1f", model.elapsed)))
                         .font(.caption).foregroundStyle(.secondary)
                 }
 
-                Text(plainText(timestamps: showTimestamps))
+                Text(model.plainText(timestamps: model.showTimestamps))
                     .textSelection(.enabled)
                     .font(.body)
                     .frame(maxWidth: .infinity, alignment: .leading)
 
-                if !isTranscribing, !segments.isEmpty {
+                if !model.isTranscribing, !model.segments.isEmpty {
                     HStack {
-                        Button("複製") {
+                        Button(L10n.Transcribe.copy) {
                             NSPasteboard.general.clearContents()
-                            NSPasteboard.general.setString(plainText(timestamps: showTimestamps), forType: .string)
+                            NSPasteboard.general.setString(model.plainText(timestamps: model.showTimestamps), forType: .string)
                         }
-                        Button("存成文字檔…") { save(plainText(timestamps: showTimestamps), suffix: "逐字稿") }
+                        Button(L10n.Transcribe.saveText) {
+                            save(model.plainText(timestamps: model.showTimestamps), suffix: L10n.Transcribe.transcriptSuffix)
+                        }
                         Spacer()
                         Button {
-                            summarize()
+                            model.summarize(provider: settingsStore.selectedProvider,
+                                            model: settingsStore.selectedModel,
+                                            language: settingsStore.languagePreference)
                         } label: {
-                            Label("AI 整理成筆記", systemImage: "sparkles")
+                            Label(L10n.Transcribe.summarize, systemImage: "sparkles")
                         }
                         .buttonStyle(.borderedProminent)
-                        .disabled(isSummarizing)
+                        .disabled(model.isSummarizing)
                     }
                 }
             }
@@ -145,20 +138,22 @@ struct FileTranscriptionView: View {
     private var notesCard: some View {
         GlassCard {
             VStack(alignment: .leading, spacing: 10) {
-                GlassSectionHeader(title: "AI 筆記", icon: "sparkles")
-                if isSummarizing && notes.isEmpty {
+                GlassSectionHeader(title: L10n.Transcribe.notes, icon: "sparkles")
+                if model.isSummarizing && model.notes.isEmpty {
                     ProgressView().controlSize(.small)
                 }
-                Text(notes)
+                Text(model.notes)
                     .textSelection(.enabled)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                if !isSummarizing, !notes.isEmpty {
+                if !model.isSummarizing, !model.notes.isEmpty {
                     HStack {
-                        Button("複製") {
+                        Button(L10n.Transcribe.copy) {
                             NSPasteboard.general.clearContents()
-                            NSPasteboard.general.setString(notes, forType: .string)
+                            NSPasteboard.general.setString(model.notes, forType: .string)
                         }
-                        Button("存成 Markdown…") { save(notes, suffix: "筆記", ext: "md") }
+                        Button(L10n.Transcribe.saveMarkdown) {
+                            save(model.notes, suffix: L10n.Transcribe.notesSuffix, ext: "md")
+                        }
                     }
                 }
             }
@@ -175,94 +170,14 @@ struct FileTranscriptionView: View {
     }
 
     private func start(_ url: URL) {
-        job?.cancel()
-        fileURL = url
-        segments = []
-        notes = ""
-        errorMessage = nil
-        progress = 0
-        elapsed = 0
-        isTranscribing = true
         let paths = SherpaFileTranscriber.ModelPaths(model: models.modelPath, tokens: models.tokensPath, vad: models.vadPath)
         let toTraditional = settingsStore.languagePreference == AppLanguage.zhTW.rawValue
-        let began = Date()
-        AppLogger.shared.info("檔案轉錄開始: \(url.lastPathComponent)", category: "STT")
-
-        job = Task {
-            let ticker = Task { @MainActor in
-                while !Task.isCancelled {
-                    elapsed = Date().timeIntervalSince(began)
-                    try? await Task.sleep(for: .milliseconds(250))
-                }
-            }
-            defer { ticker.cancel() }
-            do {
-                let accessing = url.startAccessingSecurityScopedResource()
-                defer { if accessing { url.stopAccessingSecurityScopedResource() } }
-                let result = try await Task.detached(priority: .userInitiated) {
-                    try await SherpaFileTranscriber.transcribe(
-                        url: url, paths: paths, toTraditional: toTraditional,
-                        onSegment: { seg in Task { @MainActor in segments.append(seg) } },
-                        onProgress: { p in Task { @MainActor in progress = p } }
-                    )
-                }.value
-                segments = result
-                elapsed = Date().timeIntervalSince(began)
-                AppLogger.shared.info("檔案轉錄完成: \(result.count) 段, \(String(format: "%.1f", elapsed))s", category: "STT")
-            } catch is CancellationError {
-                errorMessage = "已停止"
-            } catch {
-                errorMessage = error.localizedDescription
-                AppLogger.shared.error("檔案轉錄失敗: \(error.localizedDescription)", category: "STT")
-            }
-            isTranscribing = false
-        }
-    }
-
-    private func summarize() {
-        let transcript = plainText(timestamps: true)
-        isSummarizing = true
-        notes = ""
-        let provider = settingsStore.selectedProvider
-        let model = settingsStore.selectedModel
-        let language = settingsStore.languagePreference
-        Task { @MainActor in
-            defer { isSummarizing = false }
-            let prompt = """
-            You turn a raw speech transcript (with [mm:ss] timestamps, possibly containing recognition errors) into clean meeting / voice notes.
-            Write in the language indicated by language_preference (zh-TW means Traditional Chinese, Taiwan wording).
-            Output Markdown with these sections:
-            ## 摘要 — 3–5 sentences
-            ## 重點 — bullet points, each with the [mm:ss] timestamp where it was discussed
-            ## 待辦事項 — action items with owner if mentioned (omit section if none)
-            Fix obvious recognition errors using context. Do not invent facts that are not in the transcript.
-            """
-            let payload = LLMPayload(
-                transcript: transcript, context: nil, mode: nil, tone: nil,
-                languagePreference: language, personalDictionary: nil, snippets: nil,
-                screenContext: nil, whisperMode: nil, existingText: nil
-            )
-            do {
-                for try await event in await OpenRouterClient().sendStreaming(
-                    systemPrompt: prompt, payload: payload, model: model, temperature: 0.3, provider: provider
-                ) {
-                    if case .text(let chunk) = event { notes += chunk }
-                }
-            } catch {
-                notes = "AI 整理失敗：\(TextRefiner.friendlyErrorMessage(error))"
-            }
-        }
-    }
-
-    private func plainText(timestamps: Bool) -> String {
-        segments.map { seg in
-            timestamps ? "[\(SherpaFileTranscriber.timestamp(seg.start))] \(seg.text)" : seg.text
-        }.joined(separator: timestamps ? "\n" : "")
+        model.start(url: url, paths: paths, toTraditional: toTraditional)
     }
 
     private func save(_ text: String, suffix: String, ext: String = "txt") {
         let panel = NSSavePanel()
-        let base = fileURL?.deletingPathExtension().lastPathComponent ?? "Saybit"
+        let base = model.fileURL?.deletingPathExtension().lastPathComponent ?? "Saybit"
         panel.nameFieldStringValue = "\(base)-\(suffix).\(ext)"
         if panel.runModal() == .OK, let url = panel.url {
             try? text.write(to: url, atomically: true, encoding: .utf8)
