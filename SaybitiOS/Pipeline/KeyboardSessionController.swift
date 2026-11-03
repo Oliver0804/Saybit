@@ -29,18 +29,32 @@ final class KeyboardSessionController {
         return max(0, expiresAt.timeIntervalSince(now))
     }
 
-    /// 啟動或延長 session
-    func activate(minutes: Int) {
-        expiresAt = Date().addingTimeInterval(TimeInterval(minutes * 60))
-        bridge.sessionExpiresAt = expiresAt
-        guard !isActive else { return }
+    /// 最近一次啟動失敗的原因（給 UI 顯示）；成功啟動或使用者關閉時清掉
+    private(set) var lastError: String?
+
+    /// 啟動或延長 session；回傳是否處於待命中
+    @discardableResult
+    func activate(minutes: Int) -> Bool {
+        let newExpiry = Date().addingTimeInterval(TimeInterval(minutes * 60))
+        guard !isActive else {
+            expiresAt = newExpiry
+            bridge.sessionExpiresAt = newExpiry
+            return true
+        }
 
         SharedAudioEngine.shared.start()
         guard SharedAudioEngine.shared.isRunning else {
             log.error("鍵盤 session 啟動失敗：audio engine 無法啟動", category: "KeyboardSession")
+            // 回滾：不能讓鍵盤以為 session 還有效
             expiresAt = nil
-            return
+            bridge.sessionExpiresAt = nil
+            bridge.clearHeartbeat()
+            lastError = "無法啟動麥克風，鍵盤待命沒有開啟。請確認沒有其他 App 正在通話或錄音後再試一次。"
+            return false
         }
+        expiresAt = newExpiry
+        bridge.sessionExpiresAt = newExpiry
+        lastError = nil
         isActive = true
         bridge.beat()
         bridge.publish(state: .idle, partial: "")
@@ -51,6 +65,11 @@ final class KeyboardSessionController {
         }
         RunLoop.main.add(t, forMode: .common)
         timer = t
+        return true
+    }
+
+    func clearError() {
+        lastError = nil
     }
 
     /// 使用後延長（有在用就不要斷）

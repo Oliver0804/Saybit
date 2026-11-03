@@ -23,6 +23,13 @@ final class MobileVoicePipeline {
     let session = TranscriptionSession()
     let keyboardSession = KeyboardSessionController()
     private(set) var source: Source = .app
+    /// 非錯誤的提示（自動停止錄音、被中斷等），顯示在主畫面，使用者可關閉
+    private(set) var notice: String?
+
+    /// 單次錄音最長時間；到了自動停止並送出處理（避免忘記停止、記憶體無上限成長）
+    @ObservationIgnored var maxRecordingDuration: TimeInterval = 5 * 60
+    /// 鍵盤待命中錄完後，閒置多久釋放離線模型
+    @ObservationIgnored private let modelIdleUnloadDelay: Duration = .seconds(60)
 
     @ObservationIgnored let settingsStore: SettingsStore
     @ObservationIgnored let mobileSettings: MobileSettings
@@ -39,6 +46,10 @@ final class MobileVoicePipeline {
     @ObservationIgnored private var lastHandledCommandID: String?
     @ObservationIgnored private var commandObserver: UUID?
     @ObservationIgnored private var backgroundTask: UIBackgroundTaskIdentifier = .invalid
+    @ObservationIgnored private var maxDurationTask: Task<Void, Never>?
+    @ObservationIgnored private var modelUnloadTask: Task<Void, Never>?
+    /// 目前等待確認的行事曆 / 提醒動作；確認完成時比對，避免套用到之後的新結果
+    @ObservationIgnored private var pendingActionID: UUID?
     /// 錄音時使用者在鍵盤選取的文字（edit 模式：翻譯 / 改寫選取內容）
     @ObservationIgnored private var selectedText: String?
 
@@ -56,6 +67,9 @@ final class MobileVoicePipeline {
         lastHandledCommandID = bridge.currentCommandID()
         commandObserver = DarwinNotificationCenter.shared.addObserver(KeyboardBridge.Notify.command) { [weak self] in
             MainActor.assumeIsolated { self?.handleBridgeCommand() }
+        }
+        SharedAudioEngine.shared.onInterruptionBegan = { [weak self] in
+            self?.handleAudioInterruption()
         }
     }
 
@@ -86,13 +100,20 @@ final class MobileVoicePipeline {
         }
     }
 
-    /// 由 `saybit://dictate?source=keyboard` 冷 / 熱啟動：開 session 並立刻開始錄音
+    /// 由 `saybit://dictate?source=keyboard` 冷 / 熱啟動。
+    /// URL 任何 App 都能開，所以只有在鍵盤最近 5 秒內確實送過 start 指令時，
+    /// 才開背景待命 + 以鍵盤來源錄音；否則當一般 dictate（前景錄音、不開待命）。
     func handleKeyboardLaunch() {
-        // 吃掉鍵盤送出的 start 指令，避免 Darwin 通知再觸發一次
-        _ = bridge.takeCommand(lastHandledID: &lastHandledCommandID)
+        guard let start = bridge.takeRecentStartCommand(within: 5) else {
+            log.info("source=keyboard 但沒有近期的鍵盤指令，改為一般口述", category: "Bridge")
+            if !isBusy { startRecording(source: .app) }
+            return
+        }
+        // 標記為已處理，避免 Darwin 通知再觸發一次
+        lastHandledCommandID = start.id
         keyboardSession.activate(minutes: mobileSettings.keyboardSessionMinutes)
         if !isBusy {
-            startRecording(source: .keyboard, selectedText: bridge.storedSelectedText)
+            startRecording(source: .keyboard, selectedText: start.selectedText)
         }
     }
 
@@ -109,6 +130,9 @@ final class MobileVoicePipeline {
     func startRecording(source: Source, selectedText: String? = nil) {
         guard !isBusy else { return }
         processingTask?.cancel()
+        modelUnloadTask?.cancel()
+        pendingActionID = nil
+        notice = nil
         self.source = source
         self.selectedText = selectedText
 
@@ -171,6 +195,7 @@ final class MobileVoicePipeline {
 
         log.info("iOS 開始錄音 (source=\(source.rawValue), engine=\(settingsStore.sttEngine.rawValue))", category: "STT")
         enableSilenceAutoStop()
+        scheduleMaxDurationStop()
         playFeedback(.start)
         if source == .keyboard {
             bridge.publish(state: .recording, partial: "")
@@ -200,6 +225,38 @@ final class MobileVoicePipeline {
         }
     }
 
+    private func scheduleMaxDurationStop() {
+        maxDurationTask?.cancel()
+        let limit = maxRecordingDuration
+        guard limit > 0 else { return }
+        let startedAt = session.startTime
+        maxDurationTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(limit))
+            guard let self, !Task.isCancelled, self.isRecording, self.session.startTime == startedAt else { return }
+            self.log.info("錄音達上限 \(Int(limit))s，自動停止", category: "Pipeline")
+            self.notice = "已錄音 \(Int(limit / 60)) 分鐘，自動停止並開始整理。"
+            self.stopRecordingAndProcess()
+        }
+    }
+
+    /// 來電 / Siri 等中斷音訊 session：engine 已停，把中斷前的內容先送處理
+    private func handleAudioInterruption() {
+        guard isRecording else { return }
+        log.info("錄音被系統中斷，處理中斷前的內容", category: "Pipeline")
+        notice = "錄音被來電或其他 App 中斷，已先整理中斷前的內容。"
+        stopRecordingAndProcess()
+    }
+
+    func clearNotice() {
+        notice = nil
+    }
+
+    /// 日誌只記長度與開頭片段，不落盤完整口述內容
+    private static func logSnippet(_ text: String) -> String {
+        guard !text.isEmpty else { return "(空)" }
+        return text.count > 20 ? "\(text.count) 字「\(text.prefix(20))…」" : "\(text.count) 字「\(text)」"
+    }
+
     private func observeTranscript() {
         transcriptObserveTask?.cancel()
         transcriptObserveTask = Task { @MainActor [weak self] in
@@ -212,9 +269,9 @@ final class MobileVoicePipeline {
                 }
                 if self.session.rawTranscript != t { self.session.rawTranscript = t }
                 if self.session.audioLevel != lv { self.session.audioLevel = lv }
-                // 鍵盤端 ~6Hz 更新即可，降低跨 process 寫入
+                // 鍵盤端 ~3Hz 更新即可，降低跨 process / 落盤寫入
                 tick += 1
-                if self.source == .keyboard, tick % 3 == 0 {
+                if self.source == .keyboard, tick % 6 == 0 {
                     self.bridge.publish(partial: t, level: lv)
                 }
                 try? await Task.sleep(for: .milliseconds(50))
@@ -225,6 +282,7 @@ final class MobileVoicePipeline {
     func stopRecordingAndProcess() {
         guard isRecording else { return }
         transcriptObserveTask?.cancel()
+        maxDurationTask?.cancel()
         session.endTime = Date()
         session.audioLevel = 0
         playFeedback(.stop)
@@ -234,7 +292,7 @@ final class MobileVoicePipeline {
         case .appleSpeech:
             let transcript = speechRecognizer.stopListening()
             session.rawTranscript = transcript
-            log.info("錄音結束 (\(String(format: "%.1f", session.duration))s): \(transcript.isEmpty ? "(空)" : String(transcript.prefix(80)))", category: "STT")
+            log.info("錄音結束 (\(String(format: "%.1f", session.duration))s): \(Self.logSnippet(transcript))", category: "STT")
             guard !transcript.isEmpty else {
                 finishEmpty()
                 return
@@ -256,6 +314,8 @@ final class MobileVoicePipeline {
                     let transcript = try await self.whisperClient.transcribe(
                         audioData: audio, model: self.settingsStore.whisperModel, language: lang
                     )
+                    guard !Task.isCancelled else { return }
+                    self.log.info("Whisper 轉錄完成: \(Self.logSnippet(transcript))", category: "STT")
                     guard !transcript.isEmpty else {
                         self.finishEmpty()
                         return
@@ -263,6 +323,8 @@ final class MobileVoicePipeline {
                     self.session.rawTranscript = transcript
                     self.process()
                 } catch {
+                    // 使用者取消：URLSession 拋的是 URLError(.cancelled)，不是 CancellationError
+                    if Task.isCancelled || Self.isCancellation(error) { return }
                     self.fail(error.localizedDescription)
                 }
             }
@@ -276,13 +338,14 @@ final class MobileVoicePipeline {
                     let transcript = try await self.sherpaEngine.stopListening()
                     guard !Task.isCancelled else { return }
                     self.session.rawTranscript = transcript
-                    self.log.info("錄音結束 (\(String(format: "%.1f", self.session.duration))s): \(transcript.isEmpty ? "(空)" : String(transcript.prefix(80)))", category: "STT")
+                    self.log.info("錄音結束 (\(String(format: "%.1f", self.session.duration))s): \(Self.logSnippet(transcript))", category: "STT")
                     guard !transcript.isEmpty else {
                         self.finishEmpty()
                         return
                     }
                     self.process()
                 } catch {
+                    if Task.isCancelled || Self.isCancellation(error) { return }
                     self.fail(error.localizedDescription)
                 }
             }
@@ -292,7 +355,9 @@ final class MobileVoicePipeline {
     /// 取消錄音 / 處理，不產生結果
     func cancel() {
         transcriptObserveTask?.cancel()
+        maxDurationTask?.cancel()
         processingTask?.cancel()
+        pendingActionID = nil
         if isRecording {
             switch settingsStore.sttEngine {
             case .appleSpeech: _ = speechRecognizer.stopListening()
@@ -302,7 +367,10 @@ final class MobileVoicePipeline {
         }
         session.reset()
         playFeedback(.cancel)
-        if source == .keyboard { bridge.publish(state: .idle, partial: "") }
+        if source == .keyboard {
+            bridge.clearContent()
+            bridge.publish(state: .idle, partial: "")
+        }
         releaseEngineIfIdle()
         endBackgroundWork()
     }
@@ -348,6 +416,7 @@ final class MobileVoicePipeline {
             case .action(let action, let confirmation):
                 session.processedText = confirmation
                 session.pendingAction = action
+                pendingActionID = UUID()
                 session.state = .previewing
                 if source == .keyboard {
                     bridge.publish(state: .error, errorMessage: "行事曆 / 提醒需回到 Saybit App 確認建立")
@@ -356,13 +425,21 @@ final class MobileVoicePipeline {
             case .needsSelection(let hint):
                 fail(hint)
             }
-        } catch is CancellationError {
-            return
-        } catch RefinerError.actionFailed(let msg) {
-            fail(msg)
-        } catch RefinerError.emptyResponse {
-            fail(L10n.Errors.llmNoResponse)
         } catch {
+            // 取消後串流會提早結束（emptyResponse）或拋 URLError(.cancelled)：都不是失敗，
+            // 且 session 已被 cancel() 重設，不能再改成 .error
+            guard !Task.isCancelled, !Self.isCancellation(error) else { return }
+            handleRefineError(error, request: request)
+        }
+    }
+
+    private func handleRefineError(_ error: Error, request: RefineRequest) {
+        switch error {
+        case RefinerError.actionFailed(let msg):
+            fail(msg)
+        case RefinerError.emptyResponse:
+            fail(L10n.Errors.llmNoResponse)
+        default:
             let msg = TextRefiner.friendlyErrorMessage(error)
             log.error("LLM 錯誤: \(msg) (\(error))", category: "LLM")
             session.lastErrorContext = ErrorContext(
@@ -374,7 +451,14 @@ final class MobileVoicePipeline {
         }
     }
 
-    private func finish(with text: String) {
+    /// URLError(.cancelled) 只在本 Task 被取消時才算取消（呼叫端已先檢查 Task.isCancelled）；
+    /// 其他來源的 .cancelled 仍當失敗，避免 session 卡在「處理中」
+    private static func isCancellation(_ error: Error) -> Bool {
+        error is CancellationError
+    }
+
+    /// - Parameter publishToKeyboard: false 時不把文字當成鍵盤結果送出（例如行事曆確認文字）
+    private func finish(with text: String, publishToKeyboard: Bool = true) {
         session.processedText = text
         session.state = .done
         records.saveTranscription(
@@ -389,7 +473,11 @@ final class MobileVoicePipeline {
         )
         switch source {
         case .keyboard:
-            bridge.publish(result: text)
+            if publishToKeyboard {
+                bridge.publish(result: text)
+            } else {
+                bridge.publish(state: .idle, partial: "")
+            }
             keyboardSession.touch(minutes: mobileSettings.keyboardSessionMinutes)
         case .app, .shortcut:
             if mobileSettings.autoCopyResult {
@@ -404,7 +492,10 @@ final class MobileVoicePipeline {
     private func finishEmpty() {
         log.info("轉錄為空，跳過 LLM", category: "Pipeline")
         session.state = .idle
-        if source == .keyboard { bridge.publish(state: .idle, partial: "") }
+        if source == .keyboard {
+            bridge.clearContent()
+            bridge.publish(state: .idle, partial: "")
+        }
         releaseEngineIfIdle()
         endBackgroundWork()
     }
@@ -413,6 +504,7 @@ final class MobileVoicePipeline {
         log.error(message, category: "Pipeline")
         session.state = .error(message)
         if source == .keyboard {
+            bridge.clearContent()
             bridge.publish(state: .error, errorMessage: message)
         }
         playFeedback(.failure)
@@ -423,7 +515,8 @@ final class MobileVoicePipeline {
     // MARK: - User Actions (App UI)
 
     func retryLastAction() {
-        guard let ctx = session.lastErrorContext else { return }
+        guard let ctx = session.lastErrorContext, !isBusy else { return }
+        resetSourceIfKeyboardGone()
         session.rawTranscript = ctx.transcript
         selectedText = ctx.selectedText
         session.lastErrorContext = nil
@@ -433,28 +526,47 @@ final class MobileVoicePipeline {
 
     func regenerate() {
         guard !session.rawTranscript.isEmpty, !isBusy else { return }
+        resetSourceIfKeyboardGone()
         session.processedText = ""
         beginBackgroundWork()
         process()
     }
 
+    /// App 內重新生成 / 重試：鍵盤待命已結束時，結果不該再送去鍵盤插進當下的輸入框
+    private func resetSourceIfKeyboardGone() {
+        if source == .keyboard, !keyboardSession.isActive {
+            source = .app
+        }
+    }
+
     func confirmPendingAction() {
-        guard let action = session.pendingAction else { return }
-        Task { @MainActor in
+        guard let action = session.pendingAction, let actionID = pendingActionID else { return }
+        processingTask?.cancel()
+        processingTask = Task { @MainActor [weak self] in
+            guard let self else { return }
             do {
-                try await refiner.execute(action)
-                session.pendingAction = nil
-                finish(with: session.processedText)
+                try await self.refiner.execute(action)
+                guard !Task.isCancelled, self.pendingActionID == actionID else { return }
+                self.session.pendingAction = nil
+                self.pendingActionID = nil
+                // 確認文字不是鍵盤要插入的內容
+                self.finish(with: self.session.processedText, publishToKeyboard: false)
             } catch {
-                session.pendingAction = nil
-                fail(error.localizedDescription)
+                guard !Task.isCancelled, self.pendingActionID == actionID else { return }
+                self.session.pendingAction = nil
+                self.pendingActionID = nil
+                self.fail(error.localizedDescription)
             }
         }
     }
 
     func dismissResult() {
+        pendingActionID = nil
         session.reset()
-        if source == .keyboard { bridge.publish(state: .idle, partial: "") }
+        if source == .keyboard {
+            bridge.clearContent()
+            bridge.publish(state: .idle, partial: "")
+        }
     }
 
     // MARK: - Standalone (App Intents)
@@ -483,16 +595,38 @@ final class MobileVoicePipeline {
 
     // MARK: - Lifecycle
 
-    /// App 進背景：沒有鍵盤 session 也沒在忙 → 釋放麥克風
+    /// App 進背景：非鍵盤來源的錄音直接停止並送出處理；沒有鍵盤 session 也沒在忙 → 釋放麥克風
     func sceneDidEnterBackground() {
+        if isRecording, source != .keyboard, !keyboardSession.isActive {
+            log.info("App 進背景，停止 App 內錄音", category: "Pipeline")
+            stopRecordingAndProcess()
+            return
+        }
         releaseEngineIfIdle()
     }
 
     private func releaseEngineIfIdle() {
-        guard !isBusy, !keyboardSession.isActive else { return }
+        guard !isBusy else { return }
+        if keyboardSession.isActive {
+            // 待命中 engine 要保持運行，但離線模型（~250MB）不必常駐：閒置一段時間後釋放
+            scheduleModelUnload()
+            return
+        }
+        modelUnloadTask?.cancel()
         SharedAudioEngine.shared.shutdown()
         // 沒在待命就釋放離線模型（~250MB），避免在背景被系統優先回收
         sherpaEngine.unloadModel()
+    }
+
+    private func scheduleModelUnload() {
+        modelUnloadTask?.cancel()
+        let delay = modelIdleUnloadDelay
+        modelUnloadTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: delay)
+            guard let self, !Task.isCancelled, !self.isBusy else { return }
+            self.sherpaEngine.unloadModel()
+            self.log.info("待命閒置，釋放離線模型", category: "Pipeline")
+        }
     }
 
     /// 處理期間（LLM 網路請求）若 audio engine 已關閉，App 在背景可能被暫停 → 申請背景時間

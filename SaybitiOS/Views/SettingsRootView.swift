@@ -527,6 +527,8 @@ struct SherpaModelSection: View {
 
 struct MobileLogsView: View {
     private let logger = AppLogger.shared
+    @State private var confirmShare = false
+    @State private var shareText: String?
 
     var body: some View {
         let entries = Array(logger.entries.reversed())
@@ -558,8 +560,41 @@ struct MobileLogsView: View {
         .navigationTitle("診斷記錄")
         .toolbar {
             if !entries.isEmpty {
-                ShareLink(item: entries.map(\.formatted).joined(separator: "\n"))
+                Button {
+                    confirmShare = true
+                } label: {
+                    Image(systemName: "square.and.arrow.up")
+                }
+                .accessibilityLabel("分享診斷記錄")
+            }
+        }
+        .alert("分享診斷記錄？", isPresented: $confirmShare) {
+            Button("分享") {
+                shareText = entries.map(\.formatted).joined(separator: "\n")
+            }
+            Button("取消", role: .cancel) {}
+        } message: {
+            Text("記錄內含最近 7 天口述內容的片段（轉錄與 AI 結果的開頭文字）。請只分享給你信任的對象。")
+        }
+        .sheet(isPresented: Binding(
+            get: { shareText != nil },
+            set: { if !$0 { shareText = nil } }
+        )) {
+            if let shareText {
+                ActivityShareSheet(items: [shareText])
+                    .presentationDetents([.medium, .large])
             }
         }
     }
+}
+
+/// UIActivityViewController 包裝：確認後才能分享（ShareLink 無法程式觸發）
+private struct ActivityShareSheet: UIViewControllerRepresentable {
+    let items: [Any]
+
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        UIActivityViewController(activityItems: items, applicationActivities: nil)
+    }
+
+    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
 }

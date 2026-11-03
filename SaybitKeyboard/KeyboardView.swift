@@ -28,6 +28,25 @@ struct KeyboardView: View {
     private var statusBar: some View {
         HStack(spacing: 8) {
             switch model.phase {
+            case .ready where model.pendingResult != nil:
+                Button { model.insertPendingResult() } label: {
+                    Label("插入剛才的結果", systemImage: "text.insert")
+                        .font(.footnote)
+                        .padding(.horizontal, 10)
+                        .frame(minHeight: 44)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.tint)
+                Spacer(minLength: 0)
+                Button { model.dismissPendingResult() } label: {
+                    Image(systemName: "xmark")
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
+                .accessibilityLabel("忽略剛才的結果")
             case .ready:
                 Image(systemName: model.sessionAlive ? "dot.radiowaves.left.and.right" : "mic")
                     .foregroundStyle(model.sessionAlive ? .green : .secondary)

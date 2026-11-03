@@ -65,6 +65,7 @@ final class KeyboardBridge {
         static let consumedResultID = "bridge.consumedResultID"
         static let command = "bridge.command"
         static let commandID = "bridge.commandID"
+        static let commandAt = "bridge.commandAt"
         static let selectedText = "bridge.selectedText"
         static let sessionExpiresAt = "bridge.sessionExpiresAt"
     }
@@ -121,7 +122,10 @@ final class KeyboardBridge {
 
     func publish(state: BridgeState, partial: String? = nil, errorMessage: String? = nil) {
         defaults?.set(state.rawValue, forKey: Key.state)
-        if let partial { defaults?.set(partial, forKey: Key.partial) }
+        if let partial {
+            // 空字串直接移除，避免轉錄內容殘留在 App Group plist
+            if partial.isEmpty { defaults?.removeObject(forKey: Key.partial) } else { defaults?.set(partial, forKey: Key.partial) }
+        }
         defaults?.set(errorMessage, forKey: Key.errorMessage)
         DarwinNotificationCenter.post(Notify.state)
     }
@@ -138,19 +142,44 @@ final class KeyboardBridge {
             defaults?.set(data, forKey: Key.result)
         }
         defaults?.set(BridgeState.done.rawValue, forKey: Key.state)
-        defaults?.set(text, forKey: Key.partial)
+        defaults?.removeObject(forKey: Key.partial)
         defaults?.set(nil, forKey: Key.errorMessage)
         DarwinNotificationCenter.post(Notify.state)
     }
 
+    /// 清掉轉錄 / 結果 / 選取文字等內容（取消、空結果、關閉結果時呼叫），不改 state
+    func clearContent() {
+        defaults?.removeObject(forKey: Key.result)
+        defaults?.removeObject(forKey: Key.partial)
+        defaults?.removeObject(forKey: Key.selectedText)
+    }
+
     // MARK: Result consumption (keyboard)
 
-    /// 取出尚未插入、且夠新的結果（避免鍵盤重新出現時插入舊結果）
-    func takeUnconsumedResult(maxAge: TimeInterval = 120) -> BridgeResult? {
-        guard let result = latestResult,
-              Date().timeIntervalSince(result.createdAt) < maxAge,
-              defaults?.string(forKey: Key.consumedResultID) != result.id.uuidString else { return nil }
+    /// 查看尚未插入、且夠新的結果（不標記為已消費）；過期結果順手清掉
+    func unconsumedResult(maxAge: TimeInterval = 120) -> BridgeResult? {
+        guard let result = latestResult else { return nil }
+        guard Date().timeIntervalSince(result.createdAt) < maxAge else {
+            defaults?.removeObject(forKey: Key.result)
+            return nil
+        }
+        guard defaults?.string(forKey: Key.consumedResultID) != result.id.uuidString else { return nil }
+        return result
+    }
+
+    /// 標記結果已插入，並把內容從 App Group 移除
+    func markConsumed(_ result: BridgeResult) {
         defaults?.set(result.id.uuidString, forKey: Key.consumedResultID)
+        if latestResult?.id == result.id {
+            defaults?.removeObject(forKey: Key.result)
+            defaults?.removeObject(forKey: Key.partial)
+        }
+    }
+
+    /// 取出尚未插入、且夠新的結果，並標記為已消費
+    func takeUnconsumedResult(maxAge: TimeInterval = 120) -> BridgeResult? {
+        guard let result = unconsumedResult(maxAge: maxAge) else { return nil }
+        markConsumed(result)
         return result
     }
 
@@ -159,24 +188,44 @@ final class KeyboardBridge {
     func send(_ command: BridgeCommand, selectedText: String? = nil) {
         defaults?.set(command.rawValue, forKey: Key.command)
         defaults?.set(UUID().uuidString, forKey: Key.commandID)
+        defaults?.set(Date().timeIntervalSince1970, forKey: Key.commandAt)
         if command == .start {
-            defaults?.set(selectedText, forKey: Key.selectedText)
+            if let selectedText, !selectedText.isEmpty {
+                defaults?.set(selectedText, forKey: Key.selectedText)
+            } else {
+                defaults?.removeObject(forKey: Key.selectedText)
+            }
         }
         DarwinNotificationCenter.post(Notify.command)
     }
 
-    /// 主 App 取出最新且未處理過的指令
+    /// 主 App 取出最新且未處理過的指令（選取文字讀出後即從 App Group 移除）
     func takeCommand(lastHandledID: inout String?) -> (BridgeCommand, selectedText: String?)? {
         guard let id = defaults?.string(forKey: Key.commandID), id != lastHandledID,
               let raw = defaults?.string(forKey: Key.command),
               let command = BridgeCommand(rawValue: raw) else { return nil }
         lastHandledID = id
-        return (command, defaults?.string(forKey: Key.selectedText))
+        return (command, takeSelectedText())
     }
 
-    /// 鍵盤送出 start 時附帶的選取文字（URL 冷啟動路徑使用）
-    var storedSelectedText: String? {
-        defaults?.string(forKey: Key.selectedText).flatMap { $0.isEmpty ? nil : $0 }
+    /// 驗證 URL 冷 / 熱啟動確實來自鍵盤：最近 `window` 秒內有一筆 start 指令。
+    /// 成功時回傳該指令 id 與選取文字，並清掉時間戳與選取文字（同一筆指令只能用一次）。
+    func takeRecentStartCommand(within window: TimeInterval = 5) -> (id: String, selectedText: String?)? {
+        guard let defaults,
+              defaults.string(forKey: Key.command) == BridgeCommand.start.rawValue,
+              let id = defaults.string(forKey: Key.commandID),
+              let at = defaults.object(forKey: Key.commandAt) as? Double else { return nil }
+        let age = Date().timeIntervalSince1970 - at
+        // 容許少量時鐘誤差（同一台裝置，理論上不會是負的）
+        guard age > -1, age <= window else { return nil }
+        defaults.removeObject(forKey: Key.commandAt)
+        return (id, takeSelectedText())
+    }
+
+    private func takeSelectedText() -> String? {
+        let text = defaults?.string(forKey: Key.selectedText).flatMap { $0.isEmpty ? nil : $0 }
+        defaults?.removeObject(forKey: Key.selectedText)
+        return text
     }
 
     /// 主 App 啟動時標記既有指令為已處理，避免冷啟動誤觸發舊指令

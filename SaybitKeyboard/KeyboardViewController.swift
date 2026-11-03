@@ -11,9 +11,20 @@
 import SwiftUI
 import UIKit
 
+/// 採用 UIInputViewAudioFeedback 才能讓 `UIDevice.playInputClick()` 真的發出按鍵音
+final class KeyboardInputView: UIInputView, UIInputViewAudioFeedback {
+    var enableInputClicksWhenVisible: Bool { true }
+}
+
 final class KeyboardViewController: UIInputViewController {
     private var model: KeyboardModel!
     private var hostingController: UIHostingController<KeyboardView>?
+
+    override func loadView() {
+        let v = KeyboardInputView(frame: .zero, inputViewStyle: .keyboard)
+        v.allowsSelfSizing = true
+        view = v
+    }
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -21,7 +32,10 @@ final class KeyboardViewController: UIInputViewController {
         model = KeyboardModel(
             hasFullAccess: { [weak self] in self?.hasFullAccess ?? false },
             proxy: { [weak self] in self?.textDocumentProxy },
-            openURL: { [weak self] url in self?.openContainingApp(url) ?? false },
+            openURL: { [weak self] url, completion in
+                guard let self else { return completion(false) }
+                self.openContainingApp(url, completion: completion)
+            },
             advanceToNextInputMode: { [weak self] in self?.advanceToNextInputMode() }
         )
 
@@ -62,21 +76,47 @@ final class KeyboardViewController: UIInputViewController {
     override func textDidChange(_ textInput: UITextInput?) {
         super.textDidChange(textInput)
         model.refreshReturnKey()
+        model.selectionOrTextChanged()
+    }
+
+    override func selectionDidChange(_ textInput: UITextInput?) {
+        super.selectionDidChange(textInput)
+        model.selectionOrTextChanged()
     }
 
     // MARK: - Open containing app
 
-    /// 鍵盤 extension 不能呼叫 UIApplication.shared.open，
-    /// 這裡沿 responder chain 找到 UIApplication 實例，透過 runtime 呼叫 open(_:options:completionHandler:)。
-    private func openContainingApp(_ url: URL) -> Bool {
+    /// 先走公開 API `extensionContext.open`（鍵盤 extension 目前通常回 false），
+    /// 失敗才退回 responder chain：找到 UIApplication 實例，透過 runtime 呼叫 open(_:options:completionHandler:)。
+    private func openContainingApp(_ url: URL, completion: @escaping (Bool) -> Void) {
+        guard let context = extensionContext else {
+            if !openViaResponderChain(url, completion: completion) { completion(false) }
+            return
+        }
+        context.open(url) { [weak self] success in
+            DispatchQueue.main.async {
+                if success { return completion(true) }
+                guard let self else { return completion(false) }
+                if !self.openViaResponderChain(url, completion: completion) {
+                    completion(false)
+                }
+            }
+        }
+    }
+
+    /// 回傳 false 表示找不到可呼叫的 UIApplication（此時不會呼叫 completion）
+    private func openViaResponderChain(_ url: URL, completion: @escaping (Bool) -> Void) -> Bool {
         var responder: UIResponder? = self
         let selector = NSSelectorFromString("openURL:options:completionHandler:")
         while let r = responder {
             if let app = r as? UIApplication, app.responds(to: selector) {
-                typealias OpenFn = @convention(c) (AnyObject, Selector, URL, [UIApplication.OpenExternalURLOptionsKey: Any], ((Bool) -> Void)?) -> Void
+                typealias OpenFn = @convention(c) (AnyObject, Selector, URL, NSDictionary, (@convention(block) (Bool) -> Void)?) -> Void
                 let imp = app.method(for: selector)
                 let fn = unsafeBitCast(imp, to: OpenFn.self)
-                fn(app, selector, url, [:], nil)
+                let block: @convention(block) (Bool) -> Void = { success in
+                    DispatchQueue.main.async { completion(success) }
+                }
+                fn(app, selector, url, NSDictionary(), block)
                 return true
             }
             responder = r.next

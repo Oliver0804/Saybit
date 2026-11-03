@@ -23,10 +23,12 @@ final class KeyboardModel {
     private(set) var hasFullAccess = false
     private(set) var sessionAlive = false
     private(set) var returnKeyTitle = "換行"
+    /// 不是本實例等到的結果（例如鍵盤重新出現時才發現）：不自動插入，由使用者點按鈕
+    private(set) var pendingResult: BridgeResult?
 
     @ObservationIgnored private let fullAccess: () -> Bool
     @ObservationIgnored private let proxy: () -> UITextDocumentProxy?
-    @ObservationIgnored private let openURL: (URL) -> Bool
+    @ObservationIgnored private let openURL: (URL, @escaping (Bool) -> Void) -> Void
     @ObservationIgnored let advanceToNextInputMode: () -> Void
     @ObservationIgnored private var bridge: KeyboardBridge?
     @ObservationIgnored private var observerToken: UUID?
@@ -37,7 +39,7 @@ final class KeyboardModel {
     init(
         hasFullAccess: @escaping () -> Bool,
         proxy: @escaping () -> UITextDocumentProxy?,
-        openURL: @escaping (URL) -> Bool,
+        openURL: @escaping (URL, @escaping (Bool) -> Void) -> Void,
         advanceToNextInputMode: @escaping () -> Void
     ) {
         self.fullAccess = hasFullAccess
@@ -108,12 +110,18 @@ final class KeyboardModel {
             phase = .processing
             partialText = bridge.partialText
         case .done:
-            if let result = bridge.takeUnconsumedResult() {
-                insert(result.text)
-            } else if case .processing = phase {
-                phase = .ready
-            } else if case .recording = phase {
-                phase = .ready
+            startTimeoutTask?.cancel()
+            if isAwaitingResult {
+                // 本實例發起並等待中的結果 → 自動插入
+                if let result = bridge.takeUnconsumedResult() {
+                    pendingResult = nil
+                    insert(result.text)
+                } else {
+                    phase = .ready
+                }
+            } else {
+                // 舊結果或別的實例發起的：只提示，不自動插進當下的輸入框
+                pendingResult = bridge.unconsumedResult()
             }
         case .error:
             startTimeoutTask?.cancel()
@@ -126,6 +134,30 @@ final class KeyboardModel {
                 partialText = ""
             }
         }
+    }
+
+    /// 本實例在 launching / recording / processing 期間才算「正在等結果」
+    private var isAwaitingResult: Bool {
+        switch phase {
+        case .launching, .recording, .processing: return true
+        default: return false
+        }
+    }
+
+    /// 使用者點「插入剛才的結果」
+    func insertPendingResult() {
+        guard let bridge, let result = pendingResult else { return }
+        pendingResult = nil
+        // 結果可能已被其他實例插入或已過期
+        guard bridge.unconsumedResult()?.id == result.id else { return }
+        bridge.markConsumed(result)
+        insert(result.text)
+    }
+
+    func dismissPendingResult() {
+        guard let bridge, let result = pendingResult else { return }
+        pendingResult = nil
+        bridge.markConsumed(result)
     }
 
     // MARK: - Mic
@@ -155,6 +187,7 @@ final class KeyboardModel {
     private func start(_ bridge: KeyboardBridge) {
         let selected = proxy()?.selectedText
         partialText = ""
+        pendingResult = nil
         UIDevice.current.playInputClick()
 
         if bridge.isAppSessionAlive() {
@@ -175,8 +208,9 @@ final class KeyboardModel {
     private func launchApp(_ bridge: KeyboardBridge, selectedText: String?) {
         bridge.send(.start, selectedText: selectedText)
         phase = .launching
-        if !openURL(SaybitShared.dictateFromKeyboardURL) {
-            phase = .message("無法開啟 Saybit，請先打開 Saybit App 啟動「鍵盤待命」")
+        openURL(SaybitShared.dictateFromKeyboardURL) { [weak self] success in
+            guard let self, !success, self.phase == .launching else { return }
+            self.phase = .message("無法開啟 Saybit，請先打開 Saybit App 啟動「鍵盤待命」")
         }
     }
 
@@ -190,12 +224,36 @@ final class KeyboardModel {
         phase = .inserted(text)
     }
 
-    /// 撤銷剛插入的結果（逐字刪除）
+    /// 撤銷剛插入的結果（逐字刪除）；游標前的內容必須仍以該結果結尾，否則不刪
     func undoInsert() {
         guard let text = lastInsertedText, let proxy = proxy() else { return }
+        guard Self.context(proxy.documentContextBeforeInput, endsWith: text) else {
+            lastInsertedText = nil
+            phase = .message("游標位置已改變，無法復原。請手動刪除。")
+            return
+        }
         for _ in 0..<text.count { proxy.deleteBackward() }
         lastInsertedText = nil
         phase = .ready
+    }
+
+    /// 游標移動 / 宿主改了內容：插入的文字已不在游標前就收掉「復原」
+    func selectionOrTextChanged() {
+        guard case .inserted = phase else { return }
+        guard let text = lastInsertedText,
+              Self.context(proxy()?.documentContextBeforeInput, endsWith: text) else {
+            lastInsertedText = nil
+            phase = .ready
+            return
+        }
+    }
+
+    /// `documentContextBeforeInput` 可能被系統截斷，只給最後一段：
+    /// 截斷後的 context 本身是 text 的後綴也視為吻合
+    private static func context(_ context: String?, endsWith text: String) -> Bool {
+        guard let context, !context.isEmpty, !text.isEmpty else { return false }
+        if context.hasSuffix(text) { return true }
+        return context.count < text.count && text.hasSuffix(context)
     }
 
     func insertCharacter(_ s: String) {

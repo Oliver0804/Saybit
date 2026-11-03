@@ -23,6 +23,10 @@ struct DictationView: View {
                     returnToAppBanner
                 }
 
+                if let notice = pipeline.notice {
+                    noticeBanner(notice)
+                }
+
                 ScrollView {
                     contentArea
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -190,6 +194,30 @@ struct DictationView: View {
         }
     }
 
+    private func noticeBanner(_ text: String) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: "info.circle.fill")
+                .foregroundStyle(.orange)
+            Text(text)
+                .font(.footnote)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 0)
+            Button {
+                pipeline.clearNotice()
+            } label: {
+                Image(systemName: "xmark")
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(.secondary)
+            .accessibilityLabel("關閉提示")
+        }
+        .padding(.leading, 12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 14))
+    }
+
     private var returnToAppBanner: some View {
         HStack(spacing: 12) {
             Image(systemName: "arrow.uturn.backward.circle.fill")
@@ -197,7 +225,7 @@ struct DictationView: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text("說完後可直接回到剛剛的 App")
                     .font(.subheadline.weight(.semibold))
-                Text("點左上角「◀︎ 返回」或在底部橫條向右滑，結果會由 Saybit 鍵盤自動輸入。")
+                Text("點左上角「◀︎ 返回」或在底部橫條向右滑，結果會由 Saybit 鍵盤輸入；若沒有自動輸入，點鍵盤上的「插入剛才的結果」。")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -375,11 +403,18 @@ struct KeyboardSessionCard: View {
                      : "開啟後，Saybit 鍵盤不必跳回 App 就能錄音")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                if !ks.isActive, let error = ks.lastError {
+                    Text(error)
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
             Spacer(minLength: 8)
             Button(ks.isActive ? "停止" : "啟動") {
                 if ks.isActive {
                     ks.deactivate()
+                    ks.clearError()
                 } else {
                     ks.activate(minutes: mobileSettings.keyboardSessionMinutes)
                 }
