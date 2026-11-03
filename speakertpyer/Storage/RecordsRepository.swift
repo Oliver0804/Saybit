@@ -37,6 +37,26 @@ struct RecordsRepository {
         return dict.isEmpty ? nil : dict
     }
 
+    /// 新增字典詞條；原始詞已存在時不覆蓋，回傳是否新增成功
+    @MainActor
+    @discardableResult
+    func addDictionaryEntry(term: String, preferred: String) -> Bool {
+        let request = PersonalDictionaryEntry.fetchRequest()
+        request.predicate = NSPredicate(format: "term ==[c] %@", term)
+        if let count = try? viewContext.count(for: request), count > 0 { return false }
+        let entry = PersonalDictionaryEntry(context: viewContext)
+        entry.id = UUID()
+        entry.term = term
+        entry.preferred = preferred
+        do {
+            try viewContext.save()
+            return true
+        } catch {
+            viewContext.rollback()
+            return false
+        }
+    }
+
     // MARK: - Snippets
 
     /// 取出 snippets [trigger → content]；空字典回 nil。

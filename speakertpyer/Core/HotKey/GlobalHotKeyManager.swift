@@ -22,6 +22,18 @@ class GlobalHotKeyManager {
 
     private(set) var isRegistered = false
 
+    // MARK: - Extra Bindings（語音模式快捷鍵，按一下切換錄音）
+
+    struct Binding {
+        let keyCode: UInt16
+        let modifiers: CGEventFlags
+        let action: () -> Void
+    }
+
+    /// 由主快捷鍵共用同一個 event tap；修飾鍵需完全相符（避免 ⌃. 吃掉 ⌃⇧.）
+    var extraBindings: [Binding] = []
+    private var extraKeyDownCode: UInt16?
+
     // MARK: - Double Tap Detection
     private var lastKeyDownTime: TimeInterval = 0
     private let doubleTapInterval: TimeInterval = 0.3
@@ -145,6 +157,22 @@ class GlobalHotKeyManager {
         // Normal hotkey handling
         let keyCode = UInt16(event.getIntegerValueField(.keyboardEventKeycode))
         let flags = event.flags
+
+        // 語音模式快捷鍵（精確比對修飾鍵）
+        if !extraBindings.isEmpty {
+            let mods = flags.intersection([.maskCommand, .maskControl, .maskAlternate, .maskShift])
+            if type == .keyDown, extraKeyDownCode == nil,
+               let binding = extraBindings.first(where: { $0.keyCode == keyCode && $0.modifiers == mods }) {
+                extraKeyDownCode = keyCode
+                DispatchQueue.main.async { binding.action() }
+                return nil
+            }
+            if type == .keyDown, extraKeyDownCode == keyCode { return nil } // 長按重複
+            if type == .keyUp, extraKeyDownCode == keyCode {
+                extraKeyDownCode = nil
+                return nil
+            }
+        }
 
         // Check if our hotkey modifier is active
         let modifierMatch = flags.contains(registeredModifiers)

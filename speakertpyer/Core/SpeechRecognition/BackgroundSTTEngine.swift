@@ -199,6 +199,8 @@ class BackgroundSTTEngine: AudioBufferConsumer {
 
         let request = SFSpeechAudioBufferRecognitionRequest()
         request.shouldReportPartialResults = true
+        // 個人字典的偏好寫法當辨識提示（人名、產品名更容易辨識對）
+        request.contextualStrings = DictionaryHints.contextualStrings
         if sessionOnDeviceOnly {
             request.requiresOnDeviceRecognition = true
         }

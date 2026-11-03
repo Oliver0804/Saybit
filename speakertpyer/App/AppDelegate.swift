@@ -6,6 +6,7 @@
 //
 
 import AppKit
+import Combine
 import Speech
 import SwiftUI
 
@@ -15,6 +16,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private(set) var voicePipeline: VoicePipeline?
     private var onboardingWindow: NSWindow?
     private var tutorialWindow: NSWindow?
+    private var cancellables = Set<AnyCancellable>()
+    /// 最近一個在前景的「其他 App」：URL scheme 會讓 Saybit 被啟用、搶走焦點，處理前要把焦點還回去
+    private var lastExternalApp: NSRunningApplication?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         SettingsStore.shared = settingsStore
@@ -37,6 +41,73 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         clearStaleUpdateNotification()
         runAutoUpdateCheckIfDue()
+
+        NSWorkspace.shared.notificationCenter.publisher(for: NSWorkspace.didActivateApplicationNotification)
+            .compactMap { $0.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication }
+            .filter { $0.processIdentifier != ProcessInfo.processInfo.processIdentifier }
+            .sink { [weak self] app in self?.lastExternalApp = app }
+            .store(in: &cancellables)
+        lastExternalApp = NSWorkspace.shared.frontmostApplication
+
+        // 語音模式增刪 / 改快捷鍵 → 重新綁定
+        settingsStore.$voiceModes
+            .dropFirst()
+            .sink { [weak self] modes in self?.registerModeHotkeys(modes) }
+            .store(in: &cancellables)
+    }
+
+    // MARK: - URL Scheme（Raycast / 捷徑 / Stream Deck）
+
+    /// saybit://toggle、saybit://start、saybit://stop、saybit://cancel，可加 ?mode=<模式名稱>
+    /// saybit://settings?tab=general|api|hotkey|dictionary|transcribe|history|statistics|logs
+    func application(_ application: NSApplication, open urls: [URL]) {
+        // 開 URL 會把 Saybit 帶到前景；先把焦點還給原本的 App，文字才會輸入到正確位置
+        // saybit://settings 本來就要把 Saybit 帶到前景，不用還焦點
+        if urls.allSatisfy({ ($0.host ?? "").lowercased() == "settings" }) {
+            urls.forEach(handleURL)
+            return
+        }
+        let needsRefocus = NSApp.isActive || NSWorkspace.shared.frontmostApplication?.processIdentifier == ProcessInfo.processInfo.processIdentifier
+        if needsRefocus, let app = lastExternalApp, !app.isTerminated {
+            app.activate()
+            Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(250))
+                for url in urls { self.handleURL(url) }
+            }
+        } else {
+            for url in urls { handleURL(url) }
+        }
+    }
+
+    private func handleURL(_ url: URL) {
+        guard url.scheme?.lowercased() == "saybit", let pipeline = voicePipeline else { return }
+        let command = (url.host ?? url.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))).lowercased()
+        let modeName = URLComponents(url: url, resolvingAgainstBaseURL: false)?
+            .queryItems?.first(where: { $0.name == "mode" })?.value
+        let mode = modeName.flatMap { settingsStore.voiceMode(named: $0) }
+        if let modeName, mode == nil {
+            AppLogger.shared.error("URL scheme 找不到語音模式: \(modeName)", category: "URL")
+        }
+        AppLogger.shared.info("URL scheme: \(command)\(modeName.map { " mode=\($0)" } ?? "")", category: "URL")
+
+        let isRecording: Bool = { if case .recording = pipeline.session.state { return true } else { return false } }()
+        switch command {
+        case "toggle", "dictate":
+            pipeline.toggleRecording(mode: mode)
+        case "start":
+            if !isRecording { pipeline.toggleRecording(mode: mode) }
+        case "stop":
+            if isRecording { pipeline.stopRecordingAndProcess() }
+        case "cancel":
+            pipeline.cancelRecording()
+        case "settings":
+            let tab = URLComponents(url: url, resolvingAgainstBaseURL: false)?
+                .queryItems?.first(where: { $0.name == "tab" })?.value
+                .flatMap(SettingsTab.init(rawValue:))
+            OverlayWindowController.shared.openSettings(tab: tab)
+        default:
+            AppLogger.shared.error("未知的 URL 指令: \(url.absoluteString)", category: "URL")
+        }
     }
 
     /// 啟動時若使用者已升級到 ≥ 通知中的版本，清掉殘留的 availableUpdateTag。
@@ -190,6 +261,27 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             keyCode: UInt16(settingsStore.hotkeyKeyCode),
             modifiers: CGEventFlags(rawValue: UInt64(settingsStore.hotkeyModifiers))
         )
+        registerModeHotkeys(settingsStore.voiceModes)
+    }
+
+    /// 每個有設定快捷鍵的語音模式：按一下開始 / 再按一下停止
+    private func registerModeHotkeys(_ modes: [VoiceMode]) {
+        let bindings = modes.compactMap { mode -> GlobalHotKeyManager.Binding? in
+            guard mode.hasHotkey, let keyCode = mode.keyCode else { return nil }
+            let modeID = mode.id
+            return GlobalHotKeyManager.Binding(
+                keyCode: UInt16(keyCode),
+                modifiers: CGEventFlags(rawValue: mode.modifiers)
+            ) { [weak self] in
+                guard let self else { return }
+                let current = self.settingsStore.voiceModes.first { $0.id == modeID }
+                self.voicePipeline?.toggleRecording(mode: current)
+            }
+        }
+        GlobalHotKeyManager.shared.extraBindings = bindings
+        if !bindings.isEmpty {
+            AppLogger.shared.info("語音模式快捷鍵: \(bindings.count) 組", category: "HotKey")
+        }
     }
 
     private func configureHotkeyCallbacks() {

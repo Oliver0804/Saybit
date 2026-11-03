@@ -125,6 +125,18 @@ actor OpenRouterClient {
                         userMessage = payloadString
                     }
 
+                    // Apple 本機模型：不走 HTTP，直接用 FoundationModels 串流
+                    if provider.id == AppleOnDeviceLLM.providerID {
+                        for try await chunk in AppleOnDeviceLLM.stream(
+                            systemPrompt: systemPrompt, userMessage: userMessage,
+                            temperature: temperature, maxTokens: maxTokens
+                        ) {
+                            continuation.yield(.text(chunk))
+                        }
+                        continuation.finish()
+                        return
+                    }
+
                     // 本地服務（LM Studio, Ollama）可能不支援 stream_options
                     let useStreamOptions = provider.id != "lmstudio" && provider.id != "ollama"
                         && !provider.id.hasPrefix("custom-")
@@ -238,6 +250,12 @@ actor OpenRouterClient {
 
     /// Quick API key validation with a minimal request (with retry)
     func testConnection(model: String, provider: LLMProvider) async throws {
+        if provider.id == AppleOnDeviceLLM.providerID {
+            if let reason = AppleOnDeviceLLM.unavailableReason {
+                throw AppleOnDeviceLLM.LLMError.unavailable(reason)
+            }
+            return
+        }
         let apiKey = provider.requiresAPIKey
             ? KeychainHelper.loadAPIKey(for: provider.id)
             : (KeychainHelper.loadAPIKey(for: provider.id) ?? "")

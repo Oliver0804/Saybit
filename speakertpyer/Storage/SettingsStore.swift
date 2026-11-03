@@ -7,7 +7,9 @@
 
 import Combine
 import Foundation
+#if os(macOS)
 import ServiceManagement
+#endif
 
 class SettingsStore: ObservableObject {
     static var shared: SettingsStore?
@@ -200,6 +202,21 @@ class SettingsStore: ObservableObject {
         didSet { UserDefaults.standard.set(enableEchoCancellation, forKey: "enableEchoCancellation") }
     }
 
+    /// 輸入後觀察使用者的手動更正，自動加進個人字典（macOS）
+    @Published var enableAutoLearnDictionary: Bool {
+        didSet { UserDefaults.standard.set(enableAutoLearnDictionary, forKey: "enableAutoLearnDictionary") }
+    }
+
+    /// 錄音時 OCR 前景視窗文字給 AI 參考（macOS，需螢幕錄製權限）
+    @Published var enableScreenContext: Bool {
+        didSet { UserDefaults.standard.set(enableScreenContext, forKey: "enableScreenContext") }
+    }
+
+    /// 錄音時降低系統音量（macOS）
+    @Published var enableDuckingWhileRecording: Bool {
+        didSet { UserDefaults.standard.set(enableDuckingWhileRecording, forKey: "enableDuckingWhileRecording") }
+    }
+
     // MARK: - Silence Detection
 
     @Published var silenceTimeout: Double {
@@ -280,11 +297,13 @@ class SettingsStore: ObservableObject {
 
     @Published var launchAtLogin: Bool {
         didSet {
+            #if os(macOS)
             if launchAtLogin {
                 try? SMAppService.mainApp.register()
             } else {
                 try? SMAppService.mainApp.unregister()
             }
+            #endif
         }
     }
 
@@ -304,6 +323,20 @@ class SettingsStore: ObservableObject {
                 }
             }
         }
+    }
+
+    // MARK: - Voice Modes
+
+    @Published var voiceModes: [VoiceMode] {
+        didSet {
+            if let data = try? JSONEncoder().encode(voiceModes) {
+                UserDefaults.standard.set(data, forKey: "voiceModes")
+            }
+        }
+    }
+
+    func voiceMode(named name: String) -> VoiceMode? {
+        voiceModes.first { $0.name.compare(name, options: [.caseInsensitive]) == .orderedSame }
     }
 
     /// Find matching rule for a given app context identifier
@@ -363,6 +396,9 @@ class SettingsStore: ObservableObject {
         self.enableSoundFeedback = defaults.object(forKey: "enableSoundFeedback") as? Bool ?? true
         self.enableWhisperMode = defaults.object(forKey: "enableWhisperMode") as? Bool ?? false
         self.enableVoiceBandpass = defaults.object(forKey: "enableVoiceBandpass") as? Bool ?? true
+        self.enableScreenContext = defaults.bool(forKey: "enableScreenContext")
+        self.enableAutoLearnDictionary = defaults.object(forKey: "enableAutoLearnDictionary") as? Bool ?? true
+        self.enableDuckingWhileRecording = defaults.object(forKey: "enableDuckingWhileRecording") as? Bool ?? true
         self.enableEchoCancellation = defaults.object(forKey: "enableEchoCancellation") as? Bool ?? false
         self.silenceTimeout = defaults.object(forKey: "silenceTimeout") as? Double ?? 2.0
         self.enableAutoStop = defaults.object(forKey: "enableAutoStop") as? Bool ?? true
@@ -376,7 +412,11 @@ class SettingsStore: ObservableObject {
         self.smartSendDelay = defaults.object(forKey: "smartSendDelay") as? Double ?? 3.0
         self.capsuleScale = defaults.object(forKey: "capsuleScale") as? Double ?? 1.0
         self.micSensitivity = defaults.object(forKey: "micSensitivity") as? Double ?? 2.0
+        #if os(macOS)
         self.launchAtLogin = SMAppService.mainApp.status == .enabled
+        #else
+        self.launchAtLogin = false
+        #endif
         self.overlayPositionX = defaults.object(forKey: "overlayPositionX") as? Double ?? 0
         self.overlayPositionY = defaults.object(forKey: "overlayPositionY") as? Double ?? 0
         self.hasCustomOverlayPosition = defaults.bool(forKey: "hasCustomOverlayPosition")
@@ -387,6 +427,12 @@ class SettingsStore: ObservableObject {
             self.contextRules = decoded
         } else {
             self.contextRules = ContextRule.defaultRules
+        }
+        if let data = defaults.data(forKey: "voiceModes"),
+           let decoded = try? JSONDecoder().decode([VoiceMode].self, from: data) {
+            self.voiceModes = decoded
+        } else {
+            self.voiceModes = VoiceMode.presets
         }
     }
 }

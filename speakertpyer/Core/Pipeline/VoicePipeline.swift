@@ -15,8 +15,9 @@ class VoicePipeline {
     let session = TranscriptionSession()
     let speechRecognizer = SpeechRecognizer()
     let whisperClient = WhisperSTTClient()
+    let sherpaEngine = SherpaSTTEngine()
 
-    private let llmClient = OpenRouterClient()
+    private let refiner: TextRefiner
     private let settingsStore: SettingsStore
     private let log = AppLogger.shared
     private var overlayConfigured = false
@@ -32,6 +33,13 @@ class VoicePipeline {
     private var autoResetTask: Task<Void, Never>?
     private var cancellables = Set<AnyCancellable>()
 
+    /// 下一次錄音要用的語音模式（模式快捷鍵 / URL scheme 設定）
+    private var pendingMode: VoiceMode?
+    /// 本次錄音的語音模式（nil = 一般聽寫）
+    private(set) var activeMode: VoiceMode?
+    /// 錄音開始時並行擷取的螢幕文字（OCR）
+    private var screenContextTask: Task<String?, Never>?
+
     /// 持續背景 STT 引擎（enableContinuousSTT 開啟時啟用）
     private var backgroundSTT: BackgroundSTTEngine?
     /// 標記本次錄音是否使用持續 STT 模式
@@ -39,9 +47,11 @@ class VoicePipeline {
 
     init(settingsStore: SettingsStore) {
         self.settingsStore = settingsStore
+        self.refiner = TextRefiner(settingsStore: settingsStore)
         log.info("VoicePipeline 初始化", category: "Pipeline")
         log.info("模型: \(settingsStore.selectedModel)", category: "Pipeline")
         log.info("Prompt 風格: \(settingsStore.promptStyle.rawValue)", category: "Pipeline")
+        log.info("辨識引擎: \(settingsStore.sttEngine.rawValue)", category: "Pipeline")
 
         // 先套用回音消除狀態（須在 engine 啟動前設定，才能在首次啟動就生效）
         SharedAudioEngine.shared.setEchoCancellationEnabled(settingsStore.enableEchoCancellation)
@@ -76,6 +86,10 @@ class VoicePipeline {
             }
             .store(in: &cancellables)
 
+        DictionaryHints.refresh(records: records)
+
+        SystemAudioDucker.restorePendingIfNeeded()
+
         // 啟動持續背景 STT（若已啟用且為 Apple Speech）
         if settingsStore.enableContinuousSTT && settingsStore.sttEngine == .appleSpeech {
             startBackgroundSTT()
@@ -104,8 +118,18 @@ class VoicePipeline {
                 } else {
                     self.stopBackgroundSTT()
                 }
+                if engine == .sherpaSenseVoice {
+                    self.sherpaEngine.preloadModel()
+                } else {
+                    self.sherpaEngine.unloadModel()
+                }
             }
             .store(in: &cancellables)
+
+        // SenseVoice 模型常駐記憶體，按快捷鍵時不用等載入
+        if settingsStore.sttEngine == .sherpaSenseVoice {
+            sherpaEngine.preloadModel()
+        }
 
         configureOverlay()
         // Show bubble immediately on launch
@@ -163,6 +187,11 @@ class VoicePipeline {
     // MARK: - Recording
 
     func startRecording() {
+        // 語音模式只對這一次錄音有效（前置檢查失敗也要清掉，避免殘留到下次）
+        activeMode = pendingMode
+        pendingMode = nil
+        session.modeName = activeMode?.name
+
         // 取消任何 pending 的 autoReset
         autoResetTask?.cancel()
         autoResetTask = nil
@@ -202,8 +231,26 @@ class VoicePipeline {
             }
         }
 
+        if settingsStore.sttEngine == .sherpaSenseVoice, !SherpaModelManager.shared.isInstalled {
+            log.error("SenseVoice 模型未下載", category: "Pipeline")
+            session.state = .error(SherpaSTTError.modelMissing.localizedDescription)
+            autoResetState(after: 4.0)
+            return
+        }
+
         // 在 reset 前非同步預擷取選取文字（錄音期間可能失去選取）
         // 使用 Task 避免阻塞主線程（clipboard fallback 需要等待）
+        if let mode = activeMode {
+            log.info("語音模式: \(mode.name)", category: "Pipeline")
+        }
+
+        // 螢幕上下文：與錄音並行 OCR，LLM 前再取結果
+        screenContextTask?.cancel()
+        screenContextTask = nil
+        if settingsStore.enableScreenContext {
+            screenContextTask = Task { await ScreenContextCapture.captureFrontWindowText() }
+        }
+
         contextCaptureTask?.cancel()
         contextCaptureTask = nil
         if settingsStore.enableContextAwareness {
@@ -212,6 +259,7 @@ class VoicePipeline {
             }
         }
 
+        DictionaryHints.refresh(records: records)
         session.reset()
         session.state = .recording
         session.startTime = Date()
@@ -246,6 +294,9 @@ class VoicePipeline {
                     whisperClient.micGain = micGain
                     try whisperClient.startRecording()
                     log.info("Whisper 錄音啟動", category: "STT")
+                case .sherpaSenseVoice:
+                    sherpaEngine.micGain = micGain
+                    try sherpaEngine.startListening(languagePreference: settingsStore.languagePreference)
                 }
             } catch {
                 log.error("語音辨識啟動失敗: \(error.localizedDescription)", category: "STT")
@@ -260,6 +311,15 @@ class VoicePipeline {
             NSSound(named: .init("Tink"))?.play()
         }
 
+        // 錄音中壓低系統音量（等提示音播完再壓）；離開 recording 時由 observeTranscript 還原
+        if settingsStore.enableDuckingWhileRecording {
+            Task { @MainActor [weak self] in
+                try? await Task.sleep(for: .milliseconds(200))
+                guard let self, case .recording = self.session.state else { return }
+                SystemAudioDucker.duck()
+            }
+        }
+
         // Observe real-time transcript and audio level updates
         observeTranscript()
     }
@@ -268,6 +328,37 @@ class VoicePipeline {
         if case .recording = session.state {
             stopRecordingAndProcess()
         } else {
+            startRecording()
+            enableSilenceAutoStop()
+        }
+    }
+
+    /// 取消錄音，不送 AI、不輸入文字
+    func cancelRecording() {
+        guard case .recording = session.state else { return }
+        if isUsingContinuousSTT, let bgSTT = backgroundSTT {
+            _ = bgSTT.stopCapture()
+            isUsingContinuousSTT = false
+        } else {
+            switch settingsStore.sttEngine {
+            case .appleSpeech: _ = speechRecognizer.stopListening()
+            case .whisperAPI: _ = whisperClient.stopRecording()
+            case .sherpaSenseVoice: sherpaEngine.cancel()
+            }
+        }
+        screenContextTask?.cancel()
+        screenContextTask = nil
+        session.audioLevel = 0
+        log.info("錄音已取消", category: "Pipeline")
+        returnToIdle()
+    }
+
+    /// 用指定語音模式切換錄音（模式快捷鍵 / saybit://toggle?mode=…）
+    func toggleRecording(mode: VoiceMode?) {
+        if case .recording = session.state {
+            stopRecordingAndProcess()
+        } else {
+            pendingMode = mode
             startRecording()
             enableSilenceAutoStop()
         }
@@ -295,6 +386,9 @@ class VoicePipeline {
             case .whisperAPI:
                 whisperClient.silenceTimeoutDuration = settingsStore.silenceTimeout
                 whisperClient.onSilenceTimeout = silenceHandler
+            case .sherpaSenseVoice:
+                sherpaEngine.silenceTimeoutDuration = settingsStore.silenceTimeout
+                sherpaEngine.onSilenceTimeout = silenceHandler
             }
         }
     }
@@ -390,6 +484,32 @@ class VoicePipeline {
                     autoResetState(after: 3.0)
                 }
             }
+
+        case .sherpaSenseVoice:
+            if settingsStore.enableSoundFeedback {
+                NSSound(named: .init("Pop"))?.play()
+            }
+            // 收尾只剩最後一句要辨識（通常 <0.3 秒）
+            session.state = .processing
+            Task { @MainActor in
+                do {
+                    let transcript = try await sherpaEngine.stopListening()
+                    session.rawTranscript = transcript
+                    log.info("錄音結束 (時長=\(String(format: "%.1f", session.duration))s)", category: "STT")
+                    log.info("原始轉錄: \(transcript.isEmpty ? "(空)" : transcript)", category: "STT")
+                    guard !transcript.isEmpty else {
+                        log.info("轉錄為空，跳過 LLM", category: "Pipeline")
+                        returnToIdle()
+                        return
+                    }
+                    proceedToLLM()
+                } catch {
+                    let msg = error.localizedDescription
+                    log.error("SenseVoice 辨識失敗: \(msg)", category: "STT")
+                    session.state = .error(msg)
+                    autoResetState(after: 3.0)
+                }
+            }
         }
     }
 
@@ -422,7 +542,7 @@ class VoicePipeline {
         transcriptObserveTask?.cancel()
         transcriptObserveTask = Task { @MainActor in
             while case .recording = session.state {
-                if Task.isCancelled { return }
+                if Task.isCancelled { break }
                 // 去重：值相同不寫，避免不必要的 @Observable change notification
                 // 觸發整顆 OverlayView 重繪
                 if isUsingContinuousSTT, let bgSTT = backgroundSTT {
@@ -441,178 +561,80 @@ class VoicePipeline {
                         // Whisper 不支援 partial results，只更新音量
                         let lv = whisperClient.audioLevel
                         if session.audioLevel != lv { session.audioLevel = lv }
+                    case .sherpaSenseVoice:
+                        let t = sherpaEngine.transcript
+                        let lv = sherpaEngine.audioLevel
+                        if session.rawTranscript != t { session.rawTranscript = t }
+                        if session.audioLevel != lv { session.audioLevel = lv }
                     }
                 }
                 // 20Hz 輪詢，對齊 audio level 50ms 節流；
                 // 配合去重後 @Observable 寫入次數實際 ≈ 取樣率 / 兩倍 polling 頻
                 try? await Task.sleep(for: .milliseconds(50))
             }
+            // 離開 recording（停止 / 取消 / 錯誤）→ 還原系統音量
+            SystemAudioDucker.restore()
         }
     }
 
-    // MARK: - LLM Processing
+    // MARK: - LLM Processing（共用 TextRefiner）
 
     @MainActor
     private func processWithLLM() async {
-        let style = settingsStore.promptStyle
-        let temperature = SystemPrompts.temperatureForStyle(style)
-        let model = settingsStore.selectedModel
-        let provider = settingsStore.selectedProvider
         let transcript = session.rawTranscript
         let selectedText = session.appContext.selectedText
-        let nonEmptySelectedText = selectedText.flatMap { $0.isEmpty ? nil : $0 }
-        let hasSelectedText = nonEmptySelectedText != nil
-        let skills = loadSnippets() ?? [:]
-
-        log.info("LLM 處理開始 (provider=\(provider.name), model=\(model), style=\(style.rawValue))", category: "LLM")
-
-        // ── 決定處理路徑 ──
-        let systemPrompt: String
-        let contentForLLM: String
-        let existingTextForPayload: String?
-
-        if let pickedText = nonEmptySelectedText {
-            // ── 有選取文字：單次 LLM 呼叫 ──
-            // 既有 prompt 已能透過 existing_text 處理指令（翻譯、改寫等）
-            log.info("有選取文字 (\(pickedText.count) 字), 單階段處理", category: "LLM")
-            systemPrompt = SystemPrompts.forStyle(style)
-            contentForLLM = transcript
-            existingTextForPayload = pickedText
-        } else {
-            // ── 無選取文字：Stage 1 意圖分類（帶 timeout）→ Stage 2 執行 ──
-            let intentResult = await classifyIntentWithTimeout(
-                transcript: transcript, skills: skills,
-                model: model, provider: provider
-            )
-
-            // ── Action intents（行事曆/提醒）→ 獨立處理路徑 ──
-            if intentResult.intent == "create_event" || intentResult.intent == "create_reminder" {
-                await processActionIntent(intentResult)
-                return
-            }
-
-            if intentResult.intent != "dictation",
-               let content = intentResult.content, !content.isEmpty {
-                // 有動作意圖且有可操作內容
-                if intentResult.intent == "skill",
-                   let skillName = intentResult.skillName,
-                   let skillPrompt = skills[skillName] {
-                    systemPrompt = skillPrompt + "\n\nOutput ONLY the processed result. No explanation."
-                    log.info("Stage 2 使用技能: \(skillName)", category: "LLM")
-                } else {
-                    let actionPrompt = SystemPrompts.forIntent(intentResult, languagePreference: settingsStore.languagePreference)
-                    systemPrompt = actionPrompt.isEmpty ? SystemPrompts.forStyle(style) : actionPrompt
-                    log.info("Stage 2 執行: \(intentResult.intent)", category: "LLM")
-                }
-                contentForLLM = content
-                existingTextForPayload = nil
-            } else if intentResult.intent != "dictation" {
-                // 有動作意圖但沒有內容 → 提示使用者選取文字
-                log.info("Stage 1 意圖=\(intentResult.intent) 但無可操作內容，提示使用者", category: "LLM")
-                let hint: String
-                switch intentResult.intent {
-                case "translate":
-                    let langName = intentResult.language.flatMap { SystemPrompts.languageDisplayName($0) } ?? "目標語言"
-                    hint = "請先選取要翻譯成\(langName)的文字"
-                case "rewrite":
-                    hint = "請先選取要改寫的文字"
-                case "skill":
-                    hint = "請先選取要處理的文字"
-                default:
-                    hint = "請先選取要操作的文字"
-                }
-                session.processedText = hint
-                session.state = .error(hint)
-                autoResetState(after: 3.0)
-                return
-            } else {
-                // dictation
-                systemPrompt = SystemPrompts.forStyle(style)
-                contentForLLM = transcript
-                existingTextForPayload = nil
-            }
+        let screenContext = await screenContextTask?.value
+        screenContextTask = nil
+        if let screenContext {
+            log.info("螢幕上下文 \(screenContext.count) 字", category: "Context")
         }
-
-        // ── 串流 LLM 呼叫 ──
-        let contextId = session.appContext.contextIdentifier
-
-        // 查詢 context rule 覆蓋語氣
-        var effectiveTone: String? = settingsStore.toneStyle == .auto ? nil : settingsStore.toneStyle.rawValue
-        var finalSystemPrompt = systemPrompt
-        if let rule = settingsStore.contextRule(for: contextId) {
-            if let toneOverride = rule.toneOverride, toneOverride != "auto" {
-                effectiveTone = toneOverride
-                log.info("Context rule 覆蓋語氣: \(contextId) → \(toneOverride)", category: "Context")
-            }
-            if let additional = rule.additionalPrompt, !additional.isEmpty {
-                finalSystemPrompt += "\n\n### App-Specific Instructions\n\(additional)"
-                log.info("Context rule 注入附加指示 (\(contextId))", category: "Context")
-            }
-        }
-
-        let payload = LLMPayload(
-            transcript: contentForLLM,
-            context: contextId.isEmpty ? nil : contextId,
-            mode: hasSelectedText ? "edit" : nil,
-            tone: effectiveTone,
-            languagePreference: settingsStore.languagePreference,
-            personalDictionary: loadPersonalDictionary(),
-            snippets: skills.isEmpty ? nil : skills,
-            screenContext: nil,
-            whisperMode: settingsStore.enableWhisperMode ? true : nil,
-            existingText: existingTextForPayload
+        let request = RefineRequest(
+            transcript: transcript,
+            selectedText: selectedText,
+            contextIdentifier: session.appContext.contextIdentifier,
+            modeInstructions: activeMode?.instructions,
+            screenContext: screenContext
         )
-
-        var accumulated = ""
-        session.modelName = model
+        session.modelName = settingsStore.selectedModel
 
         do {
-            let stream = await llmClient.sendStreaming(
-                systemPrompt: finalSystemPrompt,
-                payload: payload,
-                model: model,
-                temperature: temperature,
-                provider: provider,
-                maxTokens: settingsStore.useCustomLLMParams ? settingsStore.llmMaxTokens : nil,
-                frequencyPenalty: settingsStore.useCustomLLMParams ? settingsStore.llmFrequencyPenalty : nil,
-                presencePenalty: settingsStore.useCustomLLMParams ? settingsStore.llmPresencePenalty : nil,
-                topP: settingsStore.useCustomLLMParams ? settingsStore.llmTopP : nil
-            )
-            for try await event in stream {
-                switch event {
-                case .text(let chunk):
-                    accumulated += chunk
-                    session.processedText = accumulated
-                case .usage(let usage):
+            let outcome = try await refiner.refine(
+                request,
+                onPartial: { text in session.processedText = text },
+                onUsage: { usage in
                     session.promptTokens = usage.promptTokens
                     session.completionTokens = usage.completionTokens
                     session.totalTokens = usage.totalTokens
                 }
-            }
-
-            guard !accumulated.isEmpty else {
-                log.error("LLM 回傳空結果", category: "LLM")
-                session.state = .error(L10n.Errors.llmNoResponse)
-                autoResetState(after: 3.0)
-                return
-            }
-
-            // LLM 可能誤回 JSON command 格式（如 {"action":"translate","replacement":"..."}），
-            // 此時應提取 replacement 欄位作為實際結果
-            accumulated = extractReplacementIfCommandJSON(accumulated)
-            session.processedText = accumulated
-
-            log.info("LLM 結果: \(accumulated.prefix(100))\(accumulated.count > 100 ? "..." : "")", category: "LLM")
-
-            if settingsStore.enablePreviewBeforeInject {
+            )
+            switch outcome {
+            case .text(let text):
+                session.processedText = text
+                if settingsStore.enablePreviewBeforeInject {
+                    session.state = .previewing
+                    log.info("進入預覽模式，等待使用者確認", category: "Pipeline")
+                    startPreviewAutoConfirm()
+                } else {
+                    performInject()
+                }
+            case .action(let action, let confirmation):
+                session.processedText = confirmation
+                session.pendingAction = action
                 session.state = .previewing
-                log.info("進入預覽模式，等待使用者確認", category: "Pipeline")
-                startPreviewAutoConfirm()
-            } else {
-                performInject()
+                startPreviewAutoCancel()
+            case .needsSelection(let hint):
+                session.processedText = hint
+                session.state = .error(hint)
+                autoResetState(after: 3.0)
             }
+        } catch RefinerError.emptyResponse {
+            session.state = .error(L10n.Errors.llmNoResponse)
+            autoResetState(after: 3.0)
+        } catch RefinerError.actionFailed(let msg) {
+            session.state = .error(msg)
+            autoResetState(after: 3.0)
         } catch {
-            let msg = friendlyErrorMessage(error)
+            let msg = TextRefiner.friendlyErrorMessage(error)
             log.error("LLM 錯誤: \(msg) (\(error))", category: "LLM")
             session.lastErrorContext = ErrorContext(
                 transcript: transcript,
@@ -624,264 +646,13 @@ class VoicePipeline {
         }
     }
 
-    // MARK: - Intent Classification (Stage 1)
-
-    /// Stage 1 意圖分類，帶 8 秒 timeout。逾時或失敗時 fallback 為 dictation。
-    @MainActor
-    private func classifyIntentWithTimeout(
-        transcript: String, skills: [String: String],
-        model: String, provider: LLMProvider
-    ) async -> LLMIntentResponse {
-        let dictationFallback = LLMIntentResponse(
-            intent: "dictation", language: nil, style: nil,
-            format: nil, skillName: nil, content: nil
-        )
-
-        let intentPrompt = SystemPrompts.intentClassification(skills: skills, hasSelectedText: false)
-        let classificationPayload = LLMPayload(
-            transcript: "Transcript: \(transcript)",
-            context: session.appContext.contextIdentifier.isEmpty ? nil : session.appContext.contextIdentifier,
-            mode: nil, tone: nil, languagePreference: settingsStore.languagePreference,
-            personalDictionary: nil, snippets: nil, screenContext: nil, whisperMode: nil, existingText: nil
-        )
-
-        let client = llmClient  // capture actor reference
-
-        do {
-            let raw: String = try await withThrowingTaskGroup(of: String.self) { group in
-                group.addTask {
-                    try await client.send(
-                        systemPrompt: intentPrompt,
-                        payload: classificationPayload,
-                        model: model,
-                        temperature: 0.1,
-                        provider: provider
-                    )
-                }
-                group.addTask {
-                    try await Task.sleep(for: .seconds(8))
-                    throw CancellationError()
-                }
-                guard let result = try await group.next() else {
-                    throw CancellationError()
-                }
-                group.cancelAll()
-                return result
-            }
-
-            // 解析 JSON（去除 markdown code fence）
-            let cleaned = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-                .replacingOccurrences(of: "```json", with: "")
-                .replacingOccurrences(of: "```", with: "")
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-
-            if let data = cleaned.data(using: .utf8),
-               let parsed = try? JSONDecoder().decode(LLMIntentResponse.self, from: data) {
-                log.info("Stage 1 意圖: \(parsed.intent)" +
-                         (parsed.language.map { ", lang=\($0)" } ?? "") +
-                         (parsed.style.map { ", style=\($0)" } ?? "") +
-                         (parsed.skillName.map { ", skill=\($0)" } ?? ""),
-                         category: "LLM")
-                return parsed
-            } else {
-                log.info("Stage 1 JSON 解析失敗，fallback dictation: \(raw.prefix(100))", category: "LLM")
-                return dictationFallback
-            }
-        } catch {
-            if error is CancellationError {
-                log.error("Stage 1 逾時 (8s)，fallback dictation", category: "LLM")
-            } else {
-                log.error("Stage 1 失敗: \(error)，fallback dictation", category: "LLM")
-            }
-            return dictationFallback
-        }
-    }
-
-    // MARK: - Command JSON Extraction
-
-    /// LLM 有時會誤將 edit 模式的結果以 Command Mode JSON 格式回傳
-    /// （如 `{"action":"translate","target":"...","replacement":"..."}`），
-    /// 此方法偵測這種情況並提取 `replacement` 欄位。
-    private func extractReplacementIfCommandJSON(_ text: String) -> String {
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-            .replacingOccurrences(of: "```json", with: "")
-            .replacingOccurrences(of: "```", with: "")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-
-        guard trimmed.hasPrefix("{"), trimmed.hasSuffix("}"),
-              let data = trimmed.data(using: .utf8),
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              json["action"] is String,
-              let replacement = json["replacement"] as? String,
-              !replacement.isEmpty else {
-            return text
-        }
-
-        log.info("偵測到 Command JSON，提取 replacement 欄位", category: "LLM")
-        return replacement
-    }
-
-    // MARK: - Error Messages
-
-    private func friendlyErrorMessage(_ error: Error) -> String {
-        if let clientError = error as? OpenRouterClient.ClientError {
-            switch clientError {
-            case .noAPIKey(let provider):
-                return L10n.Errors.noAPIKey(provider)
-            case .invalidResponse(let code):
-                switch code {
-                case 401: return L10n.Errors.invalidAPIKey
-                case 402: return L10n.Errors.insufficientBalance
-                case 429: return L10n.Errors.rateLimited
-                case 500...599: return L10n.Errors.serverUnavailable
-                default: return L10n.Errors.apiError(code)
-                }
-            case .decodingError:
-                return L10n.Errors.decodingError
-            case .networkError:
-                return L10n.Errors.networkError
-            case .retriesExhausted(let code, let attempts):
-                return L10n.Errors.retriesExhausted(attempts, code)
-            }
-        }
-        return error.localizedDescription
-    }
-
-    // MARK: - Action Intents (Calendar / Reminder)
-
-    enum ActionError: LocalizedError {
-        case jsonParseFailed
-        case permissionDenied(String)
-        case eventCreationFailed(String)
-
-        var errorDescription: String? {
-            switch self {
-            case .jsonParseFailed: return L10n.Errors.actionJsonParseFailed
-            case .permissionDenied(let type): return L10n.Errors.actionPermissionDenied(type)
-            case .eventCreationFailed(let msg): return L10n.Errors.actionCreationFailed(msg)
-            }
-        }
-    }
-
-    @MainActor
-    private func processActionIntent(_ intentResult: LLMIntentResponse) async {
-        let model = settingsStore.selectedModel
-        let provider = settingsStore.selectedProvider
-        let content = intentResult.content ?? session.rawTranscript
-
-        let actionPrompt = SystemPrompts.forIntent(intentResult, languagePreference: settingsStore.languagePreference)
-        let payload = LLMPayload(
-            transcript: content,
-            context: nil, mode: nil, tone: nil,
-            languagePreference: settingsStore.languagePreference,
-            personalDictionary: nil, snippets: nil, screenContext: nil,
-            whisperMode: nil, existingText: nil
-        )
-
-        log.info("Action intent: \(intentResult.intent), content: \(content.prefix(80))", category: "Action")
-
-        do {
-            let raw = try await llmClient.send(
-                systemPrompt: actionPrompt,
-                payload: payload,
-                model: model,
-                temperature: 0.1,
-                provider: provider
-            )
-
-            let cleaned = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-                .replacingOccurrences(of: "```json", with: "")
-                .replacingOccurrences(of: "```", with: "")
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-
-            guard let jsonData = cleaned.data(using: .utf8) else {
-                throw ActionError.jsonParseFailed
-            }
-
-            switch intentResult.intent {
-            case "create_event":
-                let eventResponse = try JSONDecoder().decode(LLMEventResponse.self, from: jsonData)
-                session.processedText = eventResponse.confirmationText
-                session.pendingAction = .createEvent(eventResponse)
-                session.state = .previewing
-                startPreviewAutoCancel()
-                log.info("Event preview: \(eventResponse.title) @ \(eventResponse.date)", category: "Action")
-
-            case "create_reminder":
-                let reminderResponse = try JSONDecoder().decode(LLMReminderResponse.self, from: jsonData)
-                session.processedText = reminderResponse.confirmationText
-                session.pendingAction = .createReminder(reminderResponse)
-                session.state = .previewing
-                startPreviewAutoCancel()
-                log.info("Reminder preview: \(reminderResponse.title)", category: "Action")
-
-            default:
-                break
-            }
-        } catch {
-            let msg = L10n.Errors.actionExecutionFailed(error.localizedDescription)
-            log.error(msg, category: "Action")
-            session.state = .error(msg)
-            autoResetState(after: 3.0)
-        }
-    }
-
     @MainActor
     private func executeAction(_ action: PendingAction) async {
-        let eventKit = EventKitManager.shared
-
         do {
-            switch action {
-            case .createEvent(let response):
-                if !eventKit.calendarAuthorized {
-                    let granted = await eventKit.requestCalendarAccess()
-                    guard granted else { throw ActionError.permissionDenied(L10n.General.calendar) }
-                }
-
-                let formatter = ISO8601DateFormatter()
-                formatter.formatOptions = [.withInternetDateTime]
-                guard let startDate = formatter.date(from: response.date) else {
-                    throw ActionError.eventCreationFailed(L10n.Errors.invalidDateFormat)
-                }
-                let duration = TimeInterval((response.durationMinutes ?? 60) * 60)
-                let endDate = startDate.addingTimeInterval(duration)
-
-                let params = EventKitManager.EventParams(
-                    title: response.title,
-                    startDate: startDate,
-                    endDate: endDate,
-                    location: response.location,
-                    notes: response.notes
-                )
-                let _ = try await eventKit.createEvent(params)
-                log.info("行事曆事件已建立: \(response.title)", category: "Action")
-
-            case .createReminder(let response):
-                if !eventKit.reminderAuthorized {
-                    let granted = await eventKit.requestReminderAccess()
-                    guard granted else { throw ActionError.permissionDenied(L10n.General.reminders) }
-                }
-
-                var dueDate: Date? = nil
-                if let dueDateStr = response.dueDate {
-                    let formatter = ISO8601DateFormatter()
-                    formatter.formatOptions = [.withInternetDateTime]
-                    dueDate = formatter.date(from: dueDateStr)
-                }
-
-                let params = EventKitManager.ReminderParams(
-                    title: response.title,
-                    dueDate: dueDate,
-                    notes: response.notes
-                )
-                let _ = try await eventKit.createReminder(params)
-                log.info("提醒事項已建立: \(response.title)", category: "Action")
-            }
-
+            try await refiner.execute(action)
             // 建立成功 → 注入確認文字
             session.pendingAction = nil
             performInject()
-
         } catch {
             session.pendingAction = nil
             let msg = error.localizedDescription
@@ -983,7 +754,11 @@ class VoicePipeline {
         session.state = .done
         let mode = settingsStore.injectionMode
         TextInjector.inject(session.processedText, mode: mode)
+        let typingTime = TextInjector.estimatedDuration(session.processedText, mode: mode)
         log.info("文字已注入 (mode=\(mode.rawValue))", category: "Inject")
+        if settingsStore.enableAutoLearnDictionary {
+            DictionaryAutoLearner.shared.watch(injected: session.processedText, records: records, after: typingTime)
+        }
 
         saveToHistory()
 
@@ -992,7 +767,16 @@ class VoicePipeline {
         }
 
         if settingsStore.enableSmartSend {
-            startSmartSendCountdown()
+            if typingTime > 0.5 {
+                // 逐字輸入還在打：等打完再開始倒數，否則 Enter 會插在文字中間
+                Task { @MainActor [weak self] in
+                    try? await Task.sleep(for: .seconds(typingTime))
+                    guard let self, case .done = self.session.state else { return }
+                    self.startSmartSendCountdown()
+                }
+            } else {
+                startSmartSendCountdown()
+            }
         } else {
             autoResetState(after: 2.0)
         }
@@ -1114,16 +898,6 @@ class VoicePipeline {
     // MARK: - Data Loading
 
     private let records = RecordsRepository()
-
-    @MainActor
-    private func loadPersonalDictionary() -> [String: String]? {
-        records.loadPersonalDictionary()
-    }
-
-    @MainActor
-    private func loadSnippets() -> [String: String]? {
-        records.loadSnippets()
-    }
 
     // MARK: - Language Mapping
 

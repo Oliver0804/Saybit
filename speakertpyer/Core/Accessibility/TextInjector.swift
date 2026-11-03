@@ -9,6 +9,14 @@ import AppKit
 import CoreGraphics
 
 enum TextInjector {
+    /// 輸入完成大約需要的時間（逐字模式每字 20ms），讓智慧送出等打完再按 Enter
+    static func estimatedDuration(_ text: String, mode: InjectionMode) -> TimeInterval {
+        switch mode {
+        case .keypress: return Double(text.count) * 0.02 + 0.15
+        case .paste, .replaceSelection: return 0.15
+        }
+    }
+
     /// 統一入口：根據模式注入文字
     static func inject(_ text: String, mode: InjectionMode = .paste) {
         switch mode {

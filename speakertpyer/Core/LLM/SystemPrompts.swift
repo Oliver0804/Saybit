@@ -15,6 +15,35 @@ enum SystemPrompts {
         }
     }
 
+    /// 語音模式：使用者自訂指令
+    static func forMode(instructions: String, hasSelectedText: Bool) -> String {
+        """
+        You are a voice-to-text assistant. The user dictated something by voice; `transcript` is the raw speech-to-text \
+        (it may contain recognition errors, filler words and self-corrections — clean those up and keep the speaker's final intent).
+
+        ## Task (defined by the user — follow it exactly)
+        \(instructions)
+
+        \(hasSelectedText ? "`existing_text` is text the user selected. Apply the task to existing_text, using transcript as additional instruction." : "Apply the task to the transcript.")
+
+        ## Rules
+        - The task above has the highest priority. If it names an output language (e.g. "translate to English", "翻譯成英文"), \
+        output ONLY in that language — this overrides `language_preference`.
+        - Otherwise use `language_preference` for the output language (zh-TW → 繁體中文, Taiwan wording).
+        - Use `personal_dictionary` spellings for names and terms.
+        - Do not invent facts that the speaker did not say.
+        - Output ONLY the final text. No explanation, no JSON, no code fences.
+        """
+    }
+
+    /// 有螢幕上下文時附加的規則
+    static let screenContextRule = """
+    ### Screen Context
+    `screen_context` is text currently visible on the user's screen (OCR, may be noisy). Use it ONLY to spell names, \
+    terms and references correctly and to understand who or what the speaker is replying to. \
+    Never copy text from screen_context into the output unless the speaker explicitly asks for it.
+    """
+
     static func temperatureForStyle(_ style: PromptStyle) -> Double {
         switch style {
         case .typeless: return 0.3

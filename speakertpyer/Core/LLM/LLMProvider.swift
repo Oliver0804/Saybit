@@ -130,7 +130,20 @@ struct LLMProvider: Codable, Identifiable, Hashable {
         requiresAPIKey: false
     )
 
-    static let builtInProviders: [LLMProvider] = [.openRouter, .openAI, .deepSeek, .groq, .togetherAI, .ollama, .lmStudio]
+    /// Apple Intelligence 本機模型（FoundationModels）：離線、免費、免 Key。
+    /// baseURL 只是佔位（OpenRouterClient 依 id 分流，不會真的連線）
+    static let appleOnDevice = LLMProvider(
+        id: AppleOnDeviceLLM.providerID,
+        name: "Apple 本機 (離線)",
+        baseURL: "https://apple-on-device.invalid",
+        extraHeaders: [:],
+        keyPlaceholder: "",
+        modelHint: "",
+        isBuiltIn: true,
+        requiresAPIKey: false
+    )
+
+    static let builtInProviders: [LLMProvider] = [.openRouter, .openAI, .deepSeek, .groq, .togetherAI, .ollama, .lmStudio, .appleOnDevice]
 
     // MARK: - Default Model
 
@@ -144,6 +157,7 @@ struct LLMProvider: Codable, Identifiable, Hashable {
         case "deepseek":   "deepseek-chat"
         case "groq":       "llama-3.3-70b-versatile"
         case "together":   "meta-llama/Llama-3.3-70B-Instruct-Turbo"
+        case AppleOnDeviceLLM.providerID: AppleOnDeviceLLM.modelName
         default: nil
         }
     }
