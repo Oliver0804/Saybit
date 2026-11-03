@@ -39,10 +39,14 @@ class OverlayWindowController: NSObject {
     private var rightClickMonitor: Any?
     private var leftDownMonitor: Any?
     private var leftUpMonitor: Any?
+    private var dragMonitor: Any?
+    /// 拖曳：按下時的滑鼠螢幕座標與 panel 原點；超過門檻才算拖曳（避免把點擊當拖曳）
+    private var dragStartMouse: NSPoint = .zero
+    private var dragStartOrigin: NSPoint = .zero
+    private var isDragging = false
     private var settingsWindow: NSWindow?
 
     // Click vs drag discrimination
-    private var mouseDownLocation: NSPoint = .zero
     private var mouseDownTime: Date = .distantPast
 
     private let panelWidth: CGFloat = 900
@@ -59,6 +63,9 @@ class OverlayWindowController: NSObject {
             NSEvent.removeMonitor(monitor)
         }
         if let monitor = leftUpMonitor {
+            NSEvent.removeMonitor(monitor)
+        }
+        if let monitor = dragMonitor {
             NSEvent.removeMonitor(monitor)
         }
     }
@@ -97,7 +104,9 @@ class OverlayWindowController: NSObject {
         panel.backgroundColor = .clear
         panel.hasShadow = false
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
-        panel.isMovableByWindowBackground = true
+        // 拖曳改由下方 event monitor 自行處理：SwiftUI 的 hosting view 不會把拖曳交給
+        // isMovableByWindowBackground，原本只有膠囊外圍的透明邊緣拖得動
+        panel.isMovableByWindowBackground = false
         panel.hidesOnDeactivate = false
 
         let pipelineRef = self.pipeline
@@ -147,21 +156,38 @@ class OverlayWindowController: NSObject {
 
         // Left-click monitor: record mouseDown position + time
         leftDownMonitor = NSEvent.addLocalMonitorForEvents(matching: .leftMouseDown) { [weak self] event in
-            guard let self, event.window == self.panel else { return event }
-            self.mouseDownLocation = event.locationInWindow
+            guard let self, let panel = self.panel, event.window == panel else { return event }
+            self.dragStartMouse = NSEvent.mouseLocation
+            self.dragStartOrigin = panel.frame.origin
+            self.isDragging = false
             self.mouseDownTime = Date()
-            return event // pass through so drag still works
+            return event
+        }
+
+        // 拖曳膠囊（不論按在膠囊本體或邊緣）
+        dragMonitor = NSEvent.addLocalMonitorForEvents(matching: .leftMouseDragged) { [weak self] event in
+            guard let self, let panel = self.panel, event.window == panel else { return event }
+            let now = NSEvent.mouseLocation
+            let dx = now.x - self.dragStartMouse.x
+            let dy = now.y - self.dragStartMouse.y
+            if !self.isDragging && hypot(dx, dy) < 4 { return event }
+            self.isDragging = true
+            panel.setFrameOrigin(NSPoint(x: self.dragStartOrigin.x + dx, y: self.dragStartOrigin.y + dy))
+            return nil
         }
 
         // Left-click monitor: check if it's a tap (not drag)
         leftUpMonitor = NSEvent.addLocalMonitorForEvents(matching: .leftMouseUp) { [weak self] event in
-            guard let self, event.window == self.panel else { return event }
-            let displacement = hypot(
-                event.locationInWindow.x - self.mouseDownLocation.x,
-                event.locationInWindow.y - self.mouseDownLocation.y
-            )
+            guard let self, let panel = self.panel, event.window == panel else { return event }
+            if self.isDragging {
+                self.isDragging = false
+                // 拖到螢幕外就拉回可見範圍
+                let clamped = self.clampToVisibleScreen(panel.frame)
+                if clamped.origin != panel.frame.origin { panel.setFrameOrigin(clamped.origin) }
+                return event
+            }
             let elapsed = Date().timeIntervalSince(self.mouseDownTime)
-            if displacement < 5 && elapsed < 0.3 {
+            if elapsed < 0.3 {
                 self.handleCapsuleTap()
             }
             return event
@@ -194,6 +220,10 @@ class OverlayWindowController: NSObject {
             NSEvent.removeMonitor(monitor)
             leftUpMonitor = nil
         }
+        if let monitor = dragMonitor {
+            NSEvent.removeMonitor(monitor)
+            dragMonitor = nil
+        }
         panel?.orderOut(nil)
         panel = nil
     }
@@ -201,7 +231,7 @@ class OverlayWindowController: NSObject {
     // MARK: - Position Memory
 
     private func initialPosition() -> NSPoint {
-        guard let screen = NSScreen.main else {
+        guard let screen = Self.screenUnderMouse() else {
             return NSPoint(x: 200, y: 200)
         }
         let screenFrame = screen.visibleFrame
@@ -390,12 +420,19 @@ class OverlayWindowController: NSObject {
 
     /// 把膠囊移回螢幕上方中央
     func resetPosition() {
-        guard let screen = NSScreen.main else { return }
+        // 移到「滑鼠所在螢幕」的上方中央：多螢幕時 NSScreen.main 不一定是使用者正在看的那個
+        guard let screen = Self.screenUnderMouse() else { return }
         let screenFrame = screen.visibleFrame
         let x = screenFrame.midX - panelWidth / 2
         let y = screenFrame.maxY - panelHeight - 12
         panel?.setFrame(NSRect(x: x, y: y, width: panelWidth, height: panelHeight), display: true, animate: true)
+        panel?.orderFrontRegardless()
         settingsStore?.hasCustomOverlayPosition = false
+    }
+
+    static func screenUnderMouse() -> NSScreen? {
+        let mouse = NSEvent.mouseLocation
+        return NSScreen.screens.first { NSMouseInRect(mouse, $0.frame, false) } ?? NSScreen.main
     }
 
     @objc private func openSettings(_ sender: NSMenuItem) {
