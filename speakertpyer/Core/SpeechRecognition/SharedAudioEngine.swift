@@ -63,7 +63,11 @@ class SharedAudioEngine {
     // 需要足夠長以涵蓋：AudioLevelMonitor 偵測延遲 + startRecording() 前置作業 + STT 引擎初始化時間
     private let preBufferRing = PreBufferRing()
 
-    private init() {}
+    private init() {
+        #if os(iOS)
+        installSessionObservers()
+        #endif
+    }
 
     deinit {
         consumersLock.deinitialize(count: 1)
@@ -74,6 +78,11 @@ class SharedAudioEngine {
 
     func start(inputDeviceUID: String = "") {
         guard !isRunning else { return }
+
+        #if os(iOS)
+        // iOS 必須先設定並啟用 AVAudioSession，inputNode 才拿得到有效格式
+        guard activateAudioSession() else { return }
+        #endif
 
         let inputNode = audioEngine.inputNode
         inputNode.removeTap(onBus: 0)
@@ -156,6 +165,10 @@ class SharedAudioEngine {
         audioEngine.inputNode.removeTap(onBus: 0)
         isRunning = false
         preBufferRing.clear()
+        #if os(iOS)
+        // 釋放麥克風（移除橘點）並讓被我們打斷的音樂恢復播放
+        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+        #endif
         log.info("SharedAudioEngine 已停止", category: "Audio")
     }
 
@@ -170,6 +183,7 @@ class SharedAudioEngine {
     }
 
     private func configureInputDevice(uid: String) {
+        #if os(macOS)
         guard !uid.isEmpty,
               let deviceID = AudioSessionManager.deviceID(forUID: uid),
               let audioUnit = audioEngine.inputNode.audioUnit else { return }
@@ -186,7 +200,81 @@ class SharedAudioEngine {
         if status != noErr {
             log.error("SharedAudioEngine 設定輸入裝置失敗 (status=\(status))", category: "Audio")
         }
+        #endif
     }
+
+    #if os(iOS)
+    // MARK: - iOS Audio Session
+
+    /// 期望 engine 持續運行（供中斷結束 / 路由變更後自動恢復）
+    private var wantsRunning = false
+
+    /// playAndRecord + mixWithOthers：錄音時不打斷使用者正在聽的音樂；
+    /// allowBluetoothHFP 讓 AirPods 麥克風可用。
+    private func activateAudioSession() -> Bool {
+        let session = AVAudioSession.sharedInstance()
+        do {
+            try session.setCategory(
+                .playAndRecord,
+                mode: .default,
+                options: [.mixWithOthers, .allowBluetoothHFP, .defaultToSpeaker]
+            )
+            try session.setActive(true)
+            wantsRunning = true
+            return true
+        } catch {
+            log.error("AVAudioSession 啟用失敗: \(error.localizedDescription)", category: "Audio")
+            return false
+        }
+    }
+
+    /// 由 iOS pipeline 呼叫：完全釋放麥克風，且中斷結束後不自動重啟
+    func shutdown() {
+        wantsRunning = false
+        stop()
+    }
+
+    private func installSessionObservers() {
+        let nc = NotificationCenter.default
+        // 來電 / Siri 等中斷：結束後若仍需要就重啟
+        nc.addObserver(forName: AVAudioSession.interruptionNotification, object: nil, queue: .main) { [weak self] note in
+            guard let raw = note.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt,
+                  let type = AVAudioSession.InterruptionType(rawValue: raw) else { return }
+            MainActor.assumeIsolated {
+            guard let self else { return }
+            switch type {
+            case .began:
+                self.log.info("Audio session 被中斷", category: "Audio")
+                self.audioEngine.stop()
+                self.isRunning = false
+            case .ended:
+                if self.wantsRunning {
+                    self.log.info("Audio session 中斷結束，重啟 engine", category: "Audio")
+                    self.restart()
+                }
+            @unknown default:
+                break
+            }
+            }
+        }
+        // 耳機插拔 / 藍牙切換會讓 engine 的 I/O 格式改變，tap 失效，必須重建
+        nc.addObserver(forName: .AVAudioEngineConfigurationChange, object: audioEngine, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self, self.wantsRunning else { return }
+                self.log.info("Audio engine 設定變更（路由切換），重啟", category: "Audio")
+                self.restart()
+            }
+        }
+    }
+
+    private func restart() {
+        audioEngine.stop()
+        audioEngine.inputNode.removeTap(onBus: 0)
+        isRunning = false
+        preBufferRing.clear()
+        start(inputDeviceUID: currentInputDeviceUID)
+    }
+    #endif
 
     /// 套用 Voice Processing IO 狀態到 inputNode（AEC + 系統降噪）
     /// 必須在 engine 停止、tap 安裝前呼叫，否則 setVoiceProcessingEnabled 會拋錯
