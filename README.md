@@ -365,4 +365,4 @@ saybit-desktop/
 
 ## 授權
 
-MIT License
+[MIT License](LICENSE)
