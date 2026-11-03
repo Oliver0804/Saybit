@@ -27,6 +27,19 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **File transcription** tab (`UI/Transcribe/FileTranscriptionView`, `SherpaFileTranscriber`): AVAssetReader → 16k PCM → VAD → SenseVoice, separate recognizer instance.
 - Don't run end-to-end dictation tests with Smart Send on while the user is in another app — it will type into and send in whatever app has focus.
 
+## Invariants from the 2026-11-03 code review (see `docs/CODE-REVIEW-2026-11-03.md`)
+
+- **Pipeline generation**: `VoicePipeline.generation` increments on every `startRecording()` / `cancelRecording()`. Every async continuation (STT finish, LLM `await`, `onPartial`, autoReset, Smart Send) must `guard isCurrent(gen)`. `startRecording()` is a no-op in `.recording`/`.processing`; `cancelRecording()` works in `.processing` too. The STT backend actually started is snapshotted in `activeSTT` — stop/cancel never read `settingsStore.sttEngine`.
+- **Inject target check**: `startRecording()` records `targetPID`; `performInject(verifyTarget:)` and the Smart Send Enter compare the frontmost pid and fall back to `.previewing` / cancel. Terminal targets and sessions that used screen context never Smart Send. Pass `session.appContext` to `TextInjector.inject(_:mode:context:)`; call `TextInjector.cancelTyping()` when a session ends.
+- **URL scheme / Intents are gated**: `AppDelegate` resolves the sender via `keySenderPIDAttr`; unknown senders get an NSAlert, remembered in `settingsStore.urlSchemeAllowedSenders`; `enableURLSchemeControl` turns it off; onboarding-in-progress blocks recording. `settings` is exempt.
+- **Logging**: anything containing transcript / selected text / LLM output / dictionary terms goes through `AppLogger.sensitive(_:category:)` (memory only; disk + export show `[內容已遮罩, N 字]`) or is truncated to length + 20 chars. Never log API keys.
+- **LLM request hygiene**: `LLMProvider.validateBaseURL` rejects non-https remote endpoints before the key is read; `existing_text` / `screen_context` are wrapped in tags and the system prompt carries `SystemPrompts.dataIsolationRule`; stream Tasks set `continuation.onTermination` and cancellation surfaces as `CancellationError` (pipelines must check `Task.isCancelled` before writing `.error`).
+- **Core Data**: `Persistence` never deletes a store on load failure — corrupt stores are moved to `Saybit/corrupt-<ts>/` and `PersistenceController.pendingUserNotice` is shown by `AppDelegate`; non-corruption errors fall back to an in-memory store. Use `saveOrRollback`.
+- **Audio threads**: render-thread consumers (`SpeechRecognizer`, `BackgroundSTTEngine`, `WhisperSTTClient`, `SherpaSTTEngine`) read shared state under `UnfairLock` / their own ring buffer; `SilenceDetector` is lock-protected; `SharedAudioEngine.addConsumer` replays the pre-buffer *before* registering. Keep `PreBufferRing`'s "no heap allocation on the render thread" rule.
+- **Auto-learn** is off by default; `DictionaryAutoLearner` refuses numeric/date edits and far Latin edits, and shows an undo notice via `OverlayWindowController.showTransientNotice`.
+- **Hotkey recording** always goes through `GlobalHotKeyManager.startRecording(timeout:completion:)` (10 s auto-cancel, `onRecordingCancelled`); UI must cancel on disappear.
+- **iOS keyboard handshake**: `saybit://dictate?source=keyboard` only opens standby when `KeyboardBridge.takeRecentStartCommand` finds a start command ≤ 5 s old; results/partials/selected text are cleared from the App Group after consumption.
+
 ## Build & Run
 
 ```bash
