@@ -385,6 +385,11 @@ class OverlayWindowController: NSObject {
     }
 
     @objc private func resetPosition(_ sender: NSMenuItem) {
+        resetPosition()
+    }
+
+    /// 把膠囊移回螢幕上方中央
+    func resetPosition() {
         guard let screen = NSScreen.main else { return }
         let screenFrame = screen.visibleFrame
         let x = screenFrame.midX - panelWidth / 2
@@ -394,6 +399,12 @@ class OverlayWindowController: NSObject {
     }
 
     @objc private func openSettings(_ sender: NSMenuItem) {
+        openSettings()
+    }
+
+    /// 開啟（或帶到前景）設定視窗；可指定分頁
+    func openSettings(tab: SettingsTab? = nil) {
+        if let tab { SettingsNavigation.shared.tab = tab }
         if let existing = settingsWindow, existing.isVisible {
             existing.makeKeyAndOrderFront(nil)
             NSApp.activate(ignoringOtherApps: true)

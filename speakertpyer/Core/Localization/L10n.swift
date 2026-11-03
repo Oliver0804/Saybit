@@ -67,6 +67,9 @@ enum L10n {
     // MARK: - Tabs
 
     enum Tabs {
+        static var groupSettings: String { d("設定", "设置", "Settings", "設定") }
+        static var groupTools: String { d("工具", "工具", "Tools", "ツール") }
+        static var groupData: String { d("紀錄", "记录", "Data", "記録") }
         static var general: String { d("一般", "通用", "General", "一般") }
         static var ai: String { d("AI 引擎", "AI 引擎", "AI Engine", "AIエンジン") }
         static var hotkey: String { d("快捷鍵", "快捷键", "Hotkey", "ショートカット") }
@@ -100,13 +103,35 @@ enum L10n {
         static var autoLanguageDetection: String { d("自動語言偵測", "自动语言检测", "Auto Language Detection", "自動言語検出") }
         static var autoLanguageDetectionDesc: String { d("讓 Whisper API 自動偵測說話語言，無需手動指定", "让 Whisper API 自动检测说话语言，无需手动指定", "Let Whisper API auto-detect the spoken language", "Whisper API に話す言語を自動検出させます") }
 
+        // Sections
+        static var sectionRecording: String { d("錄音", "录音", "Recording", "録音") }
+        static var sectionRecognition: String { d("語音辨識", "语音识别", "Speech Recognition", "音声認識") }
+        static var sectionAI: String { d("AI 理解", "AI 理解", "AI Understanding", "AI の理解") }
+        static var sectionOutput: String { d("輸出", "输出", "Output", "出力") }
+        static var sectionInterface: String { d("介面", "界面", "Interface", "インターフェース") }
+        static var sectionSystem: String { d("系統", "系统", "System", "システム") }
+        static var screenContext: String { d("讀取螢幕內容", "读取屏幕内容", "Use Screen Content", "画面の内容を使用") }
+        static var screenContextDesc: String { d("錄音時辨識前景視窗上的文字（聊天對象、文件內容）給 AI 參考，人名與專有名詞會拼得更準。只在本機辨識，不儲存、不上傳。", "录音时识别前台窗口上的文字（聊天对象、文件内容）给 AI 参考，人名与专有名词会拼得更准。只在本机识别，不存储、不上传。", "Reads text in the front window (chat partner, document) for the AI so names are spelled right. Processed on-device, never stored or uploaded.", "前面のウィンドウの文字を AI の参考にします。端末内で処理し、保存・送信しません。") }
+        static var grantScreenRecording: String { d("授權螢幕錄製", "授权屏幕录制", "Grant Screen Recording", "画面収録を許可") }
+        static var screenRecording: String { d("螢幕錄製", "屏幕录制", "Screen Recording", "画面収録") }
+        static var ducking: String { d("錄音時降低系統音量", "录音时降低系统音量", "Lower System Volume While Recording", "録音中にシステム音量を下げる") }
+        static var duckingDesc: String { d("把音樂、影片等聲音降到 20%，錄完自動恢復", "把音乐、视频等声音降到 20%，录完自动恢复", "Lowers music and video to 20%, restored when recording ends", "音楽や動画の音量を 20% に下げ、録音後に戻します") }
+        static var voiceBandpass: String { d("人聲降噪", "人声降噪", "Voice Noise Filter", "音声ノイズフィルター") }
+        static var voiceBandpassDesc: String { d("只保留 80Hz–8kHz 的人聲頻段，濾掉風扇、電源嗡嗡聲與高頻雜音", "只保留 80Hz–8kHz 的人声频段，滤掉风扇、电源嗡嗡声与高频杂音", "Keeps the 80 Hz–8 kHz voice band, filtering fan hum and hiss", "80Hz–8kHz の音声帯域のみを残し、ファンやハム音を除去") }
+        static var echoCancellation: String { d("回音消除", "回声消除", "Echo Cancellation", "エコーキャンセル") }
+        static var echoCancellationDesc: String { d("邊播放聲音邊講話時，消除喇叭漏進麥克風的音樂、影片與通話聲。戴耳機可關閉，切換時收音會短暫重啟。", "边播放声音边讲话时，消除扬声器漏进麦克风的音乐、视频与通话声。戴耳机可关闭，切换时收音会短暂重启。", "Removes speaker audio leaking into the mic. Not needed with headphones; toggling briefly restarts capture.", "スピーカーからマイクへ漏れる音を除去します。ヘッドホン使用時は不要です。") }
+        static var continuousSTTDesc: String { d("辨識在背景持續運行，按下快捷鍵時不會漏掉開頭的字。會多用一點 CPU。", "识别在背景持续运行，按下快捷键时不会漏掉开头的字。会多用一点 CPU。", "Keeps recognition running so the first words are never cut off. Uses a bit more CPU.", "認識をバックグラウンドで継続し、話し始めの欠落を防ぎます。") }
+        static var requiredBadge: String { d("必要", "必要", "Required", "必須") }
+        static var screenRecordingMissing: String { d("尚未取得「螢幕錄製」權限，這個功能目前不會作用。", "尚未取得「屏幕录制」权限，这个功能目前不会生效。", "Screen Recording permission is missing, so this has no effect yet.", "画面収録の権限がないため、まだ機能しません。") }
+        static var tutorialDesc: String { d("重新看一次快捷鍵與基本操作說明", "重新看一次快捷键与基本操作说明", "Walk through the hotkey and basics again", "ホットキーと基本操作をもう一度確認") }
+
         // Features
         static var features: String { d("功能", "功能", "Features", "機能") }
-        static var contextAwareness: String { "Context Awareness" }
-        static var contextAwarenessDesc: String { d("讀取目前選取的文字作為上下文", "读取当前选中的文字作为上下文", "Reads selected text as context", "選択中のテキストをコンテキストとして読み取る") }
+        static var contextAwareness: String { d("讀取選取的文字", "读取选中的文字", "Use Selected Text", "選択テキストを使用") }
+        static var contextAwarenessDesc: String { d("錄音時若有選取文字，AI 會把它當上下文，可以口頭指示「改寫這段」「翻成英文」", "录音时若有选中文字，AI 会把它当上下文，可以口头指示「改写这段」「翻成英文」", "Selected text is sent as context, so you can say \"rewrite this\" or \"translate to English\"", "選択中のテキストをコンテキストとして使い、「書き直して」などの音声指示が可能") }
         static var soundFeedback: String { d("音效回饋", "音效反馈", "Sound Feedback", "サウンドフィードバック") }
-        static var whisperMode: String { "Whisper Mode" }
-        static var whisperModeDesc: String { d("提示 LLM 過濾背景噪音與雜訊", "提示 LLM 过滤背景噪音与杂讯", "Hints LLM to filter background noise", "LLM にバックグラウンドノイズのフィルタリングを指示") }
+        static var whisperMode: String { d("嘈雜環境模式", "嘈杂环境模式", "Noisy Environment Mode", "騒がしい環境モード") }
+        static var whisperModeDesc: String { d("提醒 AI 忽略辨識到的背景人聲與雜訊，只保留你說的內容", "提醒 AI 忽略识别到的背景人声与杂讯，只保留你说的内容", "Tells the AI to drop background chatter and noise picked up by recognition", "認識された背景の声やノイズを AI に無視させます") }
         static var continuousBackgroundSTT: String { d("持續背景辨識", "持续背景识别", "Continuous Background Recognition", "継続的バックグラウンド認識") }
 
         // STT Engine
@@ -114,7 +139,7 @@ enum L10n {
         static var sttEnginePicker: String { d("辨識引擎", "识别引擎", "Engine", "エンジン") }
         static var whisperAPIKey: String { "Whisper API Key" }
         static var whisperDesc: String { d("使用 OpenAI Whisper API 進行語音辨識，辨識準確度更高，但需網路連線且會產生 API 費用", "使用 OpenAI Whisper API 进行语音识别，识别准确度更高，但需网络连接且会产生 API 费用", "Uses OpenAI Whisper API for speech recognition. Higher accuracy but requires internet and incurs API costs.", "OpenAI Whisper API を使用した音声認識。精度は高いですが、ネット接続と API 費用が必要です。") }
-        static var onDeviceSTT: String { "On-Device STT" }
+        static var onDeviceSTT: String { d("僅在本機辨識", "仅在本机识别", "On-Device Only", "デバイス上のみで認識") }
         static var onDeviceSTTDesc: String { d("使用本地語音辨識，不需網路", "使用本地语音识别，不需网络", "Uses on-device speech recognition, no internet needed", "ローカル音声認識を使用、ネット不要") }
 
         // Capsule
@@ -137,7 +162,7 @@ enum L10n {
 
         // Auto Stop
         static var silenceAutoStop: String { d("靜音自動停止", "静音自动停止", "Silence Auto-Stop", "無音時自動停止") }
-        static var enableAutoStop: String { d("啟用自動停止", "启用自动停止", "Enable Auto-Stop", "自動停止を有効化") }
+        static var enableAutoStop: String { d("說完自動停止", "说完自动停止", "Stop When I Stop Talking", "話し終えたら自動停止") }
         static var silenceTimeout: String { d("靜音等待時間", "静音等待时间", "Silence Timeout", "無音待機時間") }
         static var silenceAutoStopDesc: String { d("說完話後等待此時間未偵測到聲音即自動結束錄音", "说完话后等待此时间未检测到声音即自动结束录音", "Automatically stops recording after this duration of silence", "この時間無音が続くと自動的に録音を停止します") }
 
@@ -149,12 +174,12 @@ enum L10n {
         // Preview & Send
         static var previewAndSend: String { d("預覽與送出", "预览与发送", "Preview & Send", "プレビューと送信") }
         static var previewBeforeInject: String { d("注入前預覽", "注入前预览", "Preview Before Inject", "注入前プレビュー") }
-        static var enablePreview: String { d("啟用注入前預覽", "启用注入前预览", "Enable Preview Before Inject", "注入前プレビューを有効化") }
+        static var enablePreview: String { d("輸入前先預覽", "输入前先预览", "Preview Before Inject", "注入前にプレビュー") }
         static var previewDesc: String { d("LLM 處理完成後先顯示預覽，手動確認後再注入文字", "LLM 处理完成后先显示预览，手动确认后再注入文字", "Shows a preview after LLM processing. Manually confirm before injecting text.", "LLM 処理完了後にプレビューを表示し、手動確認後にテキストを注入します。") }
 
         // Smart Send
-        static var smartSend: String { "Smart Send" }
-        static var enableSmartSend: String { d("啟用 Smart Send", "启用 Smart Send", "Enable Smart Send", "Smart Send を有効化") }
+        static var smartSend: String { d("智慧送出", "智能发送", "Smart Send", "スマート送信") }
+        static var enableSmartSend: String { d("智慧送出", "智能发送", "Smart Send", "スマート送信") }
         static var smartSendDesc: String { d("文字貼上後自動倒數，到期自動按下 Enter 送出", "文字粘贴后自动倒数，到期自动按下 Enter 发送", "Auto-countdown after paste, then auto-presses Enter to send", "貼り付け後自動カウントダウンし、Enter を自動送信") }
         static var countdownSeconds: String { d("倒數秒數", "倒计时秒数", "Countdown", "カウントダウン") }
         static var previewTimeout: String { d("預覽超時", "预览超时", "Preview Timeout", "プレビュータイムアウト") }
@@ -181,10 +206,10 @@ enum L10n {
 
         // Permissions
         static var permissionStatus: String { d("權限狀態", "权限状态", "Permission Status", "権限状態") }
-        static var accessibility: String { "Accessibility" }
+        static var accessibility: String { d("輔助使用", "辅助功能", "Accessibility", "アクセシビリティ") }
         static var microphone: String { d("麥克風", "麦克风", "Microphone", "マイク") }
         static var automation: String { d("自動化", "自动化", "Automation", "オートメーション") }
-        static var reminders: String { d("備忘錄", "提醒事项", "Reminders", "リマインダー") }
+        static var reminders: String { d("提醒事項", "提醒事项", "Reminders", "リマインダー") }
         static var calendar: String { d("行事曆", "日历", "Calendar", "カレンダー") }
 
         // Launch at Login
@@ -296,8 +321,8 @@ enum L10n {
         static var addEntry: String { d("新增詞條", "新增词条", "Add Entry", "エントリーを追加") }
         static var originalTerm: String { d("原始詞", "原始词", "Original Term", "元の語") }
         static var preferredForm: String { d("偏好寫法", "偏好写法", "Preferred Form", "優先表記") }
-        static var dictDesc: String { d("語音辨識容易出錯的詞彙，LLM 會自動替換", "语音识别容易出错的词汇，LLM 会自动替换", "Words often misrecognized by speech recognition. LLM will auto-replace them.", "音声認識で誤認識されやすい語彙。LLM が自動的に置換します。") }
-        static var dictList: String { d("字典列表", "字典列表", "Dictionary List", "辞書リスト") }
+        static var dictDesc: String { d("辨識常出錯的詞：辨識完會直接換成偏好寫法，Apple 辨識也會優先認出這些詞。按 Enter 新增。", "识别常出错的词：识别完会直接换成偏好写法，Apple 识别也会优先认出这些词。按 Enter 新增。", "Words that get misrecognized are replaced right after recognition, and Apple Speech is biased toward them. Press Enter to add.", "誤認識されやすい語を認識直後に置換し、Apple 音声認識でも優先されます。Enter で追加。") }
+        static var dictList: String { d("個人字典", "个人字典", "Personal Dictionary", "個人辞書") }
         static var emptyDict: String { d("尚無字典項目", "尚无字典项目", "No dictionary entries yet", "辞書エントリーがありません") }
 
         // Voice Skills
@@ -376,8 +401,8 @@ enum L10n {
     // MARK: - MenuBar
 
     enum Menu {
-        static func promptLabel(_ name: String) -> String { "Prompt: \(name)" }
-        static func toneLabel(_ name: String) -> String { d("語調: \(name)", "语调: \(name)", "Tone: \(name)", "トーン: \(name)") }
+        static func promptLabel(_ name: String) -> String { d("處理風格：\(name)", "处理风格：\(name)", "Style: \(name)", "スタイル：\(name)") }
+        static func toneLabel(_ name: String) -> String { d("語調：\(name)", "语调：\(name)", "Tone: \(name)", "トーン：\(name)") }
         static func reregisterHotkey(_ label: String) -> String {
             d("重新註冊快捷鍵 (\(label))", "重新注册快捷键 (\(label))", "Re-register Hotkey (\(label))", "ショートカットを再登録 (\(label))")
         }
@@ -500,7 +525,7 @@ enum L10n {
 
         // Page 4: Smart Send & Skills
         static var advancedTitle: String { d("進階功能", "进阶功能", "Advanced Features", "高度な機能") }
-        static var smartSendFeature: String { "Smart Send" }
+        static var smartSendFeature: String { d("智慧送出", "智能发送", "Smart Send", "スマート送信") }
         static var smartSendDesc: String { d("文字注入後自動倒數，時間到自動按下 Enter 送出。說話可取消倒數。", "文字注入后自动倒数，时间到自动按下 Enter 发送。说话可取消倒数。", "Auto-countdown after text injection, then auto-presses Enter. Speaking cancels the countdown.", "テキスト注入後に自動カウントダウンし、Enter を自動送信。話すとカウントダウンがキャンセルされます。") }
         static var voiceSkills: String { d("語音技能", "语音技能", "Voice Skills", "ボイススキル") }
         static var voiceSkillsDesc: String { d("設定觸發詞來載入自訂 Prompt，例如說「寫信」自動切換到書信格式。", "设定触发词来载入自定义 Prompt，例如说「写信」自动切换到书信格式。", "Set trigger words to load custom prompts. Say \"write email\" to auto-switch to letter format.", "トリガーワードでカスタムプロンプトを読み込みます。「メール作成」と言うとレター形式に自動切り替え。") }
@@ -622,6 +647,7 @@ enum L10n {
         switch engine {
         case .appleSpeech: return d("Apple Speech (本地)", "Apple Speech (本地)", "Apple Speech (Local)", "Apple Speech (ローカル)")
         case .whisperAPI: return d("Whisper API (雲端)", "Whisper API (云端)", "Whisper API (Cloud)", "Whisper API (クラウド)")
+        case .sherpaSenseVoice: return d("SenseVoice (離線・快速)", "SenseVoice (离线・快速)", "SenseVoice (Offline, Fast)", "SenseVoice (オフライン・高速)")
         }
     }
 

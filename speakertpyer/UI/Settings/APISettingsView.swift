@@ -51,7 +51,7 @@ struct APISettingsView: View {
                                     }
                                 }
                                 .labelsHidden()
-                                .frame(maxWidth: 200)
+                                .fixedSize()
                                 .onChange(of: settingsStore.selectedProviderID) { _, newID in
                                     loadKeyForCurrentProvider()
                                     updateModelForProvider(newID)
@@ -151,14 +151,14 @@ struct APISettingsView: View {
                                             .fill(hasKey ? Color.green : Color.red)
                                             .frame(width: 8, height: 8)
                                         Text(L10n.API.apiKeySet(hasKey))
-                                            .font(.title3)
+                                            .font(.callout)
                                             .foregroundStyle(.secondary)
                                     }
                                 }
 
                                 if !saveStatus.isEmpty {
                                     Text(saveStatus)
-                                        .font(.title3)
+                                        .font(.callout)
                                         .foregroundStyle(.secondary)
                                         .transition(.opacity)
                                 }
@@ -227,7 +227,7 @@ struct APISettingsView: View {
 
                                     if !saveStatus.isEmpty {
                                         Text(saveStatus)
-                                            .font(.title3)
+                                            .font(.callout)
                                             .foregroundStyle(.secondary)
                                             .transition(.opacity)
                                     }
@@ -340,7 +340,21 @@ struct APISettingsView: View {
                                     Text(testResult)
                                         .foregroundStyle(testResult.starts(with: "✓") ? .green : .red)
                                 }
-                                .font(.title3)
+                                .font(.callout)
+                                .transition(.opacity)
+                            } else if currentProvider.id == AppleOnDeviceLLM.providerID {
+                                VStack(alignment: .leading, spacing: 6) {
+                                    if let reason = AppleOnDeviceLLM.unavailableReason {
+                                        Label(reason, systemImage: "exclamationmark.triangle.fill")
+                                            .foregroundStyle(.orange)
+                                    } else {
+                                        Label("Apple Intelligence 本機模型可用", systemImage: "checkmark.circle.fill")
+                                            .foregroundStyle(.green)
+                                    }
+                                    Text("完全在這台 Mac 上處理，不連網、不需 API Key、不收費。搭配 SenseVoice 離線辨識時整條流程都是離線的。本機模型較小，複雜指令（翻譯長文、寫信）品質不如雲端模型。")
+                                        .foregroundStyle(.secondary)
+                                }
+                                .font(.callout)
                                 .transition(.opacity)
                             }
 
@@ -416,12 +430,8 @@ struct APISettingsView: View {
                         VStack(alignment: .leading, spacing: 10) {
                             GlassSectionHeader(title: L10n.API.advancedParams, icon: "slider.horizontal.3")
 
-                            Toggle(L10n.API.useCustomParams, isOn: $settingsStore.useCustomLLMParams)
-                                .toggleStyle(.switch)
-
-                            Text(L10n.API.advancedParamsDesc)
-                                .font(.body)
-                                .foregroundStyle(.secondary)
+                            SettingToggle(title: L10n.API.useCustomParams, description: L10n.API.advancedParamsDesc,
+                                          isOn: $settingsStore.useCustomLLMParams)
 
                             if settingsStore.useCustomLLMParams {
                                 Divider()
@@ -485,7 +495,7 @@ struct APISettingsView: View {
                             .pickerStyle(.radioGroup)
 
                             promptDescription
-                                .font(.title3)
+                                .font(.callout)
                                 .foregroundStyle(.secondary)
                                 .padding(.top, 2)
                         }
@@ -506,7 +516,7 @@ struct APISettingsView: View {
                             .pickerStyle(.radioGroup)
 
                             Text(L10n.Prompt.toneAutoDesc)
-                                .font(.title3)
+                                .font(.callout)
                                 .foregroundStyle(.secondary)
                                 .padding(.top, 2)
                         }

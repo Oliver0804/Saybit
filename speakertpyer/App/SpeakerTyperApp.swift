@@ -15,7 +15,7 @@ struct SpeakerTyperApp: App {
 
     var body: some Scene {
         MenuBarExtra("Saybit", systemImage: "mic.fill") {
-            MenuBarView()
+            MenuBarView(appDelegate: appDelegate)
                 .environment(\.managedObjectContext, persistenceController.container.viewContext)
                 .environmentObject(appDelegate.settingsStore)
         }

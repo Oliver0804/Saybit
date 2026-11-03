@@ -72,7 +72,7 @@ struct HotKeySettingsView: View {
                             Text(isRecording
                                 ? L10n.HotKey.recordingHint
                                 : L10n.HotKey.requirement)
-                                .font(.title3)
+                                .font(.callout)
                                 .foregroundStyle(isRecording ? .orange : .secondary)
 
                             if !isRecording, let conflict = currentConflict {
@@ -80,7 +80,7 @@ struct HotKeySettingsView: View {
                                     Image(systemName: "exclamationmark.triangle.fill")
                                         .foregroundStyle(.orange)
                                     Text(L10n.HotKey.conflictWarning(conflict.name))
-                                        .font(.title3)
+                                        .font(.callout)
                                         .foregroundStyle(.orange)
                                 }
                                 .padding(.top, 2)
@@ -108,11 +108,16 @@ struct HotKeySettingsView: View {
                             }
 
                             Text(settingsStore.hotkeyTriggerMode.description)
-                                .font(.title3)
+                                .font(.callout)
                                 .foregroundStyle(.secondary)
                                 .padding(.top, 2)
                         }
                     }
+                }
+
+                // MARK: - 語音模式
+                if settingsMatchesSearch(["語音模式", "模式", "mode", "email", "翻譯", "快捷鍵", "url", "raycast", "捷徑"], searchText: searchState.searchText) {
+                    VoiceModesSection()
                 }
 
                 // MARK: - 使用說明
@@ -233,7 +238,7 @@ private struct StepRow: View {
                 .background(Circle().fill(Color.accentColor.opacity(0.7)))
 
             Text(text)
-                .font(.title3)
+                .font(.callout)
         }
     }
 }

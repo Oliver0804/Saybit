@@ -24,15 +24,50 @@ struct HistoryView: View {
     @State private var showDeleteConfirmation = false
     @State private var showDeleteAllConfirmation = false
     @State private var showDeleteOlderConfirmation = false
+    @State private var deleteOlderDays = 7
+    @State private var searchText = ""
     @State private var displayedCount = 50
 
     private let pageSize = 50
+
+    /// 依搜尋字串過濾（原文、結果、App 名稱）
+    private var filteredRecords: [TranscriptionRecord] {
+        let q = searchText.trimmingCharacters(in: .whitespaces).lowercased()
+        guard !q.isEmpty else { return Array(records) }
+        return records.filter {
+            ($0.processedText ?? "").lowercased().contains(q)
+                || ($0.rawTranscript ?? "").lowercased().contains(q)
+                || ($0.appContext ?? "").lowercased().contains(q)
+        }
+    }
 
     var body: some View {
         HSplitView {
             // MARK: - List
             VStack(spacing: 0) {
-                List(Array(records.prefix(displayedCount)), id: \.objectID, selection: $selectedRecord) { record in
+                HStack(spacing: 6) {
+                    Image(systemName: "magnifyingglass")
+                        .foregroundStyle(.tertiary)
+                    TextField("搜尋紀錄…", text: $searchText)
+                        .textFieldStyle(.plain)
+                    if !searchText.isEmpty {
+                        Button { searchText = "" } label: {
+                            Image(systemName: "xmark.circle.fill").foregroundStyle(.tertiary)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(7)
+                .background(RoundedRectangle(cornerRadius: 7).fill(Color.primary.opacity(0.06)))
+                .padding(8)
+
+                if records.isEmpty {
+                    ContentUnavailableView("還沒有紀錄", systemImage: "waveform",
+                                           description: Text("按下快捷鍵說話，結果會出現在這裡。"))
+                } else if filteredRecords.isEmpty {
+                    ContentUnavailableView.search(text: searchText)
+                } else {
+                List(Array(filteredRecords.prefix(displayedCount)), id: \.objectID, selection: $selectedRecord) { record in
                     VStack(alignment: .leading, spacing: 4) {
                         Text(record.processedText ?? record.rawTranscript ?? "")
                             .lineLimit(2)
@@ -46,20 +81,30 @@ struct HistoryView: View {
                             Spacer()
 
                             if let timestamp = record.timestamp {
-                                Text(timestamp, style: .relative)
+                                Text(Self.shortTime(timestamp))
                                     .font(.caption2)
                                     .foregroundStyle(.tertiary)
                             }
                         }
                     }
                     .padding(.vertical, 3)
+                    .contextMenu {
+                        Button(L10n.History.copyResult) { copy(record.processedText ?? record.rawTranscript) }
+                        Button(L10n.History.copyRaw) { copy(record.rawTranscript) }
+                        Divider()
+                        Button(L10n.Common.delete, role: .destructive) {
+                            selectedRecord = record
+                            showDeleteConfirmation = true
+                        }
+                    }
                     .onAppear {
                         // Load more when reaching the last item
-                        if record.objectID == records.prefix(displayedCount).last?.objectID,
-                           displayedCount < records.count {
+                        if record.objectID == filteredRecords.prefix(displayedCount).last?.objectID,
+                           displayedCount < filteredRecords.count {
                             displayedCount += pageSize
                         }
                     }
+                }
                 }
 
                 // Bottom bar: record count + cleanup actions
@@ -89,10 +134,12 @@ struct HistoryView: View {
 
                     Menu {
                         Button(L10n.History.deleteOlder7) {
+                            deleteOlderDays = 7
                             showDeleteOlderConfirmation = true
                         }
                         Button(L10n.History.deleteOlder30) {
-                            deleteRecordsOlderThan(days: 30)
+                            deleteOlderDays = 30
+                            showDeleteOlderConfirmation = true
                         }
                         Divider()
                         Button(L10n.History.deleteAll, role: .destructive) {
@@ -180,10 +227,7 @@ struct HistoryView: View {
 
                             HStack(spacing: 8) {
                                 Button {
-                                    if let text = record.processedText {
-                                        NSPasteboard.general.clearContents()
-                                        NSPasteboard.general.setString(text, forType: .string)
-                                    }
+                                    copy(record.processedText)
                                 } label: {
                                     Label(L10n.History.copyResult, systemImage: "doc.on.doc")
                                 }
@@ -191,10 +235,7 @@ struct HistoryView: View {
                                 .buttonStyle(.bordered)
 
                                 Button {
-                                    if let text = record.rawTranscript {
-                                        NSPasteboard.general.clearContents()
-                                        NSPasteboard.general.setString(text, forType: .string)
-                                    }
+                                    copy(record.rawTranscript)
                                 } label: {
                                     Label(L10n.History.copyRaw, systemImage: "doc.on.clipboard")
                                 }
@@ -251,15 +292,35 @@ struct HistoryView: View {
             Text(L10n.History.deleteAllMessage(records.count))
         }
         .confirmationDialog(L10n.History.confirmDeleteOlder, isPresented: $showDeleteOlderConfirmation) {
-            Button(L10n.History.deleteOlder7, role: .destructive) {
-                deleteRecordsOlderThan(days: 7)
+            Button(deleteOlderDays == 30 ? L10n.History.deleteOlder30 : L10n.History.deleteOlder7, role: .destructive) {
+                deleteRecordsOlderThan(days: deleteOlderDays)
             }
         } message: {
-            Text(L10n.History.deleteOlder7Message)
+            Text(L10n.History.cannotUndo)
         }
         .onAppear {
             performAutoCleanupIfNeeded()
         }
+        .onChange(of: searchText) { _, _ in displayedCount = pageSize }
+    }
+
+    /// 今天顯示「15:49」、昨天「昨天 15:49」、更早「11/2 15:49」，跨年才加年份
+    static func shortTime(_ date: Date) -> String {
+        let cal = Calendar.current
+        let time = date.formatted(date: .omitted, time: .shortened)
+        if cal.isDateInToday(date) { return time }
+        if cal.isDateInYesterday(date) { return "昨天 \(time)" }
+        let sameYear = cal.component(.year, from: date) == cal.component(.year, from: Date())
+        let day = sameYear
+            ? date.formatted(.dateTime.month(.defaultDigits).day())
+            : date.formatted(.dateTime.year().month(.defaultDigits).day())
+        return "\(day) \(time)"
+    }
+
+    private func copy(_ text: String?) {
+        guard let text, !text.isEmpty else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
     }
 
     // MARK: - Cleanup Actions

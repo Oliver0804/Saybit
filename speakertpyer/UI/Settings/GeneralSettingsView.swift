@@ -16,8 +16,8 @@ struct GeneralSettingsView: View {
     @State private var automationAuthorized = false
     @State private var remindersAuthorized = false
     @State private var calendarAuthorized = false
+    @State private var screenRecordingAuthorized = ScreenContextCapture.hasPermission
     @State private var inputDevices: [AudioInputDevice] = []
-    @State private var micTestLevel: Float = 0
     @State private var isMicTesting: Bool = false
     @StateObject private var micTester = MicLevelTester()
 
@@ -28,578 +28,38 @@ struct GeneralSettingsView: View {
     @State private var whisperTestStatus: String?
     @State private var showContextRulesSheet: Bool = false
 
+    // 每張卡片的搜尋關鍵字（卡片顯示與「沒有結果」共用同一份）
+    /// 給側邊欄跨分頁搜尋用
+    static var searchKeywords: [String] { Keys.all.flatMap { $0 } }
+
+    fileprivate enum Keys {
+        static let recording = ["錄音", "录音", "recording", "輸入裝置", "输入设备", "input", "device", "麥克風", "麦克风", "microphone", "mic", "靈敏度", "灵敏度", "sensitivity", "gain", "自動停止", "auto stop", "靜音", "silence", "自动停止", "音量", "volume", "duck", "音效", "sound"]
+        static let recognition = ["語音辨識", "语音识别", "speech", "STT", "engine", "whisper", "引擎", "sensevoice", "離線", "offline", "降噪", "noise", "回音", "echo", "AEC", "背景"]
+        static let ai = ["AI", "上下文", "context", "選取", "selected", "螢幕", "screen", "ocr", "嘈雜", "noisy", "whisper", "語氣", "tone", "規則", "rule"]
+        static let output = ["輸出", "注入", "inject", "貼上", "paste", "keypress", "逐字", "取代", "replace", "預覽", "preview", "预览", "smart send", "智慧送出", "倒數", "countdown", "自動送出", "自动发送", "enter"]
+        static let interface = ["介面", "語言", "语言", "language", "言語", "膠囊", "胶囊", "capsule", "大小", "size", "縮放", "scale"]
+        static let system = ["系統", "開機", "啟動", "登入", "launch", "login", "startup", "开机", "启动", "更新", "update", "version", "版本", "歷史", "history", "清理", "cleanup", "保留", "retention", "历史", "教學", "tutorial", "教程"]
+        static let permissions = ["權限", "permission", "accessibility", "輔助使用", "麥克風", "microphone", "权限", "螢幕錄製", "screen recording", "提醒事項", "行事曆", "calendar", "reminders", "自動化", "automation"]
+        static let all = [recording, recognition, ai, output, interface, system, permissions]
+    }
+
+    private func shows(_ keys: [String]) -> Bool {
+        settingsMatchesSearch(keys, searchText: searchState.searchText)
+    }
+
     var body: some View {
         ScrollView {
             VStack(spacing: 16) {
-                // 拆出去的 sections，state 仍在 SettingsStore 與 SettingsSearchState：
-                LaunchAtLoginSection()
-                AutoUpdateCheckSection()
-                LanguageSection()
-
-                // MARK: - 功能開關
-                if settingsMatchesSearch(["功能", "features", "context", "上下文", "音效", "sound", "whisper"], searchText: searchState.searchText) {
-                    GlassCard {
-                        VStack(alignment: .leading, spacing: 10) {
-                            GlassSectionHeader(title: L10n.General.features, icon: "switch.2")
-
-                            Toggle(L10n.General.contextAwareness, isOn: $settingsStore.enableContextAwareness)
-                            Text(L10n.General.contextAwarenessDesc)
-                                .font(.body)
-                                .foregroundStyle(.secondary)
-                                .padding(.leading, 2)
-
-                            Divider().opacity(0.3)
-
-                            Toggle(L10n.General.soundFeedback, isOn: $settingsStore.enableSoundFeedback)
-
-                            Divider().opacity(0.3)
-
-                            Toggle(L10n.General.whisperMode, isOn: $settingsStore.enableWhisperMode)
-                            Text(L10n.General.whisperModeDesc)
-                                .font(.body)
-                                .foregroundStyle(.secondary)
-                                .padding(.leading, 2)
-
-                            if settingsStore.enableContextAwareness {
-                                Divider().opacity(0.3)
-
-                                HStack {
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text(L10n.General.contextRules)
-                                            .font(.body)
-                                        Text(L10n.General.contextRulesDesc)
-                                            .font(.body)
-                                            .foregroundStyle(.secondary)
-                                    }
-                                    Spacer()
-                                    Button {
-                                        showContextRulesSheet = true
-                                    } label: {
-                                        Label(L10n.General.contextRulesManage, systemImage: "list.bullet.rectangle")
-                                    }
-                                    .buttonStyle(.bordered)
-                                    .controlSize(.small)
-                                }
-                            }
-                        }
-                    }
-                }
-
-                // MARK: - 語音辨識引擎
-                if settingsMatchesSearch(["語音辨識", "语音识别", "speech", "STT", "engine", "whisper", "引擎"], searchText: searchState.searchText) {
-                    GlassCard {
-                        VStack(alignment: .leading, spacing: 10) {
-                            GlassSectionHeader(title: L10n.General.sttEngine, icon: "waveform.circle")
-
-                            Picker(L10n.General.sttEnginePicker, selection: $settingsStore.sttEngine) {
-                                ForEach(STTEngine.allCases, id: \.self) { engine in
-                                    Text(engine.displayName).tag(engine)
-                                }
-                            }
-                            .pickerStyle(.segmented)
-
-                            if settingsStore.sttEngine == .whisperAPI {
-                                VStack(alignment: .leading, spacing: 8) {
-                                    HStack {
-                                        Text(L10n.General.whisperAPIKey)
-                                        Spacer()
-                                        whisperAPIKeyStatus
-                                    }
-
-                                    HStack(spacing: 8) {
-                                        if showWhisperKey {
-                                            TextField("sk-...", text: $whisperAPIKeyInput)
-                                                .textFieldStyle(.roundedBorder)
-                                        } else {
-                                            SecureField("sk-...", text: $whisperAPIKeyInput)
-                                                .textFieldStyle(.roundedBorder)
-                                        }
-
-                                        Button {
-                                            showWhisperKey.toggle()
-                                        } label: {
-                                            Image(systemName: showWhisperKey ? "eye.slash" : "eye")
-                                        }
-                                        .buttonStyle(.borderless)
-
-                                        Button(L10n.Common.save) {
-                                            saveWhisperAPIKey()
-                                        }
-                                        .controlSize(.small)
-                                        .buttonStyle(.bordered)
-                                        .disabled(whisperAPIKeyInput.isEmpty)
-                                    }
-
-                                    HStack(spacing: 8) {
-                                        Button {
-                                            testWhisperConnection()
-                                        } label: {
-                                            Label(
-                                                whisperTestStatus ?? L10n.Common.testConnection,
-                                                systemImage: whisperTestStatus == L10n.Common.connectionSuccess ? "checkmark.circle.fill" : "bolt.horizontal"
-                                            )
-                                        }
-                                        .controlSize(.small)
-                                        .buttonStyle(.bordered)
-                                        .tint(whisperTestStatus == L10n.Common.connectionSuccess ? .green : .accentColor)
-                                        .disabled(isTestingWhisper)
-
-                                        if isTestingWhisper {
-                                            ProgressView()
-                                                .scaleEffect(0.5)
-                                        }
-                                    }
-
-                                    Text(L10n.General.whisperDesc)
-                                        .font(.body)
-                                        .foregroundStyle(.secondary)
-                                }
-                                .padding(.leading, 2)
-                            }
-
-                            if settingsStore.sttEngine == .appleSpeech {
-                                Divider().opacity(0.3)
-
-                                Toggle(L10n.General.onDeviceSTT, isOn: $settingsStore.enableOnDeviceSTT)
-                                Text(L10n.General.onDeviceSTTDesc)
-                                    .font(.body)
-                                    .foregroundStyle(.secondary)
-                                    .padding(.leading, 2)
-
-                                Divider().opacity(0.3)
-
-                                Toggle("持續背景辨識", isOn: $settingsStore.enableContinuousSTT)
-                                Text("開啟後 STT 在背景持續運行，按快捷鍵時直接截取文字，完全消除開頭語音遺失。會增加少許 CPU 使用。")
-                                    .font(.body)
-                                    .foregroundStyle(.secondary)
-                                    .padding(.leading, 2)
-                            }
-
-                            Divider().opacity(0.3)
-
-                            Toggle("人聲帶通降噪", isOn: $settingsStore.enableVoiceBandpass)
-                            Text("僅保留 80Hz – 8kHz 的人聲頻率，過濾低頻嗡嗡聲（風扇、電源 hum）與高頻 hiss，提升 STT 辨識率。CPU 開銷可忽略。")
-                                .font(.body)
-                                .foregroundStyle(.secondary)
-                                .padding(.leading, 2)
-
-                            Divider().opacity(0.3)
-
-                            Toggle("回音消除（AEC）", isOn: $settingsStore.enableEchoCancellation)
-                            Text("使用 macOS 原生 Voice Processing，以系統播放的聲音為參考訊號，即時消除喇叭洩漏進麥克風的音樂 / 影片 / 視訊通話聲。邊放聲音邊講話時開啟最有效；用耳機時可關閉。切換會短暫重啟收音。")
-                                .font(.body)
-                                .foregroundStyle(.secondary)
-                                .padding(.leading, 2)
-                        }
-                    }
-                }
-
-                // MARK: - 膠囊大小
-                if settingsMatchesSearch(["膠囊", "胶囊", "capsule", "大小", "size", "縮放", "scale"], searchText: searchState.searchText) {
-                    GlassCard {
-                        VStack(alignment: .leading, spacing: 10) {
-                            GlassSectionHeader(title: L10n.General.capsuleSize, icon: "arrow.up.left.and.arrow.down.right")
-
-                            VStack(alignment: .leading, spacing: 4) {
-                                HStack {
-                                    Text(L10n.General.scaleRatio)
-                                    Spacer()
-                                    Text(String(format: "%.0f%%", settingsStore.capsuleScale * 100))
-                                        .font(.system(.body, design: .monospaced))
-                                        .foregroundStyle(.secondary)
-                                }
-                                Slider(value: $settingsStore.capsuleScale, in: 0.5...2.0, step: 0.1)
-                                Text(L10n.General.capsuleSizeDesc)
-                                    .font(.body)
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                    }
-                }
-
-                // MARK: - 輸入裝置與麥克風靈敏度
-                if settingsMatchesSearch(["輸入裝置", "输入设备", "input", "device", "麥克風", "麦克风", "microphone", "mic", "靈敏度", "灵敏度", "sensitivity", "gain"], searchText: searchState.searchText) {
-                    GlassCard {
-                        VStack(alignment: .leading, spacing: 10) {
-                            GlassSectionHeader(title: L10n.General.inputDevice, icon: "mic.badge.xmark")
-
-                            Picker(L10n.General.inputDevice, selection: $settingsStore.selectedInputDeviceUID) {
-                                Text(L10n.General.systemDefault).tag("")
-                                ForEach(inputDevices) { device in
-                                    Text(device.name).tag(device.uid)
-                                }
-                            }
-
-                            Text(L10n.General.selectMicDesc)
-                                .font(.body)
-                                .foregroundStyle(.secondary)
-
-                            Divider().opacity(0.3)
-
-                            // 音量偵測
-                            HStack(spacing: 8) {
-                                Button {
-                                    toggleMicTest()
-                                } label: {
-                                    Label(isMicTesting ? L10n.General.stopTest : L10n.General.testMic, systemImage: isMicTesting ? "stop.fill" : "waveform")
-                                }
-                                .controlSize(.small)
-                                .buttonStyle(.bordered)
-                                .tint(isMicTesting ? .red : .accentColor)
-
-                                // 音量條
-                                GeometryReader { geo in
-                                    ZStack(alignment: .leading) {
-                                        RoundedRectangle(cornerRadius: 3)
-                                            .fill(Color.primary.opacity(0.1))
-                                        RoundedRectangle(cornerRadius: 3)
-                                            .fill(micTester.level > 0.6 ? Color.green : micTester.level > 0.3 ? Color.yellow : Color.green.opacity(0.7))
-                                            .frame(width: geo.size.width * CGFloat(micTester.level))
-                                            .animation(.linear(duration: 0.05), value: micTester.level)
-                                    }
-                                }
-                                .frame(height: 8)
-
-                                Text(String(format: "%.0f%%", micTester.level * 100))
-                                    .font(.system(.title3, design: .monospaced))
-                                    .foregroundStyle(.secondary)
-                                    .frame(width: 40, alignment: .trailing)
-                            }
-                            .frame(height: 24)
-
-                            if isMicTesting {
-                                Text(L10n.General.micTestHint)
-                                    .font(.body)
-                                    .foregroundStyle(.secondary)
-                            }
-
-                            Divider().opacity(0.3)
-
-                            // 麥克風靈敏度
-                            VStack(alignment: .leading, spacing: 4) {
-                                HStack {
-                                    Text(L10n.General.gainMultiplier)
-                                    Spacer()
-                                    Text(String(format: "%.1fx", settingsStore.micSensitivity))
-                                        .font(.system(.body, design: .monospaced))
-                                        .foregroundStyle(.secondary)
-                                }
-                                Slider(value: $settingsStore.micSensitivity, in: 0.5...5.0, step: 0.5)
-                                Text(L10n.General.micSensitivityDesc)
-                                    .font(.body)
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                    }
-                }
-
-                // MARK: - 自動停止
-                if settingsMatchesSearch(["自動停止", "auto stop", "靜音", "silence", "自动停止"], searchText: searchState.searchText) {
-                    GlassCard {
-                        VStack(alignment: .leading, spacing: 10) {
-                            GlassSectionHeader(title: L10n.General.silenceAutoStop, icon: "waveform.slash")
-
-                            Toggle(L10n.General.enableAutoStop, isOn: $settingsStore.enableAutoStop)
-
-                            if settingsStore.enableAutoStop {
-                                VStack(alignment: .leading, spacing: 4) {
-                                    HStack {
-                                        Text(L10n.General.silenceTimeout)
-                                        Spacer()
-                                        Text(L10n.General.seconds(settingsStore.silenceTimeout))
-                                            .font(.system(.body, design: .monospaced))
-                                            .foregroundStyle(.secondary)
-                                    }
-                                    Slider(value: $settingsStore.silenceTimeout, in: 0.5...5.0, step: 0.5)
-                                    Text(L10n.General.silenceAutoStopDesc)
-                                        .font(.body)
-                                        .foregroundStyle(.secondary)
-                                }
-                                .padding(.leading, 2)
-                            }
-                        }
-                    }
-                }
-
-                // MARK: - 注入方式
-                if settingsMatchesSearch(["注入", "inject", "貼上", "paste", "keypress", "逐字", "取代", "replace"], searchText: searchState.searchText) {
-                    GlassCard {
-                        VStack(alignment: .leading, spacing: 10) {
-                            GlassSectionHeader(title: L10n.General.injectionMode, icon: "keyboard")
-
-                            Picker(L10n.General.injectionMode, selection: $settingsStore.injectionMode) {
-                                ForEach(InjectionMode.allCases, id: \.self) { mode in
-                                    Text(mode.displayName).tag(mode)
-                                }
-                            }
-                            .pickerStyle(.segmented)
-
-                            Text(L10n.General.injectionModeDesc)
-                                .font(.body)
-                                .foregroundStyle(.secondary)
-                                .padding(.leading, 2)
-                        }
-                    }
-                }
-
-                // MARK: - 預覽與送出
-                if settingsMatchesSearch(["預覽", "preview", "注入", "inject", "预览", "smart send", "倒數", "countdown", "自動送出", "自动发送"], searchText: searchState.searchText) {
-                    GlassCard {
-                        VStack(alignment: .leading, spacing: 10) {
-                            GlassSectionHeader(title: L10n.General.previewAndSend, icon: "text.badge.checkmark")
-
-                            Toggle(L10n.General.enablePreview, isOn: $settingsStore.enablePreviewBeforeInject)
-                            Text(L10n.General.previewDesc)
-                                .font(.body)
-                                .foregroundStyle(.secondary)
-                                .padding(.leading, 2)
-
-                            if settingsStore.enablePreviewBeforeInject {
-                                VStack(alignment: .leading, spacing: 4) {
-                                    HStack {
-                                        Text(L10n.General.previewTimeout)
-                                        Spacer()
-                                        Text(L10n.General.seconds(settingsStore.previewTimeout))
-                                            .font(.system(.body, design: .monospaced))
-                                            .foregroundStyle(.secondary)
-                                    }
-                                    Slider(value: $settingsStore.previewTimeout, in: 1.0...10.0, step: 0.5)
-                                    Text(L10n.General.previewTimeoutDesc)
-                                        .font(.body)
-                                        .foregroundStyle(.secondary)
-                                }
-                                .padding(.leading, 2)
-                            }
-
-                            Divider().opacity(0.3)
-
-                            Toggle(L10n.General.enableSmartSend, isOn: $settingsStore.enableSmartSend)
-                            Text(L10n.General.smartSendDesc)
-                                .font(.body)
-                                .foregroundStyle(.secondary)
-                                .padding(.leading, 2)
-
-                            if settingsStore.enableSmartSend {
-                                VStack(alignment: .leading, spacing: 4) {
-                                    HStack {
-                                        Text(L10n.General.countdownSeconds)
-                                        Spacer()
-                                        Text(L10n.General.seconds(settingsStore.smartSendDelay))
-                                            .font(.system(.body, design: .monospaced))
-                                            .foregroundStyle(.secondary)
-                                    }
-                                    Slider(value: $settingsStore.smartSendDelay, in: 1.0...10.0, step: 0.5)
-                                    Text(L10n.General.smartSendCancelHint)
-                                        .font(.body)
-                                        .foregroundStyle(.secondary)
-                                }
-                                .padding(.leading, 2)
-                            }
-                        }
-                    }
-                }
-
-                // MARK: - 歷史記錄清理
-                if settingsMatchesSearch(["歷史", "history", "清理", "cleanup", "保留", "retention", "历史"], searchText: searchState.searchText) {
-                    GlassCard {
-                        VStack(alignment: .leading, spacing: 10) {
-                            GlassSectionHeader(title: L10n.General.historyCleanup, icon: "clock.arrow.circlepath")
-
-                            Toggle(L10n.General.autoCleanup, isOn: $settingsStore.enableHistoryAutoCleanup)
-
-                            if settingsStore.enableHistoryAutoCleanup {
-                                VStack(alignment: .leading, spacing: 4) {
-                                    HStack {
-                                        Text(L10n.General.retentionDays)
-                                        Spacer()
-                                        Text(L10n.General.days(settingsStore.historyRetentionDays))
-                                            .font(.system(.body, design: .monospaced))
-                                            .foregroundStyle(.secondary)
-                                    }
-                                    Slider(
-                                        value: Binding(
-                                            get: { Double(settingsStore.historyRetentionDays) },
-                                            set: { settingsStore.historyRetentionDays = Int($0) }
-                                        ),
-                                        in: 7...90,
-                                        step: 1
-                                    )
-                                    Text(L10n.General.historyCleanupDesc)
-                                        .font(.body)
-                                        .foregroundStyle(.secondary)
-                                }
-                                .padding(.leading, 2)
-                            }
-                        }
-                    }
-                }
-
-                // MARK: - Tutorial
-                if settingsMatchesSearch(["教學", "tutorial", "教程", "使用指南"], searchText: searchState.searchText) {
-                    GlassCard {
-                        VStack(alignment: .leading, spacing: 10) {
-                            GlassSectionHeader(title: L10n.General.tutorial, icon: "book.fill")
-
-                            Button {
-                                NotificationCenter.default.post(name: .showTutorial, object: nil)
-                            } label: {
-                                Label(L10n.General.replayTutorial, systemImage: "play.circle")
-                            }
-                            .buttonStyle(.bordered)
-                            .controlSize(.small)
-                        }
-                    }
-                }
-
-                // MARK: - 權限狀態
-                if settingsMatchesSearch(["權限", "permission", "accessibility", "麥克風", "microphone", "权限"], searchText: searchState.searchText) {
-                    GlassCard {
-                        VStack(alignment: .leading, spacing: 10) {
-                            GlassSectionHeader(title: L10n.General.permissionStatus, icon: "lock.shield")
-
-                            HStack {
-                                Image(systemName: "hand.raised.fill")
-                                    .foregroundStyle(.secondary)
-                                    .frame(width: 20)
-                                Text(L10n.General.accessibility)
-                                Spacer()
-                                if accessibilityAuthorized {
-                                    Label(L10n.Common.authorized, systemImage: "checkmark.circle.fill")
-                                        .font(.title3)
-                                        .foregroundStyle(.green)
-                                } else {
-                                    Button(L10n.Common.openSettings) {
-                                        AccessibilityManager.shared.promptIfNeeded()
-                                    }
-                                    .controlSize(.small)
-                                    .buttonStyle(.bordered)
-                                }
-                            }
-
-                            Divider().opacity(0.3)
-
-                            HStack {
-                                Image(systemName: "mic.fill")
-                                    .foregroundStyle(.secondary)
-                                    .frame(width: 20)
-                                Text(L10n.General.microphone)
-                                Spacer()
-                                if micAuthorized {
-                                    Label(L10n.Common.authorized, systemImage: "checkmark.circle.fill")
-                                        .font(.title3)
-                                        .foregroundStyle(.green)
-                                } else {
-                                    Button(L10n.Common.openSettings) {
-                                        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone") {
-                                            NSWorkspace.shared.open(url)
-                                        }
-                                    }
-                                    .controlSize(.small)
-                                    .buttonStyle(.bordered)
-                                }
-                            }
-
-                            Divider().opacity(0.3)
-
-                            HStack {
-                                Image(systemName: "gearshape.2.fill")
-                                    .foregroundStyle(.secondary)
-                                    .frame(width: 20)
-                                Text(L10n.General.automation)
-                                Spacer()
-                                if automationAuthorized {
-                                    Label(L10n.Common.authorized, systemImage: "checkmark.circle.fill")
-                                        .font(.title3)
-                                        .foregroundStyle(.green)
-                                } else {
-                                    Button(L10n.Common.requestAccess) {
-                                        requestAutomationAccess()
-                                    }
-                                    .controlSize(.small)
-                                    .buttonStyle(.bordered)
-                                }
-                            }
-
-                            Divider().opacity(0.3)
-
-                            HStack {
-                                Image(systemName: "checklist")
-                                    .foregroundStyle(.secondary)
-                                    .frame(width: 20)
-                                Text(L10n.General.reminders)
-                                Spacer()
-                                if remindersAuthorized {
-                                    Label(L10n.Common.authorized, systemImage: "checkmark.circle.fill")
-                                        .font(.title3)
-                                        .foregroundStyle(.green)
-                                } else {
-                                    Button(L10n.Common.openSettings) {
-                                        requestRemindersAccess()
-                                    }
-                                    .controlSize(.small)
-                                    .buttonStyle(.bordered)
-                                }
-                            }
-
-                            Divider().opacity(0.3)
-
-                            HStack {
-                                Image(systemName: "calendar")
-                                    .foregroundStyle(.secondary)
-                                    .frame(width: 20)
-                                Text(L10n.General.calendar)
-                                Spacer()
-                                if calendarAuthorized {
-                                    Label(L10n.Common.authorized, systemImage: "checkmark.circle.fill")
-                                        .font(.title3)
-                                        .foregroundStyle(.green)
-                                } else {
-                                    Button(L10n.Common.openSettings) {
-                                        requestCalendarAccess()
-                                    }
-                                    .controlSize(.small)
-                                    .buttonStyle(.bordered)
-                                }
-                            }
-
-                            Divider().opacity(0.3)
-
-                            HStack {
-                                Spacer()
-                                Button {
-                                    refreshPermissions()
-                                } label: {
-                                    Label(L10n.Common.recheck, systemImage: "arrow.clockwise")
-                                        .font(.title3)
-                                }
-                                .buttonStyle(.bordered)
-                                .controlSize(.small)
-                            }
-                        }
-                    }
-                }
-
-                // MARK: - No Results
-                if !searchState.searchText.isEmpty {
-                    let hasAny =
-                        settingsMatchesSearch(["開機", "啟動", "登入", "launch", "login", "自動啟動", "startup", "开机", "启动"], searchText: searchState.searchText) ||
-                        settingsMatchesSearch(["語言", "语言", "language", "言語", "介面"], searchText: searchState.searchText) ||
-                        settingsMatchesSearch(["功能", "features", "context", "上下文", "音效", "sound", "whisper"], searchText: searchState.searchText) ||
-                        settingsMatchesSearch(["語音辨識", "语音识别", "speech", "STT", "engine", "whisper", "引擎"], searchText: searchState.searchText) ||
-                        settingsMatchesSearch(["膠囊", "胶囊", "capsule", "大小", "size", "縮放", "scale"], searchText: searchState.searchText) ||
-                        settingsMatchesSearch(["輸入裝置", "输入设备", "input", "device", "麥克風", "麦克风", "microphone", "mic", "靈敏度", "灵敏度", "sensitivity", "gain"], searchText: searchState.searchText) ||
-                        settingsMatchesSearch(["自動停止", "auto stop", "靜音", "silence", "自动停止"], searchText: searchState.searchText) ||
-                        settingsMatchesSearch(["注入", "inject", "貼上", "paste", "keypress", "逐字", "取代", "replace"], searchText: searchState.searchText) ||
-                        settingsMatchesSearch(["預覽", "preview", "注入", "inject", "预览", "smart send", "倒數", "countdown", "自動送出", "自动发送"], searchText: searchState.searchText) ||
-                        settingsMatchesSearch(["歷史", "history", "清理", "cleanup", "保留", "retention", "历史"], searchText: searchState.searchText) ||
-                        settingsMatchesSearch(["教學", "tutorial", "教程", "使用指南"], searchText: searchState.searchText) ||
-                        settingsMatchesSearch(["權限", "permission", "accessibility", "麥克風", "microphone", "权限"], searchText: searchState.searchText)
-                    if !hasAny {
-                        Text(L10n.Common.noResults)
-                            .foregroundStyle(.secondary)
-                            .frame(maxWidth: .infinity)
-                            .padding(.top, 40)
-                    }
+                if shows(Keys.recording) { recordingCard }
+                if shows(Keys.recognition) { recognitionCard }
+                if shows(Keys.ai) { aiCard }
+                if shows(Keys.output) { outputCard }
+                if shows(Keys.interface) { interfaceCard }
+                if shows(Keys.system) { systemCard }
+                if shows(Keys.permissions) { permissionsCard }
+
+                if !searchState.searchText.isEmpty && !Keys.all.contains(where: shows) {
+                    SettingsNoResults()
                 }
             }
             .padding(20)
@@ -611,11 +71,485 @@ struct GeneralSettingsView: View {
         .onAppear {
             refreshPermissions()
             inputDevices = AudioSessionManager.listInputDevices()
-            // Load existing Whisper API key hint
-            if let existing = KeychainHelper.loadAPIKey(for: "whisper_api"), !existing.isEmpty {
-                whisperAPIKeyInput = ""  // Don't show actual key
+        }
+        .onDisappear {
+            if isMicTesting { toggleMicTest() }
+        }
+        // 從系統設定授權回來時更新權限狀態
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            refreshPermissions()
+        }
+    }
+
+    // MARK: - 錄音
+
+    private var recordingCard: some View {
+        GlassCard {
+            VStack(alignment: .leading, spacing: 10) {
+                GlassSectionHeader(title: L10n.General.sectionRecording, icon: "mic")
+
+                SettingRow(title: L10n.General.inputDevice, description: L10n.General.selectMicDesc) {
+                    Picker(L10n.General.inputDevice, selection: $settingsStore.selectedInputDeviceUID) {
+                        Text(L10n.General.systemDefault).tag("")
+                        ForEach(inputDevices) { device in
+                            Text(device.name).tag(device.uid)
+                        }
+                    }
+                    .labelsHidden()
+                    .frame(maxWidth: 240)
+                }
+
+                // 音量偵測
+                HStack(spacing: 10) {
+                    Button {
+                        toggleMicTest()
+                    } label: {
+                        Label(isMicTesting ? L10n.General.stopTest : L10n.General.testMic,
+                              systemImage: isMicTesting ? "stop.fill" : "waveform")
+                    }
+                    .controlSize(.small)
+                    .buttonStyle(.bordered)
+                    .tint(isMicTesting ? .red : nil)
+
+                    GeometryReader { geo in
+                        ZStack(alignment: .leading) {
+                            Capsule().fill(Color.primary.opacity(0.1))
+                            Capsule()
+                                .fill(micTester.level > 0.85 ? Color.orange : Color.green)
+                                .frame(width: geo.size.width * CGFloat(micTester.level))
+                                .animation(.linear(duration: 0.05), value: micTester.level)
+                        }
+                    }
+                    .frame(height: 6)
+                    .opacity(isMicTesting ? 1 : 0.4)
+
+                    Text(String(format: "%.0f%%", micTester.level * 100))
+                        .monospacedDigit()
+                        .foregroundStyle(.secondary)
+                        .frame(width: 40, alignment: .trailing)
+                }
+                if isMicTesting {
+                    SettingDescription(L10n.General.micTestHint)
+                }
+
+                SettingSlider(
+                    title: L10n.General.gainMultiplier,
+                    valueText: String(format: "%.1fx", settingsStore.micSensitivity),
+                    value: $settingsStore.micSensitivity, range: 0.5...5.0, step: 0.5,
+                    description: L10n.General.micSensitivityDesc
+                )
+
+                SettingDivider()
+
+                SettingToggle(title: L10n.General.enableAutoStop, description: L10n.General.silenceAutoStopDesc,
+                              isOn: $settingsStore.enableAutoStop)
+                if settingsStore.enableAutoStop {
+                    SettingIndent {
+                        SettingSlider(
+                            title: L10n.General.silenceTimeout,
+                            valueText: L10n.General.seconds(settingsStore.silenceTimeout),
+                            value: $settingsStore.silenceTimeout, range: 0.5...5.0, step: 0.5
+                        )
+                    }
+                }
+
+                SettingDivider()
+
+                SettingToggle(title: L10n.General.ducking, description: L10n.General.duckingDesc,
+                              isOn: $settingsStore.enableDuckingWhileRecording)
+
+                SettingDivider()
+
+                SettingToggle(title: L10n.General.soundFeedback, isOn: $settingsStore.enableSoundFeedback)
             }
         }
+    }
+
+    // MARK: - 語音辨識
+
+    private var recognitionCard: some View {
+        GlassCard {
+            VStack(alignment: .leading, spacing: 10) {
+                GlassSectionHeader(title: L10n.General.sectionRecognition, icon: "waveform.circle")
+
+                Picker(L10n.General.sttEnginePicker, selection: $settingsStore.sttEngine) {
+                    ForEach(STTEngine.allCases, id: \.self) { engine in
+                        Text(engine.displayName).tag(engine)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+
+                switch settingsStore.sttEngine {
+                case .whisperAPI:
+                    whisperAPIPanel
+                case .sherpaSenseVoice:
+                    SherpaModelPanel()
+                case .appleSpeech:
+                    SettingToggle(title: L10n.General.onDeviceSTT, description: L10n.General.onDeviceSTTDesc,
+                                  isOn: $settingsStore.enableOnDeviceSTT)
+                    SettingToggle(title: L10n.General.continuousBackgroundSTT, description: L10n.General.continuousSTTDesc,
+                                  isOn: $settingsStore.enableContinuousSTT)
+                }
+
+                SettingDivider()
+
+                SettingToggle(title: L10n.General.voiceBandpass, description: L10n.General.voiceBandpassDesc,
+                              isOn: $settingsStore.enableVoiceBandpass)
+
+                SettingDivider()
+
+                SettingToggle(title: L10n.General.echoCancellation, description: L10n.General.echoCancellationDesc,
+                              isOn: $settingsStore.enableEchoCancellation)
+            }
+        }
+    }
+
+    private var whisperAPIPanel: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text(L10n.General.whisperAPIKey)
+                Spacer()
+                whisperAPIKeyStatus
+            }
+
+            HStack(spacing: 8) {
+                Group {
+                    if showWhisperKey {
+                        TextField("sk-...", text: $whisperAPIKeyInput)
+                    } else {
+                        SecureField("sk-...", text: $whisperAPIKeyInput)
+                    }
+                }
+                .textFieldStyle(.roundedBorder)
+                .onSubmit { if !whisperAPIKeyInput.isEmpty { saveWhisperAPIKey() } }
+
+                Button {
+                    showWhisperKey.toggle()
+                } label: {
+                    Image(systemName: showWhisperKey ? "eye.slash" : "eye")
+                }
+                .buttonStyle(.borderless)
+
+                Button(L10n.Common.save) {
+                    saveWhisperAPIKey()
+                }
+                .controlSize(.small)
+                .buttonStyle(.borderedProminent)
+                .disabled(whisperAPIKeyInput.isEmpty)
+
+                Button {
+                    testWhisperConnection()
+                } label: {
+                    if isTestingWhisper {
+                        ProgressView().controlSize(.small)
+                    } else {
+                        Label(L10n.Common.testConnection, systemImage: "bolt.horizontal")
+                    }
+                }
+                .controlSize(.small)
+                .buttonStyle(.bordered)
+                .disabled(isTestingWhisper)
+            }
+
+            if let whisperTestStatus {
+                let ok = whisperTestStatus == L10n.Common.connectionSuccess
+                Label(whisperTestStatus, systemImage: ok ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
+                    .font(.callout)
+                    .foregroundStyle(ok ? .green : .orange)
+            }
+
+            SettingDescription(L10n.General.whisperDesc)
+        }
+    }
+
+    // MARK: - AI 理解
+
+    private var aiCard: some View {
+        GlassCard {
+            VStack(alignment: .leading, spacing: 10) {
+                GlassSectionHeader(title: L10n.General.sectionAI, icon: "sparkles")
+
+                SettingToggle(title: L10n.General.contextAwareness, description: L10n.General.contextAwarenessDesc,
+                              isOn: $settingsStore.enableContextAwareness)
+                if settingsStore.enableContextAwareness {
+                    SettingIndent {
+                        SettingRow(title: L10n.General.contextRules, description: L10n.General.contextRulesDesc) {
+                            Button {
+                                showContextRulesSheet = true
+                            } label: {
+                                Label(L10n.General.contextRulesManage, systemImage: "list.bullet.rectangle")
+                            }
+                            .buttonStyle(.bordered)
+                            .controlSize(.small)
+                        }
+                    }
+                }
+
+                SettingDivider()
+
+                SettingToggle(title: L10n.General.screenContext, description: L10n.General.screenContextDesc,
+                              isOn: $settingsStore.enableScreenContext)
+                    .onChange(of: settingsStore.enableScreenContext) { _, on in
+                        if on && !ScreenContextCapture.hasPermission {
+                            ScreenContextCapture.requestPermission()
+                        }
+                        refreshPermissions()
+                    }
+                if settingsStore.enableScreenContext && !screenRecordingAuthorized {
+                    SettingIndent {
+                        HStack(spacing: 8) {
+                            Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+                            Text(L10n.General.screenRecordingMissing)
+                                .font(.callout)
+                            Spacer()
+                            Button(L10n.General.grantScreenRecording) { openScreenRecordingSettings() }
+                                .controlSize(.small)
+                        }
+                    }
+                }
+
+                SettingDivider()
+
+                SettingToggle(title: L10n.General.whisperMode, description: L10n.General.whisperModeDesc,
+                              isOn: $settingsStore.enableWhisperMode)
+            }
+        }
+    }
+
+    // MARK: - 輸出
+
+    private var outputCard: some View {
+        GlassCard {
+            VStack(alignment: .leading, spacing: 10) {
+                GlassSectionHeader(title: L10n.General.sectionOutput, icon: "text.cursor")
+
+                SettingRow(title: L10n.General.injectionMode, description: L10n.General.injectionModeDesc) {
+                    Picker(L10n.General.injectionMode, selection: $settingsStore.injectionMode) {
+                        ForEach(InjectionMode.allCases, id: \.self) { mode in
+                            Text(mode.displayName).tag(mode)
+                        }
+                    }
+                    .labelsHidden()
+                    .pickerStyle(.segmented)
+                    .fixedSize()
+                }
+
+                SettingDivider()
+
+                SettingToggle(title: L10n.General.enablePreview, description: L10n.General.previewDesc,
+                              isOn: $settingsStore.enablePreviewBeforeInject)
+                if settingsStore.enablePreviewBeforeInject {
+                    SettingIndent {
+                        SettingSlider(
+                            title: L10n.General.previewTimeout,
+                            valueText: L10n.General.seconds(settingsStore.previewTimeout),
+                            value: $settingsStore.previewTimeout, range: 1.0...10.0, step: 0.5,
+                            description: L10n.General.previewTimeoutDesc
+                        )
+                    }
+                }
+
+                SettingDivider()
+
+                SettingToggle(title: L10n.General.enableSmartSend, description: L10n.General.smartSendDesc,
+                              isOn: $settingsStore.enableSmartSend)
+                if settingsStore.enableSmartSend {
+                    SettingIndent {
+                        SettingSlider(
+                            title: L10n.General.countdownSeconds,
+                            valueText: L10n.General.seconds(settingsStore.smartSendDelay),
+                            value: $settingsStore.smartSendDelay, range: 1.0...10.0, step: 0.5,
+                            description: L10n.General.smartSendCancelHint
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    // MARK: - 介面
+
+    private var interfaceCard: some View {
+        GlassCard {
+            VStack(alignment: .leading, spacing: 10) {
+                GlassSectionHeader(title: L10n.General.sectionInterface, icon: "macwindow")
+
+                SettingRow(title: L10n.General.preferredLanguage) {
+                    Picker(L10n.General.preferredLanguage, selection: $settingsStore.languagePreference) {
+                        ForEach(AppLanguage.allCases) { lang in
+                            Text(lang.displayName).tag(lang.rawValue)
+                        }
+                    }
+                    .labelsHidden()
+                    .pickerStyle(.segmented)
+                    .fixedSize()
+                    .disabled(settingsStore.enableAutoLanguageDetection)
+                }
+
+                SettingToggle(title: L10n.General.autoLanguageDetection, description: L10n.General.autoLanguageDetectionDesc,
+                              isOn: $settingsStore.enableAutoLanguageDetection)
+
+                SettingDivider()
+
+                SettingSlider(
+                    title: L10n.General.capsuleSize,
+                    valueText: String(format: "%.0f%%", settingsStore.capsuleScale * 100),
+                    value: $settingsStore.capsuleScale, range: 0.5...2.0, step: 0.1,
+                    description: L10n.General.capsuleSizeDesc
+                )
+            }
+        }
+    }
+
+    // MARK: - 系統
+
+    private var systemCard: some View {
+        GlassCard {
+            VStack(alignment: .leading, spacing: 10) {
+                GlassSectionHeader(title: L10n.General.sectionSystem, icon: "gearshape")
+
+                SettingToggle(title: L10n.General.enableLaunchAtLogin, description: L10n.General.launchAtLoginDesc,
+                              isOn: $settingsStore.launchAtLogin)
+
+                SettingDivider()
+
+                SettingToggle(title: L10n.General.enableAutoUpdateCheck, description: L10n.General.autoUpdateCheckDesc,
+                              isOn: $settingsStore.enableAutoUpdateCheck)
+                if !settingsStore.availableUpdateTag.isEmpty {
+                    SettingIndent {
+                        HStack(spacing: 6) {
+                            Image(systemName: "sparkles").foregroundStyle(.green)
+                            Text(L10n.Update.newer(latest: settingsStore.availableUpdateTag,
+                                                   current: UpdateChecker.shared.currentVersion()))
+                            if let url = URL(string: settingsStore.availableUpdateURL),
+                               !settingsStore.availableUpdateURL.isEmpty {
+                                Link(L10n.Update.viewRelease, destination: url)
+                            }
+                        }
+                    }
+                }
+
+                SettingDivider()
+
+                SettingToggle(title: L10n.General.autoCleanup, description: L10n.General.historyCleanupDesc,
+                              isOn: $settingsStore.enableHistoryAutoCleanup)
+                if settingsStore.enableHistoryAutoCleanup {
+                    SettingIndent {
+                        SettingSlider(
+                            title: L10n.General.retentionDays,
+                            valueText: L10n.General.days(settingsStore.historyRetentionDays),
+                            value: Binding(
+                                get: { Double(settingsStore.historyRetentionDays) },
+                                set: { settingsStore.historyRetentionDays = Int($0) }
+                            ),
+                            range: 7...90, step: 1
+                        )
+                    }
+                }
+
+                SettingDivider()
+
+                SettingRow(title: L10n.General.tutorial, description: L10n.General.tutorialDesc) {
+                    Button {
+                        NotificationCenter.default.post(name: .showTutorial, object: nil)
+                    } label: {
+                        Label(L10n.General.replayTutorial, systemImage: "play.circle")
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                }
+            }
+        }
+    }
+
+    // MARK: - 權限
+
+    private var permissionsCard: some View {
+        GlassCard {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack {
+                    GlassSectionHeader(title: L10n.General.permissionStatus, icon: "lock.shield")
+                    Spacer()
+                    Button {
+                        refreshPermissions()
+                    } label: {
+                        Label(L10n.Common.recheck, systemImage: "arrow.clockwise")
+                    }
+                    .buttonStyle(.borderless)
+                    .controlSize(.small)
+                }
+
+                permissionRow(icon: "hand.raised.fill", title: L10n.General.accessibility,
+                              granted: accessibilityAuthorized, required: true) {
+                    AccessibilityManager.shared.promptIfNeeded()
+                }
+                SettingDivider()
+                permissionRow(icon: "mic.fill", title: L10n.General.microphone,
+                              granted: micAuthorized, required: true) {
+                    openPrivacyPane("Privacy_Microphone")
+                }
+                SettingDivider()
+                permissionRow(icon: "rectangle.dashed.badge.record", title: L10n.General.screenRecording,
+                              granted: screenRecordingAuthorized, required: settingsStore.enableScreenContext) {
+                    openScreenRecordingSettings()
+                }
+                SettingDivider()
+                permissionRow(icon: "gearshape.2.fill", title: L10n.General.automation,
+                              granted: automationAuthorized, required: false, actionTitle: L10n.Common.requestAccess) {
+                    requestAutomationAccess()
+                }
+                SettingDivider()
+                permissionRow(icon: "checklist", title: L10n.General.reminders,
+                              granted: remindersAuthorized, required: false) {
+                    requestRemindersAccess()
+                }
+                SettingDivider()
+                permissionRow(icon: "calendar", title: L10n.General.calendar,
+                              granted: calendarAuthorized, required: false) {
+                    requestCalendarAccess()
+                }
+            }
+        }
+    }
+
+    private func permissionRow(icon: String, title: String, granted: Bool, required: Bool,
+                               actionTitle: String = L10n.Common.openSettings,
+                               action: @escaping () -> Void) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: icon)
+                .foregroundStyle(.secondary)
+                .frame(width: 20)
+            Text(title)
+            if !granted && required {
+                Text(L10n.General.requiredBadge)
+                    .font(.caption)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 1)
+                    .background(Capsule().fill(Color.orange.opacity(0.2)))
+                    .foregroundStyle(.orange)
+            }
+            Spacer()
+            if granted {
+                Label(L10n.Common.authorized, systemImage: "checkmark.circle.fill")
+                    .foregroundStyle(.green)
+            } else {
+                Button(actionTitle, action: action)
+                    .controlSize(.small)
+                    .buttonStyle(.bordered)
+            }
+        }
+    }
+
+    private func openPrivacyPane(_ anchor: String) {
+        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?\(anchor)") {
+            NSWorkspace.shared.open(url)
+        }
+    }
+
+    private func openScreenRecordingSettings() {
+        if !ScreenContextCapture.hasPermission { ScreenContextCapture.requestPermission() }
+        openPrivacyPane("Privacy_ScreenCapture")
     }
 
     private func toggleMicTest() {
@@ -630,6 +564,7 @@ struct GeneralSettingsView: View {
 
     private func refreshPermissions() {
         accessibilityAuthorized = AccessibilityManager.shared.isAuthorized
+        screenRecordingAuthorized = ScreenContextCapture.hasPermission
         micAuthorized = AudioSessionManager.isMicrophoneAuthorized
         automationAuthorized = checkAutomationPermission()
         remindersAuthorized = EKEventStore.authorizationStatus(for: .reminder) == .fullAccess
@@ -760,6 +695,77 @@ struct GeneralSettingsView: View {
                     isTestingWhisper = false
                 }
             }
+        }
+    }
+}
+
+// MARK: - SenseVoice 離線模型
+
+private struct SherpaModelPanel: View {
+    @State private var models = SherpaModelManager.shared
+    @State private var confirmDelete = false
+
+    private var sizeText: String {
+        ByteCountFormatter.string(fromByteCount: SherpaModelManager.totalSize, countStyle: .file)
+    }
+
+    var body: some View {
+        SettingRow(
+            title: "SenseVoice 離線模型",
+            description: "完全在本機辨識：速度快、中英夾雜表現好、不需網路。每句講完才定稿，字幕會比 Apple 稍晚出現。"
+        ) {
+            switch models.state {
+            case .installed:
+                HStack(spacing: 8) {
+                    Label("已安裝", systemImage: "checkmark.circle.fill")
+                        .foregroundStyle(.green)
+                    Menu {
+                        Button("在 Finder 中顯示") {
+                            NSWorkspace.shared.activateFileViewerSelecting([SherpaModelManager.shared.directory])
+                        }
+                        Divider()
+                        Button("刪除模型（\(sizeText)）…", role: .destructive) { confirmDelete = true }
+                    } label: {
+                        Image(systemName: "ellipsis.circle")
+                    }
+                    .menuStyle(.borderlessButton)
+                    .menuIndicator(.hidden)
+                    .fixedSize()
+                }
+            case .notInstalled:
+                Button {
+                    models.download()
+                } label: {
+                    Label("下載模型（\(sizeText)）", systemImage: "arrow.down.circle")
+                }
+                .controlSize(.small)
+                .buttonStyle(.borderedProminent)
+            case .downloading(let progress):
+                HStack(spacing: 8) {
+                    ProgressView(value: progress)
+                        .frame(width: 120)
+                    Text(progress.formatted(.percent.precision(.fractionLength(0))))
+                        .monospacedDigit()
+                        .foregroundStyle(.secondary)
+                        .frame(width: 36, alignment: .trailing)
+                    Button("取消") { models.cancelDownload() }
+                        .controlSize(.small)
+                }
+            case .failed(let message):
+                HStack(spacing: 8) {
+                    Label(message, systemImage: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.orange)
+                        .lineLimit(1)
+                        .help(message)
+                    Button("重試") { models.download() }
+                        .controlSize(.small)
+                }
+            }
+        }
+        .confirmationDialog("刪除 SenseVoice 模型？", isPresented: $confirmDelete) {
+            Button("刪除", role: .destructive) { models.delete() }
+        } message: {
+            Text("刪除後要重新下載（\(sizeText)）才能使用離線辨識。")
         }
     }
 }

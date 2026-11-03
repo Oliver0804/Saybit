@@ -256,6 +256,22 @@ struct CapsuleBarView: View {
         }
     }
 
+    // MARK: - Mode Tag
+
+    /// 用語音模式錄音時，在膠囊上標出模式名稱，避免不知道這次會被怎麼處理
+    @ViewBuilder
+    private var modeTag: some View {
+        if let name = session.modeName, !name.isEmpty {
+            Text(name)
+                .font(.system(size: 10, weight: .semibold, design: .rounded))
+                .foregroundStyle(.white)
+                .lineLimit(1)
+                .padding(.horizontal, 7)
+                .padding(.vertical, 2)
+                .background(Capsule().fill(Color.purple.opacity(0.75)))
+        }
+    }
+
     // MARK: - State Content
 
     @ViewBuilder
@@ -275,9 +291,13 @@ struct CapsuleBarView: View {
                     .foregroundStyle(.orange.opacity(0.8))
             }
         case .recording:
-            RecordingContentView(session: session)
+            HStack(spacing: 6) {
+                modeTag
+                RecordingContentView(session: session)
+            }
         case .processing:
             HStack(spacing: 4) {
+                modeTag
                 Text(L10n.Overlay.processing)
                     .font(.system(size: 12, design: .rounded))
                     .foregroundStyle(.white.opacity(0.7))
@@ -322,7 +342,9 @@ struct CapsuleBarView: View {
                 Text(msg)
                     .font(.system(size: 11, design: .rounded))
                     .foregroundStyle(.red.opacity(0.9))
-                    .lineLimit(1)
+                    .lineLimit(2)
+                    .frame(maxWidth: 360, alignment: .leading)
+                    .fixedSize(horizontal: false, vertical: true)
                 if session.lastErrorContext != nil {
                     Button {
                         onRetry?()
