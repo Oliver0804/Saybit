@@ -51,7 +51,20 @@ class BackgroundSTTEngine: AudioBufferConsumer {
 
     // MARK: - Silence Detection (for capture mode)
 
-    private let silenceDetector = SilenceDetector()
+    @ObservationIgnored private let silenceDetector = SilenceDetector()
+
+    /// render thread 讀取的狀態，由 renderLock 保護（rollSession 每 50 秒在 main 替換 request）
+    @ObservationIgnored private let renderLock = UnfairLock()
+    @ObservationIgnored private var renderRequest: SFSpeechAudioBufferRecognitionRequest?
+    @ObservationIgnored private var renderRunning = false
+    @ObservationIgnored private var renderCapturing = false
+    @ObservationIgnored private var renderMicGain: Float = 2.0
+
+    /// stopCapture(waitForFinal:) 等待 final 結果中
+    @ObservationIgnored private var finalWaiter: CheckedContinuation<Void, Never>?
+    /// 擷取中收到的語言 / on-device 設定變更，擷取結束後才套用
+    @ObservationIgnored private var pendingConfig: (locale: Locale, onDeviceOnly: Bool)?
+
     var onSilenceTimeout: (() -> Void)? {
         get { silenceDetector.onSilenceTimeout }
         set { silenceDetector.onSilenceTimeout = newValue }
@@ -77,8 +90,15 @@ class BackgroundSTTEngine: AudioBufferConsumer {
         sessionLocale = locale
         sessionOnDeviceOnly = onDeviceOnly
         isRunning = true
+        setRenderRunning(true)
 
-        startSession()
+        // recognizer 不可用（例如該語言不支援 on-device）→ 回滾，讓 pipeline 改走一般 STT
+        guard startSession() else {
+            isRunning = false
+            setRenderRunning(false)
+            log.error("BackgroundSTT 啟動失敗，回滾", category: "BackgroundSTT")
+            return
+        }
         scheduleRolling()
 
         SharedAudioEngine.shared.addConsumer(self)
@@ -89,12 +109,15 @@ class BackgroundSTTEngine: AudioBufferConsumer {
         guard isRunning else { return }
         isRunning = false
         isCapturing = false
+        setRenderRunning(false)
+        setRenderCapturing(false)
 
         rollingTimer?.cancel()
         rollingTimer = nil
 
         endCurrentSession()
         SharedAudioEngine.shared.removeConsumer(self)
+        resumeFinalWaiter()
 
         currentTranscript = ""
         capturedSegments = []
@@ -106,12 +129,30 @@ class BackgroundSTTEngine: AudioBufferConsumer {
 
     /// 動態切換語言
     func updateLocale(_ locale: Locale) {
-        guard isRunning, !isCapturing else { return }
-        sessionLocale = locale
-        // 重啟 session 以套用新語言
-        rollSession()
-        log.info("BackgroundSTT 切換語言: \(locale.identifier)", category: "BackgroundSTT")
+        updateConfiguration(locale: locale, onDeviceOnly: sessionOnDeviceOnly)
     }
+
+    /// 動態切換語言 / on-device；擷取中先記下，擷取結束後才套用（不打斷使用者正在講的內容）
+    func updateConfiguration(locale: Locale, onDeviceOnly: Bool) {
+        guard isRunning else { return }
+        guard locale.identifier != sessionLocale.identifier || onDeviceOnly != sessionOnDeviceOnly else {
+            pendingConfig = nil
+            return
+        }
+        if isCapturing {
+            pendingConfig = (locale, onDeviceOnly)
+            return
+        }
+        sessionLocale = locale
+        sessionOnDeviceOnly = onDeviceOnly
+        pendingConfig = nil
+        // 重啟 session 以套用新設定
+        rollSession()
+        log.info("BackgroundSTT 套用設定 (locale=\(locale.identifier), onDevice=\(onDeviceOnly))", category: "BackgroundSTT")
+    }
+
+    /// 目前 session 使用的設定（pipeline 用來判斷是否需要同步）
+    var configuration: (locale: Locale, onDeviceOnly: Bool) { (sessionLocale, sessionOnDeviceOnly) }
 
     // MARK: - Capture (用戶按快捷鍵時)
 
@@ -119,6 +160,10 @@ class BackgroundSTTEngine: AudioBufferConsumer {
     func startCapture() {
         guard isRunning else { return }
         isCapturing = true
+        renderLock.withLock {
+            renderCapturing = true
+            renderMicGain = micGain
+        }
         // 不扣除已辨識的文字 — 用戶通常在按快捷鍵前就開始說話，
         // 那些開頭的字已經在 currentTranscript 裡，必須保留
         captureStartTranscript = ""
@@ -129,13 +174,39 @@ class BackgroundSTTEngine: AudioBufferConsumer {
         rollingTimer?.cancel()
         rollingTimer = nil
 
-        log.info("BackgroundSTT 開始擷取 (currentTranscript=\(currentTranscript.prefix(40)))", category: "BackgroundSTT")
+        log.info("BackgroundSTT 開始擷取 (\(currentTranscript.count) 字)", category: "BackgroundSTT")
     }
 
-    /// 停止擷取 — 提取新文字，重啟 rolling
+    /// 停止擷取並等 Speech 給出 final 結果（最多 `timeout` 秒），避免最後一兩個字被 partial 截掉
+    func stopCapture(waitForFinal timeout: TimeInterval) async -> String {
+        guard isCapturing, isRunning, recognitionTask != nil else { return stopCapture() }
+        // 不再餵音訊給這個 session，送 endAudio 讓 Speech 收尾
+        renderLock.withLock { renderRequest = nil }
+        recognitionRequest?.endAudio()
+        silenceDetector.reset()
+        let waitingSession = sessionID
+        await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
+            finalWaiter = cont
+            Task { @MainActor [weak self] in
+                try? await Task.sleep(for: .seconds(timeout))
+                guard let self, self.sessionID == waitingSession else { return }
+                self.resumeFinalWaiter()
+            }
+        }
+        return stopCapture()
+    }
+
+    private func resumeFinalWaiter() {
+        let waiter = finalWaiter
+        finalWaiter = nil
+        waiter?.resume()
+    }
+
+    /// 停止擷取 — 提取新文字，重啟 rolling（立即回傳，可能是 partial）
     func stopCapture() -> String {
         guard isCapturing else { return "" }
         isCapturing = false
+        setRenderCapturing(false)
         silenceDetector.reset()
         audioLevel = 0.0
 
@@ -156,25 +227,40 @@ class BackgroundSTTEngine: AudioBufferConsumer {
         capturedSegments = []
         captureStartTranscript = ""
 
+        // 擷取中延後的設定變更，現在套用
+        if let config = pendingConfig {
+            sessionLocale = config.locale
+            sessionOnDeviceOnly = config.onDeviceOnly
+            pendingConfig = nil
+            log.info("BackgroundSTT 套用延後的設定 (locale=\(config.locale.identifier), onDevice=\(config.onDeviceOnly))", category: "BackgroundSTT")
+        }
+
         // 重啟 session 和 rolling timer
         endCurrentSession()
-        startSession()
-        scheduleRolling()
+        if restartSessionOrShutdown() {
+            scheduleRolling()
+        }
 
-        log.info("BackgroundSTT 擷取完成: \(result.prefix(80))", category: "BackgroundSTT")
+        log.info("BackgroundSTT 擷取完成 (\(result.count) 字)", category: "BackgroundSTT")
         return result
     }
 
     // MARK: - AudioBufferConsumer
 
     func handleAudioBuffer(_ buffer: AVAudioPCMBuffer, time: AVAudioTime) {
-        guard isRunning else { return }
+        renderLock.lock()
+        let running = renderRunning
+        let capturing = renderCapturing
+        let request = renderRequest
+        let micGain = renderMicGain
+        renderLock.unlock()
+        guard running else { return }
 
         // 餵給 Speech framework
-        recognitionRequest?.append(buffer)
+        request?.append(buffer)
 
         // RMS 計算（僅 capture 模式時更新 UI 音量）
-        if isCapturing {
+        if capturing {
             guard let rms = AudioUtils.rms(from: buffer) else { return }
             let displayLevel = AudioUtils.normalizedLevel(rms: rms, multiplier: 5.0 * micGain)
             let rawLevel = AudioUtils.normalizedLevel(rms: rms)
@@ -187,14 +273,24 @@ class BackgroundSTTEngine: AudioBufferConsumer {
         }
     }
 
+    private func setRenderRunning(_ value: Bool) {
+        renderLock.withLock { renderRunning = value }
+    }
+
+    private func setRenderCapturing(_ value: Bool) {
+        renderLock.withLock { renderCapturing = value }
+    }
+
     // MARK: - Session Management
 
-    private func startSession() {
+    /// 建立新的辨識 session；recognizer 不可用時回傳 false
+    @discardableResult
+    private func startSession() -> Bool {
         speechRecognizer = SFSpeechRecognizer(locale: sessionLocale)
 
         guard let speechRecognizer, speechRecognizer.isAvailable else {
             log.error("BackgroundSTT: SFSpeechRecognizer 不可用", category: "BackgroundSTT")
-            return
+            return false
         }
 
         let request = SFSpeechAudioBufferRecognitionRequest()
@@ -205,6 +301,7 @@ class BackgroundSTTEngine: AudioBufferConsumer {
             request.requiresOnDeviceRecognition = true
         }
         self.recognitionRequest = request
+        renderLock.withLock { renderRequest = request }
 
         currentTranscript = ""
         sessionID &+= 1
@@ -221,27 +318,38 @@ class BackgroundSTTEngine: AudioBufferConsumer {
                 self.currentTranscript = result.bestTranscription.formattedString
             }
 
+            let isFinal = result?.isFinal == true
+            guard error != nil || isFinal else { return }
             if let error {
                 self.log.error("BackgroundSTT session 錯誤: \(error.localizedDescription)", category: "BackgroundSTT")
-                if self.isCapturing {
-                    self.handleSessionEndDuringCapture()
-                } else if self.isRunning {
-                    self.startSession()
-                }
-                return
             }
 
-            if result?.isFinal == true {
-                if self.isCapturing {
-                    self.handleSessionEndDuringCapture()
-                } else if self.isRunning {
-                    self.startSession()
-                }
+            if self.finalWaiter != nil {
+                // stopCapture(waitForFinal:) 正在等這個 session 收尾 → 交給它處理
+                self.resumeFinalWaiter()
+            } else if self.isCapturing {
+                self.handleSessionEndDuringCapture()
+            } else if self.isRunning {
+                self.endCurrentSession()
+                self.restartSessionOrShutdown()
             }
         }
+        return true
+    }
+
+    /// 重開 session；失敗就整個停掉（isRunning = false），pipeline 下次錄音會改走一般 STT
+    @discardableResult
+    private func restartSessionOrShutdown() -> Bool {
+        guard isRunning else { return false }
+        if startSession() { return true }
+        log.error("BackgroundSTT 無法重開 session，停止持續 STT", category: "BackgroundSTT")
+        stop()
+        return false
     }
 
     private func endCurrentSession() {
+        // 先換掉 render 端的 request，避免 render thread 在 endAudio 之後還 append
+        renderLock.withLock { renderRequest = nil }
         recognitionRequest?.endAudio()
         recognitionRequest = nil
         recognitionTask?.cancel()
@@ -256,8 +364,14 @@ class BackgroundSTTEngine: AudioBufferConsumer {
         }
         // 重新啟動 session（capture 繼續）
         captureStartTranscript = ""
+        // 已存進 capturedSegments，清掉避免 stopCapture 合併時重複
+        currentTranscript = ""
         endCurrentSession()
-        startSession()
+        if !startSession() {
+            // 無法重開：保留已擷取的段落，capture 仍在（stopCapture 會回傳已收集的內容）
+            log.error("BackgroundSTT: Capture 期間無法重開 session", category: "BackgroundSTT")
+            return
+        }
         log.info("BackgroundSTT: Capture 期間 session 重啟 (segments=\(capturedSegments.count))", category: "BackgroundSTT")
     }
 
@@ -282,12 +396,12 @@ class BackgroundSTTEngine: AudioBufferConsumer {
     private func rollSession() {
         guard isRunning, !isCapturing else { return }
 
-        let oldTranscript = currentTranscript
+        let oldCount = currentTranscript.count
         endCurrentSession()
-        startSession()
+        restartSessionOrShutdown()
 
-        if !oldTranscript.isEmpty {
-            log.debug("BackgroundSTT session roll (prev=\(oldTranscript.prefix(40)))", category: "BackgroundSTT")
+        if oldCount > 0 {
+            log.debug("BackgroundSTT session roll (prev \(oldCount) 字)", category: "BackgroundSTT")
         }
     }
 

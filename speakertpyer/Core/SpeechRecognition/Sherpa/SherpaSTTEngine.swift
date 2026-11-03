@@ -46,24 +46,36 @@ final class SherpaSTTEngine: AudioBufferConsumer {
     @ObservationIgnored private let audioLevelThrottler = MainThreadThrottler(intervalMs: 50)
     @ObservationIgnored private let worker = SherpaWorker()
     @ObservationIgnored private let log = AppLogger.shared
+    /// 每次 start/stop/cancel 遞增；舊 session 排隊中的字幕更新比對不符就丟棄
+    @ObservationIgnored private var sessionToken: UInt64 = 0
+    /// render thread 讀取的 micGain 快照
+    @ObservationIgnored private let renderMicGain = LockedValue<Float>(2.0)
 
     func startListening(languagePreference: String) throws {
         let models = SherpaModelManager.shared
         guard models.isInstalled else { throw SherpaSTTError.modelMissing }
 
         transcript = ""
+        sessionToken &+= 1
+        let token = sessionToken
         worker.onTranscript = { [weak self] text in
-            DispatchQueue.main.async { self?.transcript = text }
+            DispatchQueue.main.async {
+                guard let self, self.sessionToken == token, self.isListening else { return }
+                self.transcript = text
+            }
         }
-        worker.onSpeech = { [weak self] in
-            DispatchQueue.main.async { self?.silenceDetector.update(rawLevel: 1) }
-        }
+        // SilenceDetector 內部有鎖，可直接在 worker queue 上更新
+        let detector = silenceDetector
+        worker.onSpeech = { detector.update(rawLevel: 1) }
+        renderMicGain.withLock { $0 = micGain }
+        silenceDetector.start()
+        audioLevelThrottler.reset()
+        // 先開放 ring 收音（pre-buffer 回放要寫得進去），再排 begin，最後註冊 consumer 回放
+        worker.openInput()
         worker.begin(
             paths: .init(model: models.modelPath, tokens: models.tokensPath, vad: models.vadPath),
             toTraditional: languagePreference == AppLanguage.zhTW.rawValue
         )
-        silenceDetector.start()
-        audioLevelThrottler.reset()
         isListening = true
         SharedAudioEngine.shared.addConsumer(self, replayPreBuffer: true)
         log.info("Sherpa 開始錄音", category: "STT")
@@ -72,7 +84,9 @@ final class SherpaSTTEngine: AudioBufferConsumer {
     /// 停止收音並等最後一段辨識完成
     func stopListening() async throws -> String {
         SharedAudioEngine.shared.removeConsumer(self)
+        worker.closeInput()
         isListening = false
+        sessionToken &+= 1
         silenceDetector.reset()
         audioLevel = 0
         let start = Date()
@@ -86,7 +100,9 @@ final class SherpaSTTEngine: AudioBufferConsumer {
 
     func cancel() {
         SharedAudioEngine.shared.removeConsumer(self)
+        worker.closeInput()
         isListening = false
+        sessionToken &+= 1
         silenceDetector.reset()
         audioLevel = 0
         transcript = ""
@@ -111,11 +127,11 @@ final class SherpaSTTEngine: AudioBufferConsumer {
     // MARK: - AudioBufferConsumer（render thread）
 
     func handleAudioBuffer(_ buffer: AVAudioPCMBuffer, time: AVAudioTime) {
-        if let copy = buffer.copy() as? AVAudioPCMBuffer {
-            worker.append(copy)
-        }
+        // memcpy 進 worker 預配置的 ring，再以 DispatchSource 通知（不 copy buffer、不配置閉包）
+        guard worker.enqueue(buffer) else { return }
         guard let rms = AudioUtils.rms(from: buffer) else { return }
-        let displayLevel = AudioUtils.normalizedLevel(rms: rms, multiplier: 5.0 * micGain)
+        let gain = renderMicGain.withLock { $0 }
+        let displayLevel = AudioUtils.normalizedLevel(rms: rms, multiplier: 5.0 * gain)
         audioLevelThrottler.dispatch { [weak self] in
             self?.audioLevel = displayLevel
         }
@@ -134,7 +150,10 @@ nonisolated final class SherpaWorker: @unchecked Sendable {
 
     private static let rate = Int(SherpaOfflineRecognizer.sampleRate)
     private static let partialInterval = rate * 8 / 10        // 每 0.8 秒新音訊更新一次字幕
-    private static let maxPartialWindow = rate * 25           // 字幕最多重算最後 25 秒
+    private static let maxPartialWindow = rate * 8            // 字幕最多重算最後 8 秒（長句不會越算越慢）
+    private static let partialMinWallNanos: UInt64 = 800_000_000
+    /// 一次 drain 超過這麼多（原生取樣率秒數）代表 worker 落後 → 這輪跳過字幕重算，先追上
+    private static let behindThresholdSeconds: Double = 1.0
 
     /// 在 worker queue 上呼叫
     var onTranscript: (@Sendable (String) -> Void)?
@@ -144,6 +163,21 @@ nonisolated final class SherpaWorker: @unchecked Sendable {
     private let queue = DispatchQueue(label: "com.bashcat.saybit.sherpa", qos: .userInitiated)
     private let outFormat = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: Double(rate),
                                           channels: 1, interleaved: false)!
+
+    /// render thread → worker 的預配置 ring（mono Float，裝置原生取樣率）
+    private let ring = SherpaInputRing(capacitySamples: 48_000 * 20)
+    /// render thread 寫入後 `add(data:)` 通知 worker queue drain（合併通知、不配置記憶體）
+    private let drainSource: DispatchSourceUserDataAdd
+
+    init() {
+        drainSource = DispatchSource.makeUserDataAddSource(queue: queue)
+        drainSource.setEventHandler { [weak self] in self?.drainAndProcess() }
+        drainSource.activate()
+    }
+
+    deinit {
+        drainSource.cancel()
+    }
 
     // 以下只在 queue 上存取
     private var loadedPaths: Paths?
@@ -157,7 +191,9 @@ nonisolated final class SherpaWorker: @unchecked Sendable {
     private var committed: [String] = []
     private var committedEnd = 0
     private var lastPartialAt = 0
+    private var lastPartialWallNanos: UInt64 = 0
     private var partial = ""
+    private var drainScratch: [Float] = []
 
     func preload(paths: Paths) {
         queue.async { [self] in loadIfNeeded(paths) }
@@ -184,22 +220,51 @@ nonisolated final class SherpaWorker: @unchecked Sendable {
             committed = []
             committedEnd = 0
             lastPartialAt = 0
+            lastPartialWallNanos = 0
             partial = ""
             self.toTraditional = toTraditional
             active = true
         }
     }
 
-    func append(_ buffer: AVAudioPCMBuffer) {
-        queue.async { [self] in
-            guard active, recognizer != nil else { return }
-            convert(buffer)
-            process(final: false)
-        }
+    /// main：清空 ring 並開始接受音訊（在 begin 與註冊 consumer 之前呼叫）
+    func openInput() {
+        ring.reset(accepting: true)
+    }
+
+    /// main：停止接受新音訊（已寫入的仍會在 finish 時處理）
+    func closeInput() {
+        ring.setAccepting(false)
+    }
+
+    /// render thread：把 buffer memcpy 進 ring 並通知 worker；未開放收音時回傳 false
+    func enqueue(_ buffer: AVAudioPCMBuffer) -> Bool {
+        guard ring.write(buffer) else { return false }
+        drainSource.add(data: 1)
+        return true
+    }
+
+    /// queue 上呼叫：把 ring 內容搬出、轉 16k 後送 VAD / 字幕
+    private func drainAndProcess() {
+        // 尚未 begin（或已 cancel）時不動 ring：資料留給下一個 begin 之後的 drain，
+        // ring 本身由 openInput / cancel 在 main 清空，不會混到別的 session
+        guard active, recognizer != nil else { return }
+        let rate = ring.drain(into: &drainScratch)
+        guard !drainScratch.isEmpty else { return }
+        let behind = rate > 0 && Double(drainScratch.count) / rate > Self.behindThresholdSeconds
+        convert(drainScratch, sampleRate: rate)
+        drainScratch.removeAll(keepingCapacity: true)
+        process(final: false, allowPartial: !behind)
     }
 
     func finish(_ completion: @escaping @Sendable (Result<String, Error>) -> Void) {
         queue.async { [self] in
+            // 收尾前把 ring 裡剩下的音訊處理完
+            if active, recognizer != nil {
+                let rate = ring.drain(into: &drainScratch)
+                if !drainScratch.isEmpty { convert(drainScratch, sampleRate: rate) }
+            }
+            drainScratch.removeAll(keepingCapacity: true)
             guard let recognizer, active else {
                 active = false
                 completion(.failure(SherpaSTTError.loadFailed))
@@ -221,6 +286,7 @@ nonisolated final class SherpaWorker: @unchecked Sendable {
     }
 
     func cancel() {
+        ring.reset(accepting: false)
         queue.async { [self] in
             active = false
             samples.removeAll()
@@ -239,12 +305,22 @@ nonisolated final class SherpaWorker: @unchecked Sendable {
 
     // MARK: - Private (queue)
 
-    private func convert(_ buffer: AVAudioPCMBuffer) {
-        if converter == nil || converter?.inputFormat != buffer.format {
-            converter = AVAudioConverter(from: buffer.format, to: outFormat)
+    private func convert(_ input: [Float], sampleRate: Double) {
+        guard sampleRate > 0,
+              let inFormat = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: sampleRate,
+                                           channels: 1, interleaved: false),
+              let buffer = AVAudioPCMBuffer(pcmFormat: inFormat, frameCapacity: AVAudioFrameCount(input.count)),
+              let dst = buffer.floatChannelData?[0] else { return }
+        input.withUnsafeBufferPointer { src in
+            if let base = src.baseAddress { dst.update(from: base, count: input.count) }
+        }
+        buffer.frameLength = AVAudioFrameCount(input.count)
+
+        if converter == nil || converter?.inputFormat != inFormat {
+            converter = AVAudioConverter(from: inFormat, to: outFormat)
         }
         guard let converter else { return }
-        let ratio = outFormat.sampleRate / buffer.format.sampleRate
+        let ratio = outFormat.sampleRate / inFormat.sampleRate
         let capacity = AVAudioFrameCount(Double(buffer.frameLength) * ratio) + 32
         guard let out = AVAudioPCMBuffer(pcmFormat: outFormat, frameCapacity: capacity) else { return }
 
@@ -263,7 +339,7 @@ nonisolated final class SherpaWorker: @unchecked Sendable {
         samples.append(contentsOf: UnsafeBufferPointer(start: ch, count: Int(out.frameLength)))
     }
 
-    private func process(final: Bool) {
+    private func process(final: Bool, allowPartial: Bool = true) {
         guard let recognizer, let vad else { return }
         let window = SherpaVAD.windowSize
         while samples.count - vadFed >= window {
@@ -290,8 +366,12 @@ nonisolated final class SherpaWorker: @unchecked Sendable {
 
         if !final, vad.isSpeaking { onSpeech?() }
 
-        if !final, vad.isSpeaking, samples.count - lastPartialAt >= Self.partialInterval {
+        let now = DispatchTime.now().uptimeNanoseconds
+        if !final, allowPartial, vad.isSpeaking,
+           samples.count - lastPartialAt >= Self.partialInterval,
+           now &- lastPartialWallNanos >= Self.partialMinWallNanos {
             lastPartialAt = samples.count
+            lastPartialWallNanos = now
             let from = max(committedEnd, samples.count - Self.maxPartialWindow)
             if from < samples.count {
                 partial = recognizer.decode(samples[from...])
@@ -324,5 +404,105 @@ nonisolated final class SherpaWorker: @unchecked Sendable {
             out = out.applyingTransform(StringTransform("Hans-Hant"), reverse: false) ?? out
         }
         return out
+    }
+}
+
+// MARK: - Render → worker ring
+
+/// 預配置的 mono Float 環形緩衝區：render thread 只做下混 + memcpy，worker queue 取出。
+/// 容量用完（worker 卡住超過 ~20 秒）時丟掉新音訊並計數，不在 render thread 擴容。
+nonisolated final class SherpaInputRing: @unchecked Sendable {
+    private let lock = UnfairLock()
+    private var storage: [Float]
+    private var readIndex = 0
+    private var count = 0
+    private var sampleRate: Double = 0
+    private var accepting = false
+    private var dropped = 0
+
+    init(capacitySamples: Int) {
+        storage = [Float](repeating: 0, count: max(1, capacitySamples))
+    }
+
+    func reset(accepting: Bool) {
+        lock.withLock {
+            readIndex = 0
+            count = 0
+            sampleRate = 0
+            dropped = 0
+            self.accepting = accepting
+        }
+    }
+
+    func setAccepting(_ value: Bool) {
+        lock.withLock { accepting = value }
+    }
+
+    /// render thread
+    func write(_ buffer: AVAudioPCMBuffer) -> Bool {
+        guard let channels = buffer.floatChannelData else { return false }
+        let frames = Int(buffer.frameLength)
+        let channelCount = Int(buffer.format.channelCount)
+        lock.lock()
+        defer { lock.unlock() }
+        guard accepting else { return false }
+        guard frames > 0, channelCount > 0 else { return true }
+        let rate = buffer.format.sampleRate
+        if sampleRate != rate {
+            // 裝置取樣率改變（切換輸入裝置）：舊取樣率的資料已無法一起轉換，丟掉重來
+            if count > 0 { dropped += count }
+            readIndex = 0
+            count = 0
+            sampleRate = rate
+        }
+        let capacity = storage.count
+        let writable = min(frames, capacity - count)
+        if writable < frames { dropped += frames - writable }
+        guard writable > 0 else { return true }
+        let scale = 1 / Float(channelCount)
+        storage.withUnsafeMutableBufferPointer { dst in
+            var w = (readIndex + count) % capacity
+            for i in 0..<writable {
+                var v = channels[0][i]
+                if channelCount > 1 {
+                    for ch in 1..<channelCount { v += channels[ch][i] }
+                    v *= scale
+                }
+                dst[w] = v
+                w += 1
+                if w == capacity { w = 0 }
+            }
+        }
+        count += writable
+        return true
+    }
+
+    /// worker queue：取出全部內容（append 到 out），回傳取樣率
+    func drain(into out: inout [Float]) -> Double {
+        lock.lock()
+        defer { lock.unlock() }
+        guard count > 0 else { return sampleRate }
+        let capacity = storage.count
+        let first = min(count, capacity - readIndex)
+        out.append(contentsOf: storage[readIndex ..< readIndex + first])
+        if first < count {
+            out.append(contentsOf: storage[0 ..< (count - first)])
+        }
+        readIndex = (readIndex + count) % capacity
+        count = 0
+        return sampleRate
+    }
+}
+
+nonisolated private final class LockedValue<Value>: @unchecked Sendable {
+    private let lock = UnfairLock()
+    private var value: Value
+
+    init(_ value: Value) { self.value = value }
+
+    func withLock<T>(_ body: (inout Value) -> T) -> T {
+        lock.lock()
+        defer { lock.unlock() }
+        return body(&value)
     }
 }

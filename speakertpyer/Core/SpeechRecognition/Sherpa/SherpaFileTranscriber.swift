@@ -50,6 +50,7 @@ nonisolated enum SherpaFileTranscriber {
         onSegment: @escaping @Sendable (Segment) -> Void,
         onProgress: @escaping @Sendable (Double) -> Void
     ) async throws -> [Segment] {
+        try Task.checkCancellation()
         let asset = AVURLAsset(url: url)
         let tracks = try await asset.loadTracks(withMediaType: .audio)
         guard !tracks.isEmpty else { throw TranscribeError.noAudioTrack }
@@ -59,6 +60,7 @@ nonisolated enum SherpaFileTranscriber {
               let vad = SherpaVAD(modelPath: paths.vad, minSilence: 0.6, maxSpeech: 25) else {
             throw TranscribeError.loadFailed
         }
+        try Task.checkCancellation()
 
         let reader: AVAssetReader
         do { reader = try AVAssetReader(asset: asset) } catch { throw TranscribeError.readFailed(error.localizedDescription) }
@@ -83,8 +85,9 @@ nonisolated enum SherpaFileTranscriber {
         var fed = 0
         var segments: [Segment] = []
 
-        func drain() {
+        func drain() throws {
             for seg in vad.popSegments() {
+                try Task.checkCancellation()
                 let raw = recognizer.decode(seg.samples[...])
                 guard !raw.isEmpty else { continue }
                 let text = toTraditional ? (raw.applyingTransform(StringTransform("Hans-Hant"), reverse: false) ?? raw) : raw
@@ -92,6 +95,7 @@ nonisolated enum SherpaFileTranscriber {
                                 end: Double(seg.start + seg.samples.count) / rate,
                                 text: text)
                 segments.append(s)
+                if Task.isCancelled { throw CancellationError() }
                 onSegment(s)
             }
         }
@@ -115,7 +119,7 @@ nonisolated enum SherpaFileTranscriber {
             }
             pending.removeFirst(offset)
             fed += offset
-            drain()
+            try drain()
             if duration > 0 { onProgress(min(Double(fed) / rate / duration, 0.99)) }
         }
 
@@ -124,7 +128,7 @@ nonisolated enum SherpaFileTranscriber {
         }
         if !pending.isEmpty { vad.accept(pending[...]) }
         vad.flush()
-        drain()
+        try drain()
         onProgress(1)
         return segments
     }

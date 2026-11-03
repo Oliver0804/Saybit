@@ -39,6 +39,8 @@ final class SherpaModelManager {
 
     private(set) var state: State = .notInstalled
     @ObservationIgnored private var downloadTask: Task<Void, Never>?
+    /// 目前下載的識別碼：取消後立刻再下載時，舊 Task 的收尾不能清掉 / 覆寫新下載的狀態
+    @ObservationIgnored private var downloadToken: UUID?
     @ObservationIgnored private let log = AppLogger.shared
 
     let directory: URL = {
@@ -74,9 +76,16 @@ final class SherpaModelManager {
     func download() {
         guard downloadTask == nil, !isInstalled else { return }
         state = .downloading(progress: 0)
+        let token = UUID()
+        downloadToken = token
         downloadTask = Task { @MainActor [weak self] in
             guard let self else { return }
-            defer { self.downloadTask = nil }
+            defer {
+                if self.downloadToken == token {
+                    self.downloadTask = nil
+                    self.downloadToken = nil
+                }
+            }
             do {
                 try FileManager.default.createDirectory(at: self.directory, withIntermediateDirectories: true)
                 var done: Int64 = 0
@@ -90,7 +99,8 @@ final class SherpaModelManager {
                     let base = done
                     try await Self.fetch(file.url, to: dest) { written in
                         Task { @MainActor [weak self] in
-                            guard let self, case .downloading = self.state else { return }
+                            guard let self, self.downloadToken == token,
+                                  case .downloading = self.state else { return }
                             self.state = .downloading(progress: Double(base + written) / Double(Self.totalSize))
                         }
                     }
@@ -101,14 +111,22 @@ final class SherpaModelManager {
                 values.isExcludedFromBackup = true
                 try? dir.setResourceValues(values)
 
+                try Task.checkCancellation()
                 guard self.checkInstalled() else { throw URLError(.cannotDecodeContentData) }
+                guard self.downloadToken == token else { return }
                 self.state = .installed
                 self.log.info("離線模型下載完成", category: "STT")
-            } catch is CancellationError {
-                self.state = .notInstalled
             } catch {
-                self.log.error("離線模型下載失敗: \(error.localizedDescription)", category: "STT")
-                self.state = .failed(error.localizedDescription)
+                // 已被取消 / 被新的下載取代：狀態由 cancelDownload 或新下載負責，不要覆寫
+                guard self.downloadToken == token else { return }
+                // URLSession 被取消拋的是 URLError(.cancelled)，不是 CancellationError
+                if Task.isCancelled || error is CancellationError || (error as? URLError)?.code == .cancelled {
+                    self.state = self.checkInstalled() ? .installed : .notInstalled
+                    self.log.info("離線模型下載已取消", category: "STT")
+                } else {
+                    self.log.error("離線模型下載失敗: \(error.localizedDescription)", category: "STT")
+                    self.state = .failed(error.localizedDescription)
+                }
             }
         }
     }
@@ -116,6 +134,7 @@ final class SherpaModelManager {
     func cancelDownload() {
         downloadTask?.cancel()
         downloadTask = nil
+        downloadToken = nil
         state = checkInstalled() ? .installed : .notInstalled
     }
 

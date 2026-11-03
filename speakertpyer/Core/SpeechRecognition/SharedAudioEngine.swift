@@ -9,6 +9,34 @@ import AudioToolbox
 import AVFoundation
 import Foundation
 
+/// `os_unfair_lock` 包裝（堆積配置 + 正確 initialize）。
+/// os_unfair_lock 不能放在 Swift 的 stored property 直接取址使用（值可能被搬動），
+/// 也不能只 allocate 不 initialize（殘值會讓 render thread 永久等待或 crash）。
+/// 支援優先級捐贈，可在 audio render thread 上短暫持有。
+nonisolated final class UnfairLock: @unchecked Sendable {
+    private let raw: os_unfair_lock_t
+
+    init() {
+        raw = os_unfair_lock_t.allocate(capacity: 1)
+        raw.initialize(to: os_unfair_lock())
+    }
+
+    deinit {
+        raw.deinitialize(count: 1)
+        raw.deallocate()
+    }
+
+    func lock() { os_unfair_lock_lock(raw) }
+    func unlock() { os_unfair_lock_unlock(raw) }
+
+    @inline(__always)
+    func withLock<T>(_ body: () throws -> T) rethrows -> T {
+        os_unfair_lock_lock(raw)
+        defer { os_unfair_lock_unlock(raw) }
+        return try body()
+    }
+}
+
 /// 音訊 buffer 消費者協定
 protocol AudioBufferConsumer: AnyObject {
     var consumerID: String { get }
@@ -23,8 +51,9 @@ class SharedAudioEngine {
     private let log = AppLogger.shared
 
     private var consumers: [AudioBufferConsumer] = []
-    // os_unfair_lock 支援優先級捐贈，避免 render thread 因 main thread 持鎖被降級（NSLock 無此保證）
-    private let consumersLock = os_unfair_lock_t.allocate(capacity: 1)
+    // os_unfair_lock 支援優先級捐贈，避免 render thread 因 main thread 持鎖被降級（NSLock 無此保證）。
+    // 同時保護 pre-buffer 寫入與 consumer 分發的原子性（見 addConsumer 回放邏輯）。
+    private let consumersLock = UnfairLock()
 
     private(set) var currentInputDeviceUID: String = ""
     private(set) var isRunning = false
@@ -67,11 +96,6 @@ class SharedAudioEngine {
         #if os(iOS)
         installSessionObservers()
         #endif
-    }
-
-    deinit {
-        consumersLock.deinitialize(count: 1)
-        consumersLock.deallocate()
     }
 
     // MARK: - Lifecycle
@@ -126,13 +150,12 @@ class SharedAudioEngine {
             // 先做帶通濾波（in-place），下游 consumer 與 pre-buffer 拿到的都是降噪後音訊
             self.voiceFilter.process(buffer)
 
-            // 寫入 pre-buffer（純 memcpy，無 heap 配置）
+            // 寫入 pre-buffer（純 memcpy，無 heap 配置）與讀取 consumer 快照必須在同一把鎖內：
+            // addConsumer 靠這個保證「ring 裡的每個 buffer 不是已回放、就是之後會即時送達」，不重複不遺漏
+            self.consumersLock.lock()
             self.preBufferRing.write(buffer, time: time)
-
-            // 讀取 consumer 快照（os_unfair_lock 支援優先級捐贈）
-            os_unfair_lock_lock(self.consumersLock)
             let snapshot = self.consumers
-            os_unfair_lock_unlock(self.consumersLock)
+            self.consumersLock.unlock()
 
             for consumer in snapshot {
                 consumer.handleAudioBuffer(buffer, time: time)
@@ -209,15 +232,19 @@ class SharedAudioEngine {
     /// 期望 engine 持續運行（供中斷結束 / 路由變更後自動恢復）
     private var wantsRunning = false
 
+    /// 音訊 session 被來電 / Siri 等中斷（engine 已停止）時呼叫，於 main thread
+    var onInterruptionBegan: (() -> Void)?
+
     /// playAndRecord + mixWithOthers：錄音時不打斷使用者正在聽的音樂；
-    /// allowBluetoothHFP 讓 AirPods 麥克風可用。
+    /// allowBluetoothHFP 讓 AirPods 麥克風可用；allowBluetoothA2DP 讓不需麥克風時的
+    /// 播放可走 A2DP（同時設定時系統仍優先 HFP，完整解法是待命時不保持 engine 運行）。
     private func activateAudioSession() -> Bool {
         let session = AVAudioSession.sharedInstance()
         do {
             try session.setCategory(
                 .playAndRecord,
                 mode: .default,
-                options: [.mixWithOthers, .allowBluetoothHFP, .defaultToSpeaker]
+                options: [.mixWithOthers, .allowBluetoothHFP, .allowBluetoothA2DP, .defaultToSpeaker]
             )
             try session.setActive(true)
             wantsRunning = true
@@ -240,6 +267,8 @@ class SharedAudioEngine {
         nc.addObserver(forName: AVAudioSession.interruptionNotification, object: nil, queue: .main) { [weak self] note in
             guard let raw = note.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt,
                   let type = AVAudioSession.InterruptionType(rawValue: raw) else { return }
+            let optionsRaw = note.userInfo?[AVAudioSessionInterruptionOptionKey] as? UInt ?? 0
+            let shouldResume = AVAudioSession.InterruptionOptions(rawValue: optionsRaw).contains(.shouldResume)
             MainActor.assumeIsolated {
             guard let self else { return }
             switch type {
@@ -247,10 +276,15 @@ class SharedAudioEngine {
                 self.log.info("Audio session 被中斷", category: "Audio")
                 self.audioEngine.stop()
                 self.isRunning = false
+                self.onInterruptionBegan?()
             case .ended:
-                if self.wantsRunning {
+                guard self.wantsRunning else { break }
+                if shouldResume {
                     self.log.info("Audio session 中斷結束，重啟 engine", category: "Audio")
                     self.restart()
+                } else {
+                    // 系統未建議恢復（例如通話 App 仍持有音訊）：保持停止，下次 start() 再啟用
+                    self.log.info("Audio session 中斷結束但未要求恢復，engine 保持停止", category: "Audio")
                 }
             @unknown default:
                 break
@@ -295,30 +329,78 @@ class SharedAudioEngine {
     // MARK: - Consumer Management
 
     /// 加入消費者。`replayPreBuffer` 為 true 時會先回放最近 ~1.5 秒的音訊，避免開頭遺失。
+    ///
+    /// 回放在「加入 consumers 之前」完成：先回放 ring 快照，再在鎖內確認 ring 沒有更新的 buffer 才加入；
+    /// 若回放期間 render thread 又寫了新的 buffer，就補放那幾個再重試。
+    /// 因為 tap 的「寫 ring + 取 consumer 快照」在同一把鎖內，加入當下 ring 裡的 buffer 都已回放、
+    /// 之後的 buffer 都走即時分發 → 不交錯、不重複、不遺漏，consumer 也不會被 main 與 render 同時呼叫。
     func addConsumer(_ consumer: AudioBufferConsumer, replayPreBuffer: Bool = false) {
-        os_unfair_lock_lock(consumersLock)
-        guard !consumers.contains(where: { $0.consumerID == consumer.consumerID }) else {
-            os_unfair_lock_unlock(consumersLock)
+        let alreadyAdded = consumersLock.withLock {
+            consumers.contains(where: { $0.consumerID == consumer.consumerID })
+        }
+        guard !alreadyAdded else { return }
+
+        guard replayPreBuffer else {
+            consumersLock.withLock {
+                if !consumers.contains(where: { $0.consumerID == consumer.consumerID }) {
+                    consumers.append(consumer)
+                }
+            }
+            log.info("Audio consumer 加入: \(consumer.consumerID)", category: "Audio")
             return
         }
-        consumers.append(consumer)
-        os_unfair_lock_unlock(consumersLock)
 
-        if replayPreBuffer {
-            let snapshot = preBufferRing.snapshot()
-            for entry in snapshot {
+        var replayed = 0
+        var lastTime: AVAudioTime?
+        var pending = preBufferRing.snapshot()
+        // 正常 1–2 輪就收斂；上限避免極端情況下（回放比即時還慢）無限追趕
+        for attempt in 0..<8 {
+            for entry in pending {
                 consumer.handleAudioBuffer(entry.buffer, time: entry.time)
+                lastTime = entry.time
+                replayed += 1
             }
-            log.info("Audio consumer 加入: \(consumer.consumerID) (replay \(snapshot.count) buffers)", category: "Audio")
-        } else {
-            log.info("Audio consumer 加入: \(consumer.consumerID)", category: "Audio")
+            let added: Bool = consumersLock.withLock {
+                let newer = Self.entries(in: preBufferRing.snapshot(), after: lastTime)
+                if newer.isEmpty || attempt == 7 {
+                    if !consumers.contains(where: { $0.consumerID == consumer.consumerID }) {
+                        consumers.append(consumer)
+                    }
+                    return true
+                }
+                pending = newer
+                return false
+            }
+            if added { break }
+        }
+        log.info("Audio consumer 加入: \(consumer.consumerID) (replay \(replayed) buffers)", category: "Audio")
+    }
+
+    /// 取出 `after` 之後（較新）的 entries；`after == nil` 代表全部
+    private static func entries(
+        in snapshot: [(buffer: AVAudioPCMBuffer, time: AVAudioTime)],
+        after last: AVAudioTime?
+    ) -> [(buffer: AVAudioPCMBuffer, time: AVAudioTime)] {
+        guard let last else { return snapshot }
+        if let idx = snapshot.lastIndex(where: { $0.time === last }) {
+            return Array(snapshot[(idx + 1)...])
+        }
+        return snapshot.filter { entry in
+            if entry.time.isSampleTimeValid && last.isSampleTimeValid {
+                return entry.time.sampleTime > last.sampleTime
+            }
+            if entry.time.isHostTimeValid && last.isHostTimeValid {
+                return entry.time.hostTime > last.hostTime
+            }
+            return false
         }
     }
 
     func removeConsumer(_ consumer: AudioBufferConsumer) {
-        os_unfair_lock_lock(consumersLock)
-        defer { os_unfair_lock_unlock(consumersLock) }
-        consumers.removeAll(where: { $0.consumerID == consumer.consumerID })
-        log.info("Audio consumer 移除: \(consumer.consumerID) (total=\(consumers.count))", category: "Audio")
+        let total: Int = consumersLock.withLock {
+            consumers.removeAll(where: { $0.consumerID == consumer.consumerID })
+            return consumers.count
+        }
+        log.info("Audio consumer 移除: \(consumer.consumerID) (total=\(total))", category: "Audio")
     }
 }
