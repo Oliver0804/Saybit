@@ -20,10 +20,11 @@ struct AppContext {
         let bundleID = (bundleIdentifier ?? "").lowercased()
 
         // Code Editors & IDEs
+        // Xcode 要先比對：舊版 `name.contains("code")` 會把 Xcode 判成 vscode
+        if name == "xcode" || bundleID == "com.apple.dt.xcode" { return "xcode" }
         if name.contains("cursor") || bundleID.contains("cursor") { return "cursor" }
-        if name.contains("code") || bundleID.contains("vscode") { return "vscode" }
+        if name == "code" || name.hasPrefix("visual studio code") || bundleID.contains("vscode") { return "vscode" }
         if name.contains("windsurf") || bundleID.contains("windsurf") { return "windsurf" }
-        if name.contains("xcode") || bundleID.contains("xcode") { return "xcode" }
         if name.contains("intellij") || bundleID.contains("intellij") { return "intellij" }
         if name.contains("pycharm") || bundleID.contains("pycharm") { return "pycharm" }
         if name.contains("android studio") || bundleID.contains("android-studio") { return "android-studio" }
@@ -48,7 +49,11 @@ struct AppContext {
         if name.contains("zoom") || bundleID.contains("zoom") { return "zoom-chat" }
 
         // Email & Documents
-        if name.contains("mail") || bundleID.contains("mail") { return "gmail" }
+        // 精確比對：名稱含 mail 子字串的 App（Mailchimp、Mailtrap…）不是 email 撰寫情境
+        if name == "mail" || name == "gmail" || name == "mimestream" || name == "spark"
+            || bundleID == "com.apple.mail" || bundleID.contains("mimestream") || bundleID.contains("readdle.smartemail") {
+            return "gmail"
+        }
         if name.contains("outlook") || bundleID.contains("outlook") { return "outlook" }
         if name.contains("docs") || bundleID.contains("docs") { return "google-docs" }
         if name.contains("sheets") || bundleID.contains("sheets") { return "google-sheets" }
@@ -56,7 +61,7 @@ struct AppContext {
 
         // Note-taking
         if name.contains("obsidian") || bundleID.contains("obsidian") { return "obsidian" }
-        if name.contains("notes") || bundleID.contains("notes") { return "notes" }
+        if name == "notes" || name == "備忘錄" || bundleID == "com.apple.notes" { return "notes" }
         if name.contains("notion") || bundleID.contains("notion") { return "notion" }
 
         // Design
@@ -73,7 +78,8 @@ struct AppContext {
         if name.contains("safari") || bundleID.contains("safari") { return "safari" }
         if name.contains("chrome") || bundleID.contains("chrome") { return "chrome" }
         if name.contains("firefox") || bundleID.contains("firefox") { return "firefox" }
-        if name.contains("arc") || bundleID.contains("arc") { return "arc" }
+        // "arc" 子字串太常見（Archive Utility、Search…），只認 Arc 瀏覽器本身
+        if name == "arc" || bundleID == "company.thebrowser.browser" { return "arc" }
 
         // AI Tools
         if name.contains("chatgpt") || bundleID.contains("chatgpt") { return "chatgpt" }

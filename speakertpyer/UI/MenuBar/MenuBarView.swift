@@ -17,18 +17,22 @@ struct MenuBarView: View {
     var body: some View {
         // 錄音
         Button(isRecording ? "停止錄音" : "開始錄音（\(currentHotkeyLabel)）") {
+            // 引導還沒走完不允許開始錄音（停止仍可）
+            guard isRecording || appDelegate.isRecordingAllowed else { return }
             appDelegate.voicePipeline?.toggleRecording()
         }
-        .disabled(appDelegate.voicePipeline == nil)
+        .disabled(appDelegate.voicePipeline == nil || (!isRecording && !appDelegate.isRecordingAllowed))
 
         if !settingsStore.voiceModes.isEmpty {
             Menu("用語音模式錄音") {
                 ForEach(settingsStore.voiceModes) { mode in
                     Button(modeLabel(mode)) {
+                        guard isRecording || appDelegate.isRecordingAllowed else { return }
                         appDelegate.voicePipeline?.toggleRecording(mode: mode)
                     }
                 }
             }
+            .disabled(!isRecording && !appDelegate.isRecordingAllowed)
         }
 
         Divider()

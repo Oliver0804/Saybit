@@ -274,7 +274,11 @@ class OverlayWindowController: NSObject {
 
     private func handleCapsuleTap() {
         guard let session else { return }
+        // 引導還沒走完不允許從膠囊開始錄音（停止 / 取消仍可）
+        let recordingAllowed = (NSApp.delegate as? AppDelegate)?.isRecordingAllowed ?? true
         switch session.state {
+        case .idle where !recordingAllowed, .confirming where !recordingAllowed:
+            AppLogger.shared.info("引導尚未完成，忽略膠囊點擊", category: "Overlay")
         case .idle:
             pipeline?.startListening()
         case .listening:
@@ -474,10 +478,106 @@ class OverlayWindowController: NSObject {
         window.center()
 
         NSApp.setActivationPolicy(.regular)
+        restoreAccessoryPolicyOnClose(window)
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
 
         settingsWindow = window
+    }
+
+    // MARK: - Activation Policy
+
+    private var closeObservers: [ObjectIdentifier: NSObjectProtocol] = [:]
+
+    /// 視窗關閉時若已沒有其他一般視窗，把 activation policy 改回 .accessory（不留 Dock 圖示 / ⌘Tab）
+    private func restoreAccessoryPolicyOnClose(_ window: NSWindow) {
+        let key = ObjectIdentifier(window)
+        if let old = closeObservers[key] { NotificationCenter.default.removeObserver(old) }
+        closeObservers[key] = NotificationCenter.default.addObserver(
+            forName: NSWindow.willCloseNotification,
+            object: window,
+            queue: .main
+        ) { [weak self, weak window] _ in
+            MainActor.assumeIsolated {
+                if let token = self?.closeObservers.removeValue(forKey: key) {
+                    NotificationCenter.default.removeObserver(token)
+                }
+                Self.restoreAccessoryPolicyIfNoWindows(closing: window)
+            }
+        }
+    }
+
+    /// 除了 `closing` 之外已沒有可見（或最小化）的一般視窗 → 改回 .accessory。AppDelegate 的引導 / 教學視窗也共用。
+    static func restoreAccessoryPolicyIfNoWindows(closing: NSWindow?) {
+        DispatchQueue.main.async {
+            let hasOtherWindow = NSApp.windows.contains { window in
+                window !== closing
+                    && !(window is NSPanel)
+                    && window.styleMask.contains(.titled)
+                    && (window.isVisible || window.isMiniaturized)
+            }
+            if !hasOtherWindow {
+                NSApp.setActivationPolicy(.accessory)
+            }
+        }
+    }
+
+    // MARK: - Transient Notice
+
+    private var noticePanel: NSPanel?
+    private var noticeDismissWork: DispatchWorkItem?
+
+    /// 在膠囊附近短暫顯示一則提示（例如「已學習 X → Y」），可附「撤銷」按鈕；不搶焦點。
+    func showTransientNotice(text: String, duration: TimeInterval = 3, undo: (() -> Void)? = nil) {
+        noticeDismissWork?.cancel()
+        noticePanel?.orderOut(nil)
+
+        let view = TransientNoticeView(text: text, showsUndo: undo != nil) { [weak self] in
+            undo?()
+            self?.hideTransientNotice()
+        }
+        let hosting = OverlayHostingView(rootView: view)
+        let size = hosting.fittingSize
+
+        let notice = NSPanel(
+            contentRect: NSRect(origin: .zero, size: size),
+            styleMask: [.borderless, .nonactivatingPanel],
+            backing: .buffered,
+            defer: false
+        )
+        notice.isReleasedWhenClosed = false
+        notice.level = .floating
+        notice.isOpaque = false
+        notice.backgroundColor = .clear
+        notice.hasShadow = true
+        notice.hidesOnDeactivate = false
+        notice.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        notice.contentView = hosting
+
+        var origin: NSPoint
+        if let panel, panel.isVisible {
+            // 膠囊在 panel 中央；提示放在膠囊下方
+            origin = NSPoint(x: panel.frame.midX - size.width / 2, y: panel.frame.midY - 60 - size.height)
+        } else if let screen = Self.screenUnderMouse() {
+            origin = NSPoint(x: screen.visibleFrame.midX - size.width / 2, y: screen.visibleFrame.maxY - size.height - 80)
+        } else {
+            origin = NSPoint(x: 200, y: 200)
+        }
+        origin = clampToVisibleScreen(NSRect(origin: origin, size: size)).origin
+        notice.setFrameOrigin(origin)
+        notice.orderFrontRegardless()
+        noticePanel = notice
+
+        let work = DispatchWorkItem { [weak self] in self?.hideTransientNotice() }
+        noticeDismissWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + duration, execute: work)
+    }
+
+    func hideTransientNotice() {
+        noticeDismissWork?.cancel()
+        noticeDismissWork = nil
+        noticePanel?.orderOut(nil)
+        noticePanel = nil
     }
 
     @objc private func showAbout(_ sender: NSMenuItem) {
@@ -496,11 +596,41 @@ class OverlayWindowController: NSObject {
         window.center()
 
         NSApp.setActivationPolicy(.regular)
+        restoreAccessoryPolicyOnClose(window)
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
     }
 
     @objc private func quitApp(_ sender: NSMenuItem) {
         NSApp.terminate(nil)
+    }
+}
+
+// MARK: - Transient Notice View
+
+private struct TransientNoticeView: View {
+    let text: String
+    let showsUndo: Bool
+    let onUndo: () -> Void
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "book.closed")
+                .foregroundStyle(.secondary)
+            Text(text)
+                .font(.callout)
+                .lineLimit(2)
+                .frame(maxWidth: 360, alignment: .leading)
+                .fixedSize(horizontal: false, vertical: true)
+            if showsUndo {
+                Button("撤銷", action: onUndo)
+                    .buttonStyle(.borderless)
+                    .font(.callout.weight(.semibold))
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+        .background(.regularMaterial, in: Capsule())
+        .padding(4)
     }
 }

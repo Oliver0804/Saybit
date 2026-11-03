@@ -19,6 +19,15 @@ struct VoiceMode: Codable, Identifiable, Hashable {
 
     var hasHotkey: Bool { keyCode != nil && modifiers != 0 }
 
+    /// ⇧⌃⌥⌘ 的 CGEventFlags 位元（maskShift | maskControl | maskAlternate | maskCommand）
+    static let hotkeyModifierMask: UInt64 = 0x20000 | 0x40000 | 0x80000 | 0x100000
+
+    /// 是否與指定快捷鍵（例如主快捷鍵）完全相同
+    func hotkeyConflicts(keyCode otherKeyCode: Int, modifiers otherModifiers: UInt64) -> Bool {
+        guard hasHotkey, keyCode == otherKeyCode else { return false }
+        return (modifiers & Self.hotkeyModifierMask) == (otherModifiers & Self.hotkeyModifierMask)
+    }
+
     static let presets: [VoiceMode] = [
         VoiceMode(
             name: "Email",

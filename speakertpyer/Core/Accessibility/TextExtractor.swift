@@ -28,14 +28,25 @@ enum TextExtractor {
         guard pid > 0 else { return .empty }
 
         // Strategy 1: AX API — 在 detached background pool 跑，不阻塞 caller actor
-        var selectedText: String? = await Task.detached(priority: .userInitiated) {
+        let axResult = await Task.detached(priority: .userInitiated) {
             getSelectedTextViaAX(pid: pid)
         }.value
 
-        // Strategy 2: Clipboard-based Cmd+C (內部自帶 async sleep)
-        if selectedText == nil {
-            log.info("AX API 未取得選取文字，嘗試 clipboard fallback", category: "TextExtract")
-            selectedText = await getSelectedTextViaClipboard()
+        var selectedText: String?
+        switch axResult.selection {
+        case .text(let text):
+            selectedText = text
+        case .emptySelection:
+            // AX 明確回報「沒有選取」：不送 ⌘C（VS Code 會複製整行、Finder 會複製檔案）
+            selectedText = nil
+        case .unsupported:
+            // Strategy 2: Clipboard-based Cmd+C (內部自帶 async sleep)
+            if shouldUseClipboardFallback(bundleID: bundleID, role: axResult.role) {
+                log.info("AX API 不支援選取文字（role=\(axResult.role ?? "nil")），嘗試 clipboard fallback", category: "TextExtract")
+                selectedText = await getSelectedTextViaClipboard()
+            } else {
+                log.info("AX API 不支援選取文字，role=\(axResult.role ?? "nil") 不符或 App 在排除清單，略過 ⌘C fallback", category: "TextExtract")
+            }
         }
 
         if let text = selectedText {
@@ -51,8 +62,35 @@ enum TextExtractor {
 
     // MARK: - Strategy 1: Accessibility API
 
-    private static func getSelectedTextViaAX(pid: pid_t) -> String? {
+    /// AX 讀取選取文字的三種結果：只有 `.unsupported` 才考慮 ⌘C fallback
+    enum AXSelection: Equatable {
+        case text(String)
+        case emptySelection
+        case unsupported
+    }
+
+    struct AXSelectionResult {
+        let selection: AXSelection
+        /// 焦點元素的 kAXRoleAttribute（拿不到焦點元素時為 nil）
+        let role: String?
+    }
+
+    /// ⌘C fallback 只對文字輸入類元素執行
+    private nonisolated static let fallbackRoles: Set<String> = [
+        kAXTextFieldRole as String,
+        kAXTextAreaRole as String,
+        "AXWebArea",
+    ]
+
+    nonisolated static func shouldUseClipboardFallback(bundleID: String?, role: String?) -> Bool {
+        guard let role, fallbackRoles.contains(role) else { return false }
+        return !SensitiveApps.matches(bundleID, patterns: SensitiveApps.clipboardFallbackPatterns)
+    }
+
+    private nonisolated static func getSelectedTextViaAX(pid: pid_t) -> AXSelectionResult {
+        let log = AppLogger.shared
         let appElement = AXUIElementCreateApplication(pid)
+        AXUIElementSetMessagingTimeout(appElement, 0.5)
 
         // Try 1a: focused element → selected text
         var focusedElement: AnyObject?
@@ -62,20 +100,25 @@ enum TextExtractor {
             &focusedElement
         )
 
+        var role: String?
         if focusResult == .success,
            let focused = focusedElement,
            CFGetTypeID(focused) == AXUIElementGetTypeID() {
             // 上面的 CFGetTypeID 比對已等同 type guard，
             // 而 CFType conditional downcast 編譯器會警告 always succeeds，因此維持 as!。
             let focusedAX = focused as! AXUIElement
+            var roleValue: AnyObject?
+            if AXUIElementCopyAttributeValue(focusedAX, kAXRoleAttribute as CFString, &roleValue) == .success {
+                role = roleValue as? String
+            }
             var selText: AnyObject?
             let textResult = AXUIElementCopyAttributeValue(
                 focusedAX,
                 kAXSelectedTextAttribute as CFString,
                 &selText
             )
-            if textResult == .success, let text = selText as? String, !text.isEmpty {
-                return text
+            if textResult == .success, let text = selText as? String {
+                return AXSelectionResult(selection: text.isEmpty ? .emptySelection : .text(text), role: role)
             }
             log.info("AX focusedElement 有但 selectedText 失敗 (status=\(textResult.rawValue))", category: "TextExtract")
         } else {
@@ -89,11 +132,11 @@ enum TextExtractor {
             kAXSelectedTextAttribute as CFString,
             &appSelText
         )
-        if appResult == .success, let text = appSelText as? String, !text.isEmpty {
-            return text
+        if appResult == .success, let text = appSelText as? String {
+            return AXSelectionResult(selection: text.isEmpty ? .emptySelection : .text(text), role: role)
         }
 
-        return nil
+        return AXSelectionResult(selection: .unsupported, role: role)
     }
 
     // MARK: - Strategy 2: Clipboard-based Cmd+C

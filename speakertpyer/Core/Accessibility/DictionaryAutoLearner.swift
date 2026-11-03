@@ -23,34 +23,113 @@ final class DictionaryAutoLearner {
     private let watchDuration: TimeInterval = 30
     private let pollInterval: Duration = .seconds(2)
     private let maxTermLength = 20
+    /// 輸入框內容超過這個字數就不觀察（每 2 秒整份讀出來太重）
+    nonisolated private static let maxDocumentCharacters = 20_000
+    /// 拉丁字更正最多允許的編輯距離 / 長度差
+    private let maxLatinEditDistance = 2
+    private let maxLatinLengthDelta = 2
+
+    /// AXUIElement 是 CFType（thread-safe），包一層才能跨 Task 傳遞
+    nonisolated private struct ElementBox: @unchecked Sendable { let element: AXUIElement }
+
+    nonisolated private enum ReadResult: Sendable {
+        case value(String)
+        case tooLarge
+        case unavailable
+    }
 
     func watch(injected text: String, records: RecordsRepository, after typingTime: TimeInterval = 0) {
         task?.cancel()
         let injected = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard injected.count >= 2,
-              let pid = NSWorkspace.shared.frontmostApplication?.processIdentifier,
-              let element = Self.focusedElement(pid: pid) else { return }
+              let pid = NSWorkspace.shared.frontmostApplication?.processIdentifier else { return }
 
         task = Task { [weak self] in
-            guard let self else { return }
             // 等貼上 / 逐字輸入完成，取得基準內容
             try? await Task.sleep(for: .seconds(typingTime + 0.6))
-            guard !Task.isCancelled, let before = Self.value(of: element),
+            guard !Task.isCancelled, Self.frontmostPID() == pid else { return }
+
+            // AX 同步呼叫可能卡住，全部在背景執行，不佔主執行緒
+            let initial = await Task.detached(priority: .utility) { () -> (ElementBox, ReadResult)? in
+                guard let element = Self.focusedElement(pid: pid) else { return nil }
+                return (ElementBox(element: element), Self.readValue(of: element))
+            }.value
+            guard !Task.isCancelled, let (box, firstRead) = initial,
+                  case .value(let before) = firstRead,
                   let range = before.range(of: injected) else { return }
             let injStart = before.distance(from: before.startIndex, to: range.lowerBound)
             let injEnd = injStart + injected.count
 
             var latest = before
-            let deadline = Date().addingTimeInterval(watchDuration)
+            let deadline = Date().addingTimeInterval(self?.watchDuration ?? 30)
             while Date() < deadline {
-                try? await Task.sleep(for: pollInterval)
-                if Task.isCancelled { break }
-                // 焦點換到別的輸入框就停止觀察
-                guard let current = Self.focusedElement(pid: pid), CFEqual(current, element) else { break }
-                if let v = Self.value(of: element) { latest = v }
+                try? await Task.sleep(for: self?.pollInterval ?? .seconds(2))
+                // 取消（又有新的輸入）就放棄這次觀察
+                if Task.isCancelled { return }
+                // 使用者切到別的 App 就停止觀察
+                guard Self.frontmostPID() == pid else { break }
+                let read = await Task.detached(priority: .utility) { () -> ReadResult? in
+                    // 焦點換到別的輸入框就停止觀察
+                    guard let current = Self.focusedElement(pid: pid), CFEqual(current, box.element) else { return nil }
+                    return Self.readValue(of: box.element)
+                }.value
+                guard let read else { break }
+                switch read {
+                case .value(let v): latest = v
+                case .tooLarge: return
+                case .unavailable: continue
+                }
             }
+            guard !Task.isCancelled, let self else { return }
             self.learn(before: before, after: latest, injectedRange: injStart..<injEnd, records: records)
         }
+    }
+
+    private static func frontmostPID() -> pid_t? {
+        NSWorkspace.shared.frontmostApplication?.processIdentifier
+    }
+
+    // MARK: - Filters
+
+    /// 數字、日期、時間相關字元：這類修改通常是「改事實」（三點→四點），不是錯字更正
+    nonisolated static let numericCharacters: Set<Character> = Set("零〇一二兩两三四五六七八九十百千萬万億亿年月日")
+    // 「點 / 時 / 分 / 號」不列入：它們常出現在一般詞（重點、時候、部分、號碼），而「三點→四點」這類修改已由數字本身擋下
+
+    nonisolated static func containsNumeric(_ s: String) -> Bool {
+        s.contains { $0.isNumber || numericCharacters.contains($0) }
+    }
+
+    nonisolated static func isLatin(_ s: String) -> Bool {
+        !s.isEmpty && s.allSatisfy(\.isASCII)
+    }
+
+    /// Levenshtein 編輯距離（以 Character 計）
+    nonisolated static func editDistance(_ a: String, _ b: String) -> Int {
+        let x = Array(a), y = Array(b)
+        if x.isEmpty { return y.count }
+        if y.isEmpty { return x.count }
+        var prev = Array(0...y.count)
+        var cur = [Int](repeating: 0, count: y.count + 1)
+        for i in 1...x.count {
+            cur[0] = i
+            for j in 1...y.count {
+                cur[j] = x[i - 1] == y[j - 1]
+                    ? prev[j - 1]
+                    : min(prev[j - 1], prev[j], cur[j - 1]) + 1
+            }
+            swap(&prev, &cur)
+        }
+        return prev[y.count]
+    }
+
+    /// 這組 old → new 是否像「錯字更正」而值得學
+    nonisolated static func isLearnableCorrection(old: String, new: String, maxDistance: Int = 2, maxLengthDelta: Int = 2) -> Bool {
+        if containsNumeric(old) || containsNumeric(new) { return false }
+        if isLatin(old) && isLatin(new) {
+            guard abs(old.count - new.count) <= maxLengthDelta,
+                  editDistance(old, new) <= maxDistance else { return false }
+        }
+        return true
     }
 
     // MARK: - Diff
@@ -108,28 +187,66 @@ final class DictionaryAutoLearner {
         let separators = CharacterSet(charactersIn: "，。！？、；：,!?;:「」『』()（）[]\"")
         guard old.rangeOfCharacter(from: separators) == nil,
               new.rangeOfCharacter(from: separators) == nil else { return }
+        // 數字 / 日期時間的修改、拉丁字大改都不是錯字更正
+        guard Self.isLearnableCorrection(old: old, new: new,
+                                         maxDistance: maxLatinEditDistance,
+                                         maxLengthDelta: maxLatinLengthDelta) else {
+            log.info("自動學習字典：修改不像錯字更正，略過（\(old.count) → \(new.count) 字）", category: "Dictionary")
+            return
+        }
 
         if records.addDictionaryEntry(term: old, preferred: new) {
             DictionaryHints.refresh(records: records)
-            log.info("自動學習字典: \(old) → \(new)", category: "Dictionary")
+            // 日誌只記長度，不落盤使用者內容
+            log.info("自動學習字典: \(old.count) 字 → \(new.count) 字", category: "Dictionary")
             NSSound(named: .init("Glass"))?.play()
+            OverlayWindowController.shared.showTransientNotice(text: "已學習「\(old)」→「\(new)」") { [weak self] in
+                self?.removeEntry(term: old, preferred: new, records: records)
+            }
         }
     }
 
-    // MARK: - AX
+    /// 撤銷自動學習：刪掉剛加入的詞條
+    private func removeEntry(term: String, preferred: String, records: RecordsRepository) {
+        let context = records.container.viewContext
+        let request = PersonalDictionaryEntry.fetchRequest()
+        request.predicate = NSPredicate(format: "term ==[c] %@ AND preferred == %@", term, preferred)
+        guard let entries = try? context.fetch(request), !entries.isEmpty else { return }
+        entries.forEach(context.delete)
+        do {
+            try context.save()
+        } catch {
+            context.rollback()
+            log.error("撤銷自動學習字典失敗: \(error.localizedDescription)", category: "Dictionary")
+            return
+        }
+        DictionaryHints.refresh(records: records)
+        log.info("已撤銷自動學習字典詞條", category: "Dictionary")
+    }
 
-    private static func focusedElement(pid: pid_t) -> AXUIElement? {
+    // MARK: - AX（只在背景執行緒呼叫）
+
+    nonisolated private static func focusedElement(pid: pid_t) -> AXUIElement? {
         let app = AXUIElementCreateApplication(pid)
+        AXUIElementSetMessagingTimeout(app, 0.5)
         var focused: AnyObject?
         guard AXUIElementCopyAttributeValue(app, kAXFocusedUIElementAttribute as CFString, &focused) == .success,
               let focused, CFGetTypeID(focused) == AXUIElementGetTypeID() else { return nil }
-        return (focused as! AXUIElement)
+        let element = focused as! AXUIElement
+        AXUIElementSetMessagingTimeout(element, 0.5)
+        return element
     }
 
-    private static func value(of element: AXUIElement) -> String? {
+    nonisolated private static func readValue(of element: AXUIElement) -> ReadResult {
+        var count: AnyObject?
+        if AXUIElementCopyAttributeValue(element, kAXNumberOfCharactersAttribute as CFString, &count) == .success,
+           let n = count as? Int, n > maxDocumentCharacters {
+            return .tooLarge
+        }
         var value: AnyObject?
-        guard AXUIElementCopyAttributeValue(element, kAXValueAttribute as CFString, &value) == .success else { return nil }
-        return value as? String
+        guard AXUIElementCopyAttributeValue(element, kAXValueAttribute as CFString, &value) == .success,
+              let string = value as? String else { return .unavailable }
+        return string.count > maxDocumentCharacters ? .tooLarge : .value(string)
     }
 }
 #endif

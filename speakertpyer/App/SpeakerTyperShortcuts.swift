@@ -42,6 +42,33 @@ struct SpeakerTyperShortcuts: AppShortcutsProvider {
     }
 }
 
+// MARK: - Errors
+
+enum DictationIntentError: Error, CustomLocalizedStringResourceConvertible {
+    case externalControlDisabled
+
+    var localizedStringResource: LocalizedStringResource {
+        switch self {
+        case .externalControlDisabled:
+            return "Saybit 目前不允許其他 App 控制錄音（設定中已停用，或尚未完成初次設定）"
+        }
+    }
+}
+
+/// 與 saybit:// 共用「允許其他 App 控制」開關與引導檢查；不允許時回 nil
+@MainActor
+private func controllablePipeline(source: String) -> VoicePipeline? {
+    guard let appDelegate = NSApp.delegate as? AppDelegate,
+          appDelegate.allowsExternalRecordingControl(source: source) else { return nil }
+    return appDelegate.voicePipeline
+}
+
+@MainActor
+private func isRecording(_ pipeline: VoicePipeline) -> Bool {
+    if case .recording = pipeline.session.state { return true }
+    return false
+}
+
 // MARK: - Start Dictation Intent
 
 struct StartDictationIntent: AppIntent {
@@ -50,19 +77,13 @@ struct StartDictationIntent: AppIntent {
     static var openAppWhenRun: Bool = false
 
     func perform() async throws -> some IntentResult {
-        await MainActor.run {
-            guard let appDelegate = NSApp.delegate as? AppDelegate else { return }
-            appDelegate.voicePipeline?.startRecording()
-            if appDelegate.settingsStore.enableAutoStop {
-                let pipeline = appDelegate.voicePipeline
-                pipeline?.speechRecognizer.silenceTimeoutDuration = appDelegate.settingsStore.silenceTimeout
-                pipeline?.speechRecognizer.onSilenceTimeout = {
-                    DispatchQueue.main.async {
-                        pipeline?.stopRecordingAndProcess()
-                    }
-                }
-            }
+        let allowed = await MainActor.run { () -> Bool in
+            guard let pipeline = controllablePipeline(source: "捷徑：開始語音輸入") else { return false }
+            // 走與快捷鍵相同的入口（含所有 STT 引擎的靜音自動停止）
+            if !isRecording(pipeline) { pipeline.toggleRecording(mode: nil) }
+            return true
         }
+        guard allowed else { throw DictationIntentError.externalControlDisabled }
         return .result()
     }
 }
@@ -75,10 +96,12 @@ struct StopDictationIntent: AppIntent {
     static var openAppWhenRun: Bool = false
 
     func perform() async throws -> some IntentResult {
-        await MainActor.run {
-            guard let appDelegate = NSApp.delegate as? AppDelegate else { return }
-            appDelegate.voicePipeline?.stopRecordingAndProcess()
+        let allowed = await MainActor.run { () -> Bool in
+            guard let pipeline = controllablePipeline(source: "捷徑：停止語音輸入") else { return false }
+            if isRecording(pipeline) { pipeline.stopRecordingAndProcess() }
+            return true
         }
+        guard allowed else { throw DictationIntentError.externalControlDisabled }
         return .result()
     }
 }
@@ -91,10 +114,12 @@ struct ToggleDictationIntent: AppIntent {
     static var openAppWhenRun: Bool = false
 
     func perform() async throws -> some IntentResult {
-        await MainActor.run {
-            guard let appDelegate = NSApp.delegate as? AppDelegate else { return }
-            appDelegate.voicePipeline?.toggleRecording()
+        let allowed = await MainActor.run { () -> Bool in
+            guard let pipeline = controllablePipeline(source: "捷徑：切換語音輸入") else { return false }
+            pipeline.toggleRecording(mode: nil)
+            return true
         }
+        guard allowed else { throw DictationIntentError.externalControlDisabled }
         return .result()
     }
 }
