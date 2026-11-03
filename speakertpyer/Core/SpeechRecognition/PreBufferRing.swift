@@ -24,7 +24,12 @@ final class PreBufferRing {
 
     private let lock = os_unfair_lock_t.allocate(capacity: 1)
 
-    init(slotCount: Int = 192, frameCapacity: AVAudioFrameCount = 4096) {
+    /// 回放時最多取最近幾秒（以時間而非 slot 數計，不受各裝置 tap buffer 大小影響）
+    static let replayDuration: Double = 1.5
+
+    /// frameCapacity 要大於實際 tap buffer：macOS 上 48kHz 裝置常是每次 4800 frames（0.1 秒），
+    /// 舊值 4096 會讓每次寫入都被略過，pre-buffer 永遠是空的（開頭第一個字遺失）。
+    init(slotCount: Int = 96, frameCapacity: AVAudioFrameCount = 8192) {
         self.slotCount = slotCount
         self.frameCapacity = frameCapacity
         lock.initialize(to: os_unfair_lock())
@@ -52,7 +57,7 @@ final class PreBufferRing {
     func write(_ buffer: AVAudioPCMBuffer, time: AVAudioTime) {
         os_unfair_lock_lock(lock)
         defer { os_unfair_lock_unlock(lock) }
-        guard !slots.isEmpty, buffer.frameLength <= frameCapacity else { return }
+        guard !slots.isEmpty, buffer.frameLength > 0 else { return }
         let dst = slots[writeIndex]
         guard dst.format.channelCount == buffer.format.channelCount else { return }
 
@@ -60,14 +65,18 @@ final class PreBufferRing {
         let dstList = UnsafeMutableAudioBufferListPointer(dst.mutableAudioBufferList)
         guard srcList.count == dstList.count else { return }
 
+        // 萬一 buffer 仍超過容量，只保留最後 frameCapacity 個 frame（而不是整個丟掉）
+        let frames = min(buffer.frameLength, frameCapacity)
+        let skipFrames = Int(buffer.frameLength - frames)
         for i in 0..<srcList.count {
             let src = srcList[i]
-            let size = Int(src.mDataByteSize)
             guard let srcData = src.mData, let dstData = dstList[i].mData else { return }
-            memcpy(dstData, srcData, size)
+            let bytesPerFrame = Int(src.mDataByteSize) / Int(buffer.frameLength)
+            let size = Int(frames) * bytesPerFrame
+            memcpy(dstData, srcData.advanced(by: skipFrames * bytesPerFrame), size)
             dstList[i].mDataByteSize = UInt32(size)
         }
-        dst.frameLength = buffer.frameLength
+        dst.frameLength = frames
         slotTimes[writeIndex] = time
         slotValid[writeIndex] = true
         writeIndex = (writeIndex + 1) % slots.count
@@ -79,11 +88,21 @@ final class PreBufferRing {
         os_unfair_lock_lock(lock)
         defer { os_unfair_lock_unlock(lock) }
         guard !slots.isEmpty else { return [] }
+        // 從最新往回取，累積到 replayDuration 為止，再反轉成最舊→最新
+        let maxFrames = AVAudioFrameCount(slots[0].format.sampleRate * Self.replayDuration)
+        var picked: [Int] = []
+        var total: AVAudioFrameCount = 0
+        for i in 1...slots.count {
+            let idx = (writeIndex - i + slots.count) % slots.count
+            guard slotValid[idx] else { break }
+            picked.append(idx)
+            total += slots[idx].frameLength
+            if total >= maxFrames { break }
+        }
         var result: [(buffer: AVAudioPCMBuffer, time: AVAudioTime)] = []
-        result.reserveCapacity(slots.count)
-        for i in 0..<slots.count {
-            let idx = (writeIndex + i) % slots.count // 從最舊開始
-            guard slotValid[idx], let copy = slots[idx].copy() as? AVAudioPCMBuffer else { continue }
+        result.reserveCapacity(picked.count)
+        for idx in picked.reversed() {
+            guard let copy = slots[idx].copy() as? AVAudioPCMBuffer else { continue }
             result.append((copy, slotTimes[idx]))
         }
         return result
