@@ -16,7 +16,9 @@ use tauri::AppHandle;
 pub struct ForegroundApp {
     /// 使用者看得到的 App 名稱，例如 "Slack"、"Visual Studio Code"
     pub app_name: String,
-    /// macOS 為 bundle identifier；Windows 為 exe 完整路徑；Linux 為 WM_CLASS
+    /// macOS 為 bundle identifier；Windows 為 exe 檔名（例如 "slack.exe"）；
+    /// Linux 為 WM_CLASS，拿不到時退回 /proc/<pid>/comm。
+    /// inject_text / simulate_enter 用這個欄位比對前景 App 有沒有換。
     pub bundle_id: String,
 }
 
@@ -26,7 +28,7 @@ pub struct ForegroundApp {
 // AppKit（enigo 的 TSM 查表）而整支崩潰，所以這裡一律派回主執行緒再取值，
 // 用 channel 把結果送回呼叫端。
 #[cfg(target_os = "macos")]
-fn query_foreground(app: &AppHandle) -> ForegroundApp {
+pub(crate) fn query_foreground(app: &AppHandle) -> ForegroundApp {
     use std::sync::mpsc;
 
     let (tx, rx) = mpsc::channel::<ForegroundApp>();
@@ -55,10 +57,152 @@ fn query_foreground(app: &AppHandle) -> ForegroundApp {
     rx.recv_timeout(Duration::from_millis(500)).unwrap_or_default()
 }
 
+// ------------------------------------------------ macOS：最近一個外部前景 App
+//
+// 開 saybit:// 會把 Saybit 帶到前景，之後的注入就貼進 Saybit 自己。照原生版
+// AppDelegate：觀察 NSWorkspaceDidActivateApplicationNotification，記住最近一個
+// 「非 Saybit、非 launcher」的 App，處理 URL 指令前把焦點還給它。
+
+/// 啟動器類 App 觸發 URL 後自己會隱藏，不當作要把焦點還回去的目標
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+const LAUNCHER_BUNDLE_IDS: [&str; 4] = [
+    "com.raycast.macos",
+    "com.runningwithcrayons.alfred",
+    "com.apple.spotlight",
+    "com.elgato.streamdeck",
+];
+
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+pub(crate) fn is_launcher(bundle_id: &str) -> bool {
+    LAUNCHER_BUNDLE_IDS.iter().any(|l| l.eq_ignore_ascii_case(bundle_id))
+}
+
+#[cfg(target_os = "macos")]
+#[derive(Clone, Debug)]
+struct ExternalApp {
+    pid: i32,
+    info: ForegroundApp,
+}
+
+#[cfg(target_os = "macos")]
+static LAST_EXTERNAL: std::sync::Mutex<Option<ExternalApp>> = std::sync::Mutex::new(None);
+
+#[cfg(target_os = "macos")]
+fn remember_if_external(running: &objc2_app_kit::NSRunningApplication) {
+    let pid = running.processIdentifier();
+    if pid <= 0 || pid as u32 == std::process::id() {
+        return;
+    }
+    let bundle_id = running.bundleIdentifier().map(|s| s.to_string()).unwrap_or_default();
+    if is_launcher(&bundle_id) {
+        return;
+    }
+    let info = ForegroundApp {
+        app_name: running.localizedName().map(|s| s.to_string()).unwrap_or_default(),
+        bundle_id,
+    };
+    *LAST_EXTERNAL.lock().unwrap_or_else(|e| e.into_inner()) = Some(ExternalApp { pid, info });
+}
+
+/// 在主執行緒（setup）呼叫一次：開始追蹤外部前景 App。
+#[cfg(target_os = "macos")]
+pub(crate) fn start_tracking_external_app() {
+    use block2::RcBlock;
+    use objc2::rc::Retained;
+    use objc2::runtime::AnyObject;
+    use objc2::{class, msg_send};
+    use objc2_app_kit::{NSRunningApplication, NSWorkspace};
+    use objc2_foundation::NSString;
+    use std::ptr::NonNull;
+
+    let workspace = NSWorkspace::sharedWorkspace();
+    if let Some(front) = workspace.frontmostApplication() {
+        remember_if_external(&front);
+    }
+
+    let block = RcBlock::new(|notification: NonNull<AnyObject>| unsafe {
+        let key = NSString::from_str("NSWorkspaceApplicationKey");
+        let info: Option<Retained<AnyObject>> = msg_send![notification.as_ref(), userInfo];
+        let Some(info) = info else { return };
+        let app: Option<Retained<AnyObject>> = msg_send![&*info, objectForKey: &*key];
+        let Some(app) = app else { return };
+        if let Ok(running) = app.downcast::<NSRunningApplication>() {
+            remember_if_external(&running);
+        }
+    });
+
+    unsafe {
+        let center: Retained<AnyObject> = msg_send![&*workspace, notificationCenter];
+        let name = NSString::from_str("NSWorkspaceDidActivateApplicationNotification");
+        let queue: Retained<AnyObject> = msg_send![class!(NSOperationQueue), mainQueue];
+        let nil: *const AnyObject = std::ptr::null();
+        let observer: Option<Retained<AnyObject>> = msg_send![
+            &*center,
+            addObserverForName: &*name,
+            object: nil,
+            queue: &*queue,
+            usingBlock: &*block
+        ];
+        // 整個程序生命週期都要觀察，刻意不移除
+        std::mem::forget(observer);
+    }
+}
+
+/// Saybit 是不是目前的前景 App 且有可還的外部 App 時，把焦點還給它並回傳 true。
+/// 必須在主執行緒呼叫。
+#[cfg(target_os = "macos")]
+pub(crate) fn refocus_last_external_if_self_front() -> bool {
+    use objc2::msg_send;
+    use objc2::sel;
+    use objc2_app_kit::{NSRunningApplication, NSWorkspace};
+
+    let front_pid = NSWorkspace::sharedWorkspace()
+        .frontmostApplication()
+        .map(|a| a.processIdentifier());
+    if front_pid != Some(std::process::id() as i32) {
+        return false;
+    }
+    let Some(target) = LAST_EXTERNAL.lock().unwrap_or_else(|e| e.into_inner()).clone() else {
+        return false;
+    };
+    let Some(running) = NSRunningApplication::runningApplicationWithProcessIdentifier(target.pid)
+    else {
+        return false;
+    };
+    if running.isTerminated() {
+        return false;
+    }
+    unsafe {
+        // macOS 14+ 用 activate；舊系統退回 activateWithOptions:（IgnoringOtherApps）
+        let responds: bool = msg_send![&*running, respondsToSelector: sel!(activate)];
+        if responds {
+            let _: bool = msg_send![&*running, activate];
+        } else {
+            let _: bool = msg_send![&*running, activateWithOptions: 1usize << 1];
+        }
+    }
+    true
+}
+
+/// 主執行緒外呼叫：必要時把焦點還給外部 App，有還就等 250 ms 讓切換完成。
+pub(crate) fn refocus_external_before_command(_app: &AppHandle) {
+    #[cfg(target_os = "macos")]
+    {
+        use std::sync::mpsc;
+        let (tx, rx) = mpsc::channel::<bool>();
+        let dispatched = _app.run_on_main_thread(move || {
+            let _ = tx.send(refocus_last_external_if_self_front());
+        });
+        if dispatched.is_ok() && rx.recv_timeout(Duration::from_millis(500)).unwrap_or(false) {
+            std::thread::sleep(Duration::from_millis(250));
+        }
+    }
+}
+
 // ---------------------------------------------------------------- Windows
 
 #[cfg(target_os = "windows")]
-fn query_foreground(_app: &AppHandle) -> ForegroundApp {
+pub(crate) fn query_foreground(_app: &AppHandle) -> ForegroundApp {
     use windows::core::PWSTR;
     use windows::Win32::Foundation::{CloseHandle, MAX_PATH};
     use windows::Win32::System::Threading::{
@@ -110,18 +254,16 @@ fn query_foreground(_app: &AppHandle) -> ForegroundApp {
             let _ = CloseHandle(handle);
         }
 
-        // "C:\Program Files\Slack\slack.exe" → "slack"
-        let stem = exe_path
-            .rsplit(['\\', '/'])
-            .next()
-            .unwrap_or("")
+        // "C:\Program Files\Slack\slack.exe" → 檔名 "slack.exe"、顯示名 "slack"
+        let file_name = exe_path.rsplit(['\\', '/']).next().unwrap_or("").to_string();
+        let stem = file_name
             .trim_end_matches(".exe")
             .trim_end_matches(".EXE")
             .to_string();
 
         ForegroundApp {
             app_name: if stem.is_empty() { window_title } else { stem },
-            bundle_id: exe_path,
+            bundle_id: file_name,
         }
     }
 }
@@ -131,7 +273,7 @@ fn query_foreground(_app: &AppHandle) -> ForegroundApp {
 // X11/Wayland 沒有統一的 API，改用外部工具盡力而為：有 xdotool 就用，沒有就
 // 回空值（前端會退回 "unknown" context，只是拿不到 per-app 規則，不影響主流程）。
 #[cfg(target_os = "linux")]
-fn query_foreground(_app: &AppHandle) -> ForegroundApp {
+pub(crate) fn query_foreground(_app: &AppHandle) -> ForegroundApp {
     use std::process::Command;
 
     let name = Command::new("xdotool")
@@ -150,9 +292,50 @@ fn query_foreground(_app: &AppHandle) -> ForegroundApp {
         .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
         .unwrap_or_default();
 
+    // 沒有 WM_CLASS（少數 X11 client）時退回 _NET_WM_PID → /proc/<pid>/comm，
+    // 讓注入前的前景比對仍有東西可比。Wayland 下 xdotool 拿不到東西，兩者皆空。
+    let ident = if class.is_empty() {
+        Command::new("xdotool")
+            .args(["getactivewindow", "getwindowpid"])
+            .output()
+            .ok()
+            .filter(|o| o.status.success())
+            .and_then(|o| String::from_utf8_lossy(&o.stdout).trim().parse::<u32>().ok())
+            .and_then(|pid| std::fs::read_to_string(format!("/proc/{pid}/comm")).ok())
+            .map(|s| s.trim().to_string())
+            .unwrap_or_default()
+    } else {
+        class.clone()
+    };
+
     ForegroundApp {
-        app_name: if class.is_empty() { name } else { class.clone() },
-        bundle_id: class,
+        app_name: if class.is_empty() { name } else { class },
+        bundle_id: ident,
+    }
+}
+
+/// 注入前的前景比對。`expected` 為空字串視為「呼叫端沒有可比的值」而略過；
+/// 實際值查不到（逾時、Wayland）但呼叫端有給 → 當成不一致，寧可不打字。
+pub(crate) fn foreground_matches(expected: &str, actual: &ForegroundApp) -> bool {
+    let expected = expected.trim();
+    if expected.is_empty() {
+        return true;
+    }
+    actual.bundle_id.trim().eq_ignore_ascii_case(expected)
+}
+
+/// 有給 expected_bundle_id 時查前景並比對；不一致回 Err("foreground-changed")。
+pub(crate) fn ensure_foreground(app: &AppHandle, expected: Option<&str>) -> Result<(), String> {
+    match expected {
+        Some(exp) if !exp.trim().is_empty() => {
+            let actual = query_foreground(app);
+            if foreground_matches(exp, &actual) {
+                Ok(())
+            } else {
+                Err("foreground-changed".into())
+            }
+        }
+        _ => Ok(()),
     }
 }
 
@@ -162,6 +345,19 @@ fn query_foreground(_app: &AppHandle) -> ForegroundApp {
 /// 否則拿到的會是 Saybit 本身。
 #[tauri::command]
 pub fn foreground_app(app: AppHandle) -> ForegroundApp {
+    query_foreground(&app)
+}
+
+/// 最近一個非 Saybit、非 launcher 的前景 App（macOS）。還沒記錄到時回目前前景。
+/// Windows/Linux 不追蹤，直接回目前前景。
+#[tauri::command]
+pub fn last_external_app(app: AppHandle) -> ForegroundApp {
+    #[cfg(target_os = "macos")]
+    {
+        if let Some(ext) = LAST_EXTERNAL.lock().unwrap_or_else(|e| e.into_inner()).clone() {
+            return ext.info;
+        }
+    }
     query_foreground(&app)
 }
 
@@ -219,4 +415,31 @@ fn simulate_copy(app: &AppHandle) -> Result<(), String> {
         }
     })
     .map_err(|e| e.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn fg(id: &str) -> ForegroundApp {
+        ForegroundApp { app_name: String::new(), bundle_id: id.into() }
+    }
+
+    #[test]
+    fn foreground_match_rules() {
+        assert!(foreground_matches("", &fg("com.a")));
+        assert!(foreground_matches("  ", &fg("")));
+        assert!(foreground_matches("com.tinyspeck.slackmacgap", &fg("com.tinyspeck.slackmacgap")));
+        assert!(foreground_matches("Slack.exe", &fg("slack.exe")));
+        assert!(!foreground_matches("com.a", &fg("com.b")));
+        assert!(!foreground_matches("com.a", &fg("")));
+    }
+
+    #[test]
+    fn launcher_detection() {
+        assert!(is_launcher("com.raycast.macos"));
+        assert!(is_launcher("com.Apple.Spotlight"));
+        assert!(!is_launcher("com.tinyspeck.slackmacgap"));
+        assert!(!is_launcher(""));
+    }
 }

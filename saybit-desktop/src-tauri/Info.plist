@@ -12,6 +12,19 @@
 	<string>Saybit 需要行事曆權限，才能把你口述的行程直接建立成事件。</string>
 	<key>NSRemindersUsageDescription</key>
 	<string>Saybit 需要提醒事項權限，才能把你口述的待辦直接建立成提醒。</string>
+	<!-- saybit:// URL scheme。plugins.deep-link.desktop.schemes 也會讓 bundler 產生這段，
+	     這裡明寫一份確保打包出的 Info.plist 一定有（兩者內容相同）。 -->
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>com.oliver.saybit-desktop</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>saybit</string>
+			</array>
+		</dict>
+	</array>
 	<key>NSAppleEventsUsageDescription</key>
 	<string>Saybit 需要控制其他應用程式，才能把文字貼進你正在使用的視窗。</string>
 </dict>
