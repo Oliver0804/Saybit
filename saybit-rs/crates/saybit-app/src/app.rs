@@ -840,7 +840,12 @@ impl eframe::App for SaybitApp {
         [0.0, 0.0, 0.0, 0.0]
     }
 
-    fn on_exit(&mut self) {
+}
+
+// `App::on_exit` 的簽名依 eframe 後端 feature 而異（glow 多一個 gl 參數），
+// 為了 macOS（wgpu）與 Windows/Linux（glow）共用同一份程式碼，收尾改放 Drop。
+impl Drop for SaybitApp {
+    fn drop(&mut self) {
         self.send(PipelineCommand::Shutdown);
     }
 }

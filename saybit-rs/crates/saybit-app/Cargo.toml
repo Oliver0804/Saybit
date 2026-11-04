@@ -19,7 +19,9 @@ log.workspace = true
 parking_lot.workspace = true
 crossbeam-channel.workspace = true
 chrono.workspace = true
-eframe = { version = "0.37", default-features = false, features = ["default_fonts", "wgpu", "persistence", "wayland", "x11"] }
+# 後端依平台：macOS 用 wgpu（glow 在 macOS 建不出透明膠囊視窗）；Windows / Linux 用 glow
+# （wgpu-hal 的 dx12 後端在 Windows runner 與 windows crate 版本衝突，編不過）。
+eframe = { version = "0.37", default-features = false, features = ["default_fonts", "persistence", "wayland", "x11"] }
 egui = "0.37"
 # ---- 各批次在下方追加自己的依賴（只能用 Edit 追加，不要重排）----
 # A2（設定分頁）
@@ -39,4 +41,8 @@ epaint = { version = "0.37", default-features = false, features = ["monochrome_e
 
 # A1：macOS 啟動時設 ActivationPolicy::Accessory（不出現在 Dock）；版本跟 eframe 0.37 用的 winit 0.30 一致
 [target.'cfg(target_os = "macos")'.dependencies]
+eframe = { version = "0.37", default-features = false, features = ["wgpu"] }
 winit = { version = "0.30", default-features = false }
+
+[target.'cfg(not(target_os = "macos"))'.dependencies]
+eframe = { version = "0.37", default-features = false, features = ["glow"] }

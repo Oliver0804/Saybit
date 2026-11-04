@@ -119,7 +119,14 @@ impl Tray {
         let (icon, template) = load_icon()?;
         let menu = build_menu(model);
         let builder = TrayIconBuilder::new();
+        // template icon（跟著選單列深淺色自動反白）只有 macOS 有這個 API
+        #[cfg(target_os = "macos")]
         let builder = if template { builder.with_icon_templated(icon) } else { builder.with_icon(icon) };
+        #[cfg(not(target_os = "macos"))]
+        let builder = {
+            let _ = template;
+            builder.with_icon(icon)
+        };
         let built = builder
             .with_tooltip("Saybit")
             .with_menu(Box::new(menu))
