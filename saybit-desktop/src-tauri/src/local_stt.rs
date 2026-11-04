@@ -86,10 +86,8 @@ pub fn transcribe_local(app: AppHandle, request: tauri::ipc::Request<'_>) -> Res
     if body.len() < 16_000 {
         return Err("音訊太短".into());
     }
-    let samples: Vec<f32> = body
-        .chunks_exact(4)
-        .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]))
-        .collect();
+    let (chunks, _) = body.as_chunks::<4>();
+    let samples: Vec<f32> = chunks.iter().map(|c| f32::from_le_bytes(*c)).collect();
 
     let path = model_path(&app)?;
     if !path.exists() {

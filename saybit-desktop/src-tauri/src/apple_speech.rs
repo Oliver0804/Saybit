@@ -249,10 +249,8 @@ pub fn transcribe_apple(request: tauri::ipc::Request<'_>) -> Result<String, Stri
 
     // 位元組流轉 f32：來源是 JS 的 Float32Array，固定 little-endian。
     // 直接 transmute 會有對齊問題（Vec<u8> 不保證 4-byte 對齊），逐一組裝才安全。
-    let samples: Vec<f32> = body
-        .chunks_exact(4)
-        .map(|b| f32::from_le_bytes([b[0], b[1], b[2], b[3]]))
-        .collect();
+    let (chunks, _) = body.as_chunks::<4>();
+    let samples: Vec<f32> = chunks.iter().map(|b| f32::from_le_bytes(*b)).collect();
 
     imp::transcribe(&samples, &locale, require_on_device)
 }
