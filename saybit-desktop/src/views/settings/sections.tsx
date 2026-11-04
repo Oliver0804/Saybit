@@ -1,17 +1,14 @@
 // 設定畫面的各個分區。共用一組 SectionProps，由 SettingsView 依分頁挑選渲染。
+// 分頁結構對齊原生版：一般（GeneralSection.tsx）、AI 引擎、快捷鍵（含語音模式）、字典／技能。
 import { useEffect, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { emit, listen } from '@tauri-apps/api/event';
-import { enable as enableAutostart, disable as disableAutostart, isEnabled as isAutostartEnabled } from '@tauri-apps/plugin-autostart';
 import { useLiveQuery } from 'dexie-react-hooks';
 import {
   Key,
-  Volume2,
   Sparkles,
   Keyboard,
-  ArrowRightLeft,
   SlidersHorizontal,
-  Layers,
   BookOpen,
   Cpu,
   Trash2,
@@ -20,16 +17,18 @@ import {
   Eye,
   EyeOff,
   AlertTriangle,
+  Link2,
 } from 'lucide-react';
 
 import { db } from '../../services/db';
-import type { AppSettings } from '../../services/settings';
+import type { AppSettings, UrlSchemeDecision } from '../../services/settings';
 import {
   llmKeyAccount,
   sttKeyAccount,
   streamingKeyAccount,
   saveSecret,
   loadSecret,
+  validateBaseUrl,
 } from '../../services/settings';
 import {
   STREAMING_PROVIDERS,
@@ -37,8 +36,7 @@ import {
   testStreaming,
   type StreamingProvider,
 } from '../../services/streamingStt';
-import type { L10nKey } from '../../services/l10n';
-import { APP_LANGUAGES } from '../../services/l10n';
+import type { Translator } from '../../services/l10n';
 import {
   BUILT_IN_PROVIDERS,
   resolveProvider,
@@ -52,8 +50,9 @@ import {
   type ContextRule,
   type ToneOverride,
 } from '../../services/contextRules';
-import { listInputDevices, AudioChain } from '../../services/audioChain';
 import { findConflict, isBareKey } from '../../services/hotkeyConflicts';
+import { useHotkeyCapture } from '../../components/hotkeyCapture';
+import { detectPlatform, displayHotkey } from '../../components/platform';
 import {
   GlassCard,
   Row,
@@ -62,117 +61,36 @@ import {
   NumberField,
   Segmented,
   Select,
-  Slider,
   Button,
   Hint,
+  SettingRow,
+  SettingToggle,
+  SettingDescription,
+  SettingDivider,
 } from '../../components/ui';
+import { VoiceModesSection } from './VoiceModesSection';
 
 export interface SectionProps {
   settings: AppSettings;
   update: (patch: Partial<AppSettings>) => void;
-  tr: (key: L10nKey) => string;
+  tr: Translator;
   secrets: { llmKey: string; sttKey: string };
   reloadSecrets: (settings: AppSettings) => Promise<void>;
+  /// 跳到其他分頁（例如「一般 → 系統」的教學／關於按鈕）
+  openTab?: (tab: string) => void;
 }
 
-// ---------------------------------------------------------------- 一般
-
-export function GeneralSection({ settings, update, tr }: SectionProps) {
-  const [autostartError, setAutostartError] = useState('');
-
-  // 開機自啟的真實狀態在 OS 那邊，掛載時對齊一次，避免設定檔跟系統不同步
-  useEffect(() => {
-    isAutostartEnabled()
-      .then((enabled) => {
-        if (enabled !== settings.launchAtLogin) update({ launchAtLogin: enabled });
-      })
-      .catch(() => {});
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const toggleAutostart = async (value: boolean) => {
-    setAutostartError('');
-    try {
-      if (value) await enableAutostart();
-      else await disableAutostart();
-      update({ launchAtLogin: value });
-    } catch (e: any) {
-      setAutostartError(String(e?.message || e));
-    }
-  };
-
+/// http:// 端點的提示：非本機／區網的 http 會被 llm.ts 擋下，不送金鑰
+function BaseUrlWarning({ url, tr }: { url: string; tr: Translator }) {
+  if (!url.trim()) return null;
+  const v = validateBaseUrl(url);
+  if (v === 'ok') {
+    return url.trim().toLowerCase().startsWith('http://') ? <Hint>🔓 {tr('baseUrlLocalHttpNote')}</Hint> : null;
+  }
   return (
-    <div className="max-w-2xl space-y-6">
-      <GlassCard title={tr('navGeneral')} icon={SlidersHorizontal}>
-        <Row label={tr('appLanguage')}>
-          <Select
-            value={settings.appLanguage}
-            options={APP_LANGUAGES.map((l) => ({ value: l.id, label: l.displayName }))}
-            onChange={(value) => update({ appLanguage: value })}
-          />
-        </Row>
-
-        <Row label={tr('launchAtLogin')} description={tr('launchAtLoginDesc')}>
-          <Toggle checked={settings.launchAtLogin} onChange={toggleAutostart} />
-        </Row>
-        {autostartError && <Hint>⚠️ {autostartError}</Hint>}
-
-        <Row label={tr('soundFeedback')} description={tr('soundFeedbackDesc')}>
-          <Toggle
-            checked={settings.enableSoundFeedback}
-            onChange={(v) => update({ enableSoundFeedback: v })}
-          />
-        </Row>
-
-        <Row label={tr('capsuleScale')}>
-          <Slider
-            value={settings.capsuleScale}
-            min={0.6}
-            max={2}
-            step={0.1}
-            suffix="×"
-            onChange={(v) => update({ capsuleScale: v })}
-          />
-        </Row>
-      </GlassCard>
-
-      <GlassCard title={tr('historyRetention')} icon={Layers}>
-        <Row label={tr('historyRetention')}>
-          <Toggle
-            checked={settings.enableHistoryAutoCleanup}
-            onChange={(v) => update({ enableHistoryAutoCleanup: v })}
-          />
-        </Row>
-        {settings.enableHistoryAutoCleanup && (
-          <Row label={tr('historyRetentionDays')}>
-            <NumberField
-              value={settings.historyRetentionDays}
-              min={1}
-              max={3650}
-              onChange={(v) => update({ historyRetentionDays: Math.round(v) })}
-            />
-          </Row>
-        )}
-        <Row label={tr('autoUpdateCheck')}>
-          <Toggle
-            checked={settings.enableAutoUpdateCheck}
-            onChange={(v) => update({ enableAutoUpdateCheck: v })}
-          />
-        </Row>
-        {settings.availableUpdateTag && (
-          <Hint>
-            🎉 {tr('updateAvailable')}：{settings.availableUpdateTag}
-            <a
-              href={settings.availableUpdateUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="text-emerald-300 underline"
-            >
-              Release Notes
-            </a>
-          </Hint>
-        )}
-      </GlassCard>
+    <div className="flex items-start gap-2 text-[11px] text-amber-300 leading-relaxed">
+      <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
+      <span>{v === 'invalid' ? tr('baseUrlInvalid') : tr('baseUrlInsecure')}</span>
     </div>
   );
 }
@@ -240,7 +158,7 @@ export function ApiSection({ settings, update, tr, secrets, reloadSecrets }: Sec
 
   return (
     <div className="max-w-2xl space-y-6">
-      <GlassCard title={tr('navApi')} icon={Key}>
+      <GlassCard title={tr('tabAi')} icon={Key}>
         <div className="space-y-2">
           <label className="text-xs text-white/50 font-medium">{tr('provider')}</label>
           <Segmented
@@ -264,8 +182,10 @@ export function ApiSection({ settings, update, tr, secrets, reloadSecrets }: Sec
               className="w-full"
             />
             <Hint>可填 origin、/v1 或完整端點，會自動正規化成 {provider.baseUrl}</Hint>
+            <BaseUrlWarning url={settings.lmStudioBaseUrl} tr={tr} />
           </div>
         )}
+        {provider.id.startsWith('custom-') && <BaseUrlWarning url={provider.baseUrl} tr={tr} />}
 
         {provider.requiresApiKey && (
           <div className="space-y-1.5">
@@ -317,6 +237,8 @@ export function ApiSection({ settings, update, tr, secrets, reloadSecrets }: Sec
           {fetchError && <Hint>⚠️ {fetchError}</Hint>}
         </div>
       </GlassCard>
+
+      <PromptStyleCard settings={settings} update={update} tr={tr} />
 
       <GlassCard title={tr('advancedParams')} icon={SlidersHorizontal}>
         <Row label={tr('advancedParams')} description={tr('advancedParamsDesc')}>
@@ -385,6 +307,7 @@ export function ApiSection({ settings, update, tr, secrets, reloadSecrets }: Sec
             {tr('add')}
           </Button>
         </div>
+        <BaseUrlWarning url={newProviderUrl} tr={tr} />
         {settings.customProviders.map((p) => (
           <div
             key={p.id}
@@ -416,25 +339,13 @@ export function ApiSection({ settings, update, tr, secrets, reloadSecrets }: Sec
   );
 }
 
-// ---------------------------------------------------------------- 語音輸入
+// ---------------------------------------------------------------- 語音辨識子面板（一般 → 語音辨識）
 
-export function SpeechSection({ settings, update, tr, secrets, reloadSecrets }: SectionProps) {
-  const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
-  const [showKey, setShowKey] = useState(false);
-  const [keyDraft, setKeyDraft] = useState(secrets.sttKey);
-  const [testLevel, setTestLevel] = useState<number | null>(null);
-  const [appleSupported, setAppleSupported] = useState(false);
+export function AppleSpeechPanel({ settings, update, tr }: Pick<SectionProps, 'settings' | 'update' | 'tr'>) {
   const [appleAuthorized, setAppleAuthorized] = useState(false);
   const [appleError, setAppleError] = useState('');
 
   useEffect(() => {
-    setKeyDraft(secrets.sttKey);
-  }, [secrets.sttKey]);
-
-  useEffect(() => {
-    invoke<boolean>('apple_speech_supported')
-      .then(setAppleSupported)
-      .catch(() => setAppleSupported(false));
     invoke<boolean>('apple_speech_authorized')
       .then(setAppleAuthorized)
       .catch(() => setAppleAuthorized(false));
@@ -451,9 +362,57 @@ export function SpeechSection({ settings, update, tr, secrets, reloadSecrets }: 
     }
   };
 
+  return (
+    <div className="flex flex-col space-y-3 bg-slate-950/50 border border-white/10 rounded-xl p-4">
+      <SettingDescription>{tr('sttAppleDesc')}</SettingDescription>
+      <SettingRow title={tr('appleSpeechLocale')}>
+        <Select
+          value={settings.appleSpeechLocale}
+          options={[
+            { value: 'zh-TW', label: '中文（台灣）' },
+            { value: 'zh-CN', label: '中文（中國）' },
+            { value: 'zh-HK', label: '中文（香港）' },
+            { value: 'en-US', label: 'English (US)' },
+            { value: 'en-GB', label: 'English (UK)' },
+            { value: 'ja-JP', label: '日本語' },
+            { value: 'ko-KR', label: '한국어' },
+          ]}
+          onChange={(v) => update({ appleSpeechLocale: v })}
+        />
+      </SettingRow>
+      <SettingToggle
+        title={tr('appleOnDeviceOnly')}
+        description={tr('appleOnDeviceOnlyDesc')}
+        checked={settings.appleSpeechOnDeviceOnly}
+        onChange={(v) => update({ appleSpeechOnDeviceOnly: v })}
+      />
+      <SettingRow title={tr('appleAuthorization')}>
+        {appleAuthorized ? (
+          <span className="text-xs font-semibold text-emerald-400">✓ {tr('authorized')}</span>
+        ) : (
+          <Button variant="primary" onClick={requestAppleAuth}>
+            {tr('requestAccess')}
+          </Button>
+        )}
+      </SettingRow>
+      {appleError && <Hint>⚠️ {appleError}</Hint>}
+    </div>
+  );
+}
+
+export function CloudSttPanel({
+  settings,
+  update,
+  tr,
+  secrets,
+  reloadSecrets,
+}: Pick<SectionProps, 'settings' | 'update' | 'tr' | 'secrets' | 'reloadSecrets'>) {
+  const [showKey, setShowKey] = useState(false);
+  const [keyDraft, setKeyDraft] = useState(secrets.sttKey);
+
   useEffect(() => {
-    listInputDevices().then(setDevices);
-  }, []);
+    setKeyDraft(secrets.sttKey);
+  }, [secrets.sttKey]);
 
   const commitKey = async (value: string) => {
     setKeyDraft(value);
@@ -462,415 +421,129 @@ export function SpeechSection({ settings, update, tr, secrets, reloadSecrets }: 
     emit('secrets-updated', {}).catch(() => {});
   };
 
-  // 麥克風測試：開一條臨時鏈量 3 秒峰值，量完立刻釋放
-  const runMicTest = async () => {
-    const chain = new AudioChain();
-    try {
-      await chain.start({
-        deviceId: settings.selectedInputDeviceId,
-        echoCancellation: settings.enableEchoCancellation,
-        bandpass: settings.enableVoiceBandpass,
-        preBufferSeconds: 0,
-      });
-      let peak = 0;
-      const started = Date.now();
-      const tick = () => {
-        peak = Math.max(peak, chain.currentLevel(settings.micSensitivity));
-        setTestLevel(peak);
-        if (Date.now() - started < 3000) requestAnimationFrame(tick);
-        else chain.stop();
-      };
-      requestAnimationFrame(tick);
-    } catch (e: any) {
-      setTestLevel(-1);
-      chain.stop();
-    }
-  };
-
   return (
-    <div className="max-w-2xl space-y-6">
-      <GlassCard title={tr('sttEngine')} icon={Volume2}>
-        <Segmented
-          value={settings.sttEngine}
-          options={[
-            { value: 'local', label: tr('sttLocal') },
-            {
-              value: 'apple',
-              label: appleSupported ? tr('sttApple') : `${tr('sttApple')}（${tr('unsupportedPlatform')}）`,
-              disabled: !appleSupported,
-            },
-            { value: 'streaming', label: tr('sttStreaming') },
-            { value: 'cloud', label: tr('sttCloud') },
-          ]}
-          onChange={(v) => update({ sttEngine: v })}
-        />
-
-        {settings.sttEngine === 'local' && <LocalSttModelPanel />}
-
-        {settings.sttEngine === 'apple' && (
-          <div className="flex flex-col space-y-3 bg-slate-950/50 border border-white/10 rounded-xl p-4">
-            <Hint>{tr('sttAppleDesc')}</Hint>
-
-            <Row label={tr('appleSpeechLocale')}>
-              <Select
-                value={settings.appleSpeechLocale}
-                options={[
-                  { value: 'zh-TW', label: '中文（台灣）' },
-                  { value: 'zh-CN', label: '中文（中國）' },
-                  { value: 'zh-HK', label: '中文（香港）' },
-                  { value: 'en-US', label: 'English (US)' },
-                  { value: 'en-GB', label: 'English (UK)' },
-                  { value: 'ja-JP', label: '日本語' },
-                  { value: 'ko-KR', label: '한국어' },
-                ]}
-                onChange={(v) => update({ appleSpeechLocale: v })}
-              />
-            </Row>
-
-            <Row label={tr('appleOnDeviceOnly')} description={tr('appleOnDeviceOnlyDesc')}>
-              <Toggle
-                checked={settings.appleSpeechOnDeviceOnly}
-                onChange={(v) => update({ appleSpeechOnDeviceOnly: v })}
-              />
-            </Row>
-
-            <Row label={tr('appleAuthorization')}>
-              {appleAuthorized ? (
-                <span className="text-xs font-semibold text-emerald-400">✓ {tr('authorized')}</span>
-              ) : (
-                <Button variant="primary" onClick={requestAppleAuth}>
-                  {tr('requestAccess')}
-                </Button>
-              )}
-            </Row>
-            {appleError && <Hint>⚠️ {appleError}</Hint>}
-          </div>
-        )}
-
-        {settings.sttEngine === 'streaming' && (
-          <StreamingPanel settings={settings} update={update} tr={tr} />
-        )}
-
-        {settings.sttEngine === 'cloud' && (
-          <>
-            <Segmented
-              value={settings.sttBaseUrl}
-              options={[
-                { value: 'https://api.openai.com/v1', label: 'OpenAI whisper-1' },
-                { value: 'https://api.groq.com/openai/v1', label: 'Groq whisper-large-v3' },
-              ]}
-              onChange={(v) =>
-                update({
-                  sttBaseUrl: v,
-                  sttModel: v.includes('groq') ? 'whisper-large-v3' : 'whisper-1',
-                })
-              }
-            />
-            <div className="space-y-1.5">
-              <label className="text-xs text-white/50 font-medium">
-                STT {tr('apiKey')}（{settings.sttBaseUrl.includes('groq') ? 'gsk_...' : 'sk-...'}）
-              </label>
-              <div className="relative">
-                <input
-                  type={showKey ? 'text' : 'password'}
-                  value={keyDraft}
-                  onChange={(e) => setKeyDraft(e.target.value)}
-                  onBlur={(e) => commitKey(e.target.value)}
-                  className="w-full bg-slate-950/80 border border-white/10 rounded-xl px-4 py-2.5 text-sm font-mono text-emerald-400 focus:outline-none focus:border-emerald-500/50"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowKey(!showKey)}
-                  className="absolute right-3 top-3 text-white/40 hover:text-white cursor-pointer"
-                >
-                  {showKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                </button>
-              </div>
-              <Hint>🔒 {tr('apiKeyStoredSecurely')}</Hint>
-            </div>
-          </>
-        )}
-      </GlassCard>
-
-      <GlassCard title={tr('inputDevice')} icon={Volume2}>
-        <Row label={tr('inputDevice')}>
-          <Select
-            value={settings.selectedInputDeviceId}
-            options={[
-              { value: '', label: tr('systemDefault') },
-              ...devices.map((d) => ({
-                value: d.deviceId,
-                label: d.label || `裝置 ${d.deviceId.slice(0, 8)}`,
-              })),
-            ]}
-            onChange={(v) => update({ selectedInputDeviceId: v })}
-            className="max-w-xs"
+    <div className="flex flex-col space-y-3 bg-slate-950/50 border border-white/10 rounded-xl p-4">
+      <Segmented
+        value={settings.sttBaseUrl}
+        options={[
+          { value: 'https://api.openai.com/v1', label: 'OpenAI whisper-1' },
+          { value: 'https://api.groq.com/openai/v1', label: 'Groq whisper-large-v3' },
+        ]}
+        onChange={(v) =>
+          update({
+            sttBaseUrl: v,
+            sttModel: v.includes('groq') ? 'whisper-large-v3' : 'whisper-1',
+          })
+        }
+      />
+      <div className="space-y-1.5">
+        <label className="text-xs text-white/50 font-medium">
+          STT {tr('apiKey')}（{settings.sttBaseUrl.includes('groq') ? 'gsk_...' : 'sk-...'}）
+        </label>
+        <div className="relative">
+          <input
+            type={showKey ? 'text' : 'password'}
+            value={keyDraft}
+            onChange={(e) => setKeyDraft(e.target.value)}
+            onBlur={(e) => commitKey(e.target.value)}
+            className="w-full bg-slate-950/80 border border-white/10 rounded-xl px-4 py-2.5 text-sm font-mono text-emerald-400 focus:outline-none focus:border-emerald-500/50"
           />
-        </Row>
-
-        <Row label={tr('micSensitivity')}>
-          <Slider
-            value={settings.micSensitivity}
-            min={0.5}
-            max={5}
-            step={0.1}
-            suffix="×"
-            onChange={(v) => update({ micSensitivity: v })}
-          />
-        </Row>
-
-        <Row label={tr('micTest')}>
-          <div className="flex items-center gap-3">
-            {testLevel !== null && testLevel >= 0 && (
-              <div className="w-24 h-2 bg-slate-950 rounded-full overflow-hidden border border-white/5">
-                <div
-                  className="h-full bg-emerald-500"
-                  style={{ width: `${Math.min(100, testLevel * 100)}%` }}
-                />
-              </div>
-            )}
-            {testLevel === -1 && <span className="text-[11px] text-red-400">開啟失敗</span>}
-            <Button onClick={runMicTest}>{tr('test')}</Button>
-          </div>
-        </Row>
-
-        <Row label={tr('voiceBandpass')} description={tr('voiceBandpassDesc')}>
-          <Toggle
-            checked={settings.enableVoiceBandpass}
-            onChange={(v) => update({ enableVoiceBandpass: v })}
-          />
-        </Row>
-
-        <Row label={tr('echoCancellation')} description={tr('echoCancellationDesc')}>
-          <Toggle
-            checked={settings.enableEchoCancellation}
-            onChange={(v) => update({ enableEchoCancellation: v })}
-          />
-        </Row>
-
-        <Row label={tr('preBuffer')} description={tr('preBufferDesc')}>
-          <Slider
-            value={settings.preBufferSeconds}
-            min={0}
-            max={3}
-            step={0.1}
-            suffix="s"
-            onChange={(v) => update({ preBufferSeconds: v })}
-          />
-        </Row>
-      </GlassCard>
-
-      <GlassCard title={tr('autoStop')} icon={Volume2}>
-        <Row label={tr('autoStop')}>
-          <Toggle
-            checked={settings.enableAutoStop}
-            onChange={(v) => update({ enableAutoStop: v })}
-          />
-        </Row>
-        {settings.enableAutoStop && (
-          <Row label={tr('silenceTimeout')}>
-            <NumberField
-              value={settings.silenceTimeout}
-              min={0.5}
-              max={10}
-              step={0.5}
-              onChange={(v) => update({ silenceTimeout: v })}
-            />
-          </Row>
-        )}
-      </GlassCard>
+          <button
+            type="button"
+            onClick={() => setShowKey(!showKey)}
+            title={showKey ? tr('hide') : tr('show')}
+            className="absolute right-3 top-3 text-white/40 hover:text-white cursor-pointer"
+          >
+            {showKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+          </button>
+        </div>
+        <Hint>🔒 {tr('apiKeyStoredSecurely')}</Hint>
+      </div>
     </div>
   );
 }
 
-// ---------------------------------------------------------------- 精煉風格
+// ---------------------------------------------------------------- 精煉風格（AI 引擎分頁內）
 
-export function PromptSection({ settings, update, tr }: SectionProps) {
-  const [actionIntentsSupported, setActionIntentsSupported] = useState(false);
-
-  useEffect(() => {
-    invoke<boolean>('action_intents_supported')
-      .then(setActionIntentsSupported)
-      .catch(() => setActionIntentsSupported(false));
-  }, []);
-
+function PromptStyleCard({ settings, update, tr }: Pick<SectionProps, 'settings' | 'update' | 'tr'>) {
   return (
-    <div className="max-w-2xl space-y-6">
-      <GlassCard title={tr('promptStyle')} icon={Sparkles}>
+    <GlassCard title={tr('promptStyle')} icon={Sparkles}>
+      <Segmented
+        value={settings.promptStyle}
+        options={[
+          { value: 'typeless', label: tr('styleTypeless') },
+          { value: 'wispr-flow', label: tr('styleWispr') },
+        ]}
+        onChange={(v) => update({ promptStyle: v })}
+      />
+      <SettingDescription>
+        {settings.promptStyle === 'typeless' ? tr('styleTypelessDesc') : tr('styleWisprDesc')}
+      </SettingDescription>
+
+      <SettingDivider />
+
+      <SettingRow title={tr('processingMode')}>
         <Segmented
-          value={settings.promptStyle}
+          value={settings.selectedMode}
           options={[
-            { value: 'typeless', label: tr('styleTypeless') },
-            { value: 'wispr-flow', label: tr('styleWispr') },
+            { value: 'dictation', label: tr('modeDictation') },
+            { value: 'command', label: tr('modeCommand') },
+            { value: 'edit', label: tr('modeEdit') },
           ]}
-          onChange={(v) => update({ promptStyle: v })}
+          onChange={(v) => update({ selectedMode: v })}
         />
-        <Hint>
-          智慧模式偏重自然語意整理；工程師風格會辨識 camelCase／CLI 指令並自動修正技術名詞。
-        </Hint>
+      </SettingRow>
 
-        <Row label={tr('processingMode')}>
-          <Segmented
-            value={settings.selectedMode}
-            options={[
-              { value: 'dictation', label: tr('modeDictation') },
-              { value: 'command', label: tr('modeCommand') },
-              { value: 'edit', label: tr('modeEdit') },
-            ]}
-            onChange={(v) => update({ selectedMode: v })}
-          />
-        </Row>
-
-        <Row label={tr('toneStyle')}>
-          <Segmented
-            value={settings.toneStyle}
-            options={[
-              { value: 'auto', label: tr('toneAuto') },
-              { value: 'formal', label: tr('toneFormal') },
-              { value: 'casual', label: tr('toneCasual') },
-              { value: 'very_casual', label: tr('toneVeryCasual') },
-            ]}
-            onChange={(v) => update({ toneStyle: v })}
-          />
-        </Row>
-      </GlassCard>
-
-      <GlassCard title={tr('outputLanguage')} icon={Sparkles}>
-        <Row label={tr('autoLanguageDetection')}>
-          <Toggle
-            checked={settings.enableAutoLanguageDetection}
-            onChange={(v) => update({ enableAutoLanguageDetection: v })}
-          />
-        </Row>
-        {!settings.enableAutoLanguageDetection && (
-          <Row label={tr('outputLanguage')}>
-            <Select
-              value={settings.languagePreference}
-              options={[
-                { value: 'zh-TW', label: '繁體中文' },
-                { value: 'zh-CN', label: '简体中文' },
-                { value: 'en', label: 'English' },
-                { value: 'ja', label: '日本語' },
-                { value: 'ko', label: '한국어' },
-              ]}
-              onChange={(v) => update({ languagePreference: v })}
-            />
-          </Row>
-        )}
-        <Row label="Whisper 語言">
-          <Select
-            value={settings.whisperLanguage}
-            options={[
-              { value: 'zh', label: '中文' },
-              { value: 'en', label: 'English' },
-              { value: 'ja', label: '日本語' },
-              { value: 'ko', label: '한국어' },
-            ]}
-            onChange={(v) => update({ whisperLanguage: v })}
-          />
-        </Row>
-      </GlassCard>
-
-      <GlassCard title={tr('contextAwareness')} icon={Layers}>
-        <Row label={tr('contextAwareness')} description={tr('contextAwarenessDesc')}>
-          <Toggle
-            checked={settings.enableContextAwareness}
-            onChange={(v) => update({ enableContextAwareness: v })}
-          />
-        </Row>
-        <Row label={tr('selectionCapture')} description={tr('selectionCaptureDesc')}>
-          <Toggle
-            checked={settings.enableSelectionCapture}
-            onChange={(v) => update({ enableSelectionCapture: v })}
-            disabled={!settings.enableContextAwareness}
-          />
-        </Row>
-        <Row label={tr('whisperMode')} description={tr('whisperModeDesc')}>
-          <Toggle
-            checked={settings.enableWhisperMode}
-            onChange={(v) => update({ enableWhisperMode: v })}
-          />
-        </Row>
-        <Row
-          label={tr('actionIntents')}
-          description={
-            actionIntentsSupported
-              ? tr('actionIntentsDesc')
-              : `${tr('actionIntentsDesc')}（${tr('unsupportedPlatform')}）`
-          }
-        >
-          <Toggle
-            checked={settings.enableActionIntents && actionIntentsSupported}
-            onChange={(v) => update({ enableActionIntents: v })}
-            disabled={!actionIntentsSupported}
-          />
-        </Row>
-      </GlassCard>
-    </div>
+      <SettingRow title={tr('toneStyle')} description={tr('toneAutoDesc')}>
+        <Segmented
+          value={settings.toneStyle}
+          options={[
+            { value: 'auto', label: tr('toneAuto') },
+            { value: 'formal', label: tr('toneFormal') },
+            { value: 'casual', label: tr('toneCasual') },
+            { value: 'very_casual', label: tr('toneVeryCasual') },
+          ]}
+          onChange={(v) => update({ toneStyle: v })}
+        />
+      </SettingRow>
+    </GlassCard>
   );
 }
 
-// ---------------------------------------------------------------- 快捷鍵
+// ---------------------------------------------------------------- 快捷鍵（主快捷鍵 + 語音模式 + saybit://）
 
 export function HotkeySection({ settings, update, tr }: SectionProps) {
-  const [recording, setRecording] = useState(false);
-
-  const platform: 'macos' | 'windows' | 'linux' = navigator.userAgent.includes('Mac')
-    ? 'macos'
-    : navigator.userAgent.includes('Win')
-      ? 'windows'
-      : 'linux';
+  const platform = detectPlatform();
+  const capture = useHotkeyCapture<'main'>((_target, accelerator) => update({ hotkey: accelerator }));
+  const recording = capture.target === 'main';
 
   const conflict = findConflict(settings.hotkey, platform);
   const bare = isBareKey(settings.hotkey);
 
-  // 錄製模式：攔截下一個按鍵組合，轉成 Tauri 加速器字串
-  useEffect(() => {
-    if (!recording) return;
-
-    const onKeyDown = (event: KeyboardEvent) => {
-      event.preventDefault();
-      const key = event.key;
-      // 只按修飾鍵不算完成，繼續等主鍵
-      if (['Control', 'Alt', 'Shift', 'Meta'].includes(key)) return;
-
-      const parts: string[] = [];
-      if (event.ctrlKey) parts.push('Ctrl');
-      if (event.altKey) parts.push('Alt');
-      if (event.shiftKey) parts.push('Shift');
-      if (event.metaKey) parts.push('Super');
-
-      const mainKey =
-        key === ' '
-          ? 'Space'
-          : key.length === 1
-            ? key.toUpperCase()
-            : key.charAt(0).toUpperCase() + key.slice(1);
-      parts.push(mainKey);
-
-      update({ hotkey: parts.join('+') });
-      setRecording(false);
-    };
-
-    window.addEventListener('keydown', onKeyDown, true);
-    return () => window.removeEventListener('keydown', onKeyDown, true);
-  }, [recording, update]);
+  const triggerDesc: Record<string, string> = {
+    toggle: tr('triggerToggleDesc'),
+    hold: tr('triggerHoldDesc'),
+    doubleTap: tr('triggerDoubleTapDesc'),
+  };
 
   return (
     <div className="max-w-2xl space-y-6">
       <GlassCard title={tr('navHotkey')} icon={Keyboard}>
         <button
           type="button"
-          onClick={() => setRecording(true)}
+          onClick={() => (recording ? capture.cancel() : capture.start('main'))}
+          title={recording ? tr('vmCancelRecordingHelp') : tr('hotkeyRecord')}
           className={`w-full px-4 py-4 rounded-xl border text-center font-mono text-sm transition-all cursor-pointer ${
             recording
               ? 'bg-emerald-500/10 border-emerald-500/50 text-emerald-300 animate-pulse'
               : 'bg-slate-950/80 border-white/10 text-white hover:border-white/25'
           }`}
         >
-          {recording ? tr('hotkeyRecording') : settings.hotkey || tr('hotkeyRecord')}
+          {recording
+            ? tr('vmPressHotkey', { n: capture.remaining })
+            : displayHotkey(settings.hotkey, platform) || tr('hotkeyRecord')}
         </button>
-        <Hint>{tr('hotkeyRecord')}</Hint>
+        <SettingDescription>{recording && capture.needsModifier ? tr('vmNeedsModifier') : tr('hotkeyRecordingHint')}</SettingDescription>
 
         {(conflict || bare) && (
           <div className="flex items-start gap-2 p-3 rounded-xl bg-amber-500/10 border border-amber-500/25">
@@ -881,12 +554,14 @@ export function HotkeySection({ settings, update, tr }: SectionProps) {
                   {tr('hotkeyConflict')}：<b>{conflict.name}</b>
                 </div>
               )}
-              {bare && <div>沒有修飾鍵的單鍵快捷鍵極易誤觸，建議至少加上一個修飾鍵。</div>}
+              {bare && <div>{tr('hotkeyBareWarning')}</div>}
             </div>
           </div>
         )}
 
-        <Row label={tr('hotkeyTriggerMode')}>
+        <SettingDivider />
+
+        <SettingRow title={tr('hotkeyTriggerMode')} description={triggerDesc[settings.hotkeyTriggerMode]}>
           <Select
             value={settings.hotkeyTriggerMode}
             options={[
@@ -897,70 +572,26 @@ export function HotkeySection({ settings, update, tr }: SectionProps) {
             onChange={(v) => update({ hotkeyTriggerMode: v })}
             className="max-w-xs"
           />
-        </Row>
-      </GlassCard>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------- 輸出與注入
-
-export function InjectionSection({ settings, update, tr }: SectionProps) {
-  return (
-    <div className="max-w-2xl space-y-6">
-      <GlassCard title={tr('injectionMode')} icon={ArrowRightLeft}>
-        <Select
-          value={settings.injectionMode}
-          options={[
-            { value: 'paste', label: tr('injectPaste') },
-            { value: 'keypress', label: tr('injectKeypress') },
-            { value: 'replace_selection', label: tr('injectReplaceSelection') },
-          ]}
-          onChange={(v) => update({ injectionMode: v })}
-          className="max-w-sm"
-        />
-        <Hint>
-          貼上模式最快，會短暫借用剪貼簿並在 0.5 秒後自動還原原本的內容。
-          逐字輸入用於不支援貼上的視窗，但長文字會比較慢。
-        </Hint>
+        </SettingRow>
       </GlassCard>
 
-      <GlassCard title={tr('previewBeforeInject')} icon={Sparkles}>
-        <Row label={tr('previewBeforeInject')}>
-          <Toggle
-            checked={settings.enablePreviewBeforeInject}
-            onChange={(v) => update({ enablePreviewBeforeInject: v })}
-          />
-        </Row>
-        {settings.enablePreviewBeforeInject && (
-          <Row label={tr('previewTimeout')}>
-            <NumberField
-              value={settings.previewTimeout}
-              min={1}
-              max={15}
-              step={0.5}
-              onChange={(v) => update({ previewTimeout: v })}
-            />
-          </Row>
-        )}
+      <VoiceModesSection settings={settings} update={update} tr={tr} />
 
-        <Row label={tr('smartSend')}>
-          <Toggle
-            checked={settings.enableSmartSend}
-            onChange={(v) => update({ enableSmartSend: v })}
+      <GlassCard title={tr('vmExternalTrigger')} icon={Link2}>
+        <pre className="text-xs font-mono text-white/60 leading-relaxed whitespace-pre-wrap select-text bg-slate-950/50 border border-white/5 rounded-xl p-3">
+          {tr('vmUrlHelp')}
+        </pre>
+        <SettingRow title={tr('urlDecisionTitle')} description={tr('urlDecisionDesc')}>
+          <Segmented<UrlSchemeDecision>
+            value={settings.urlSchemeDecision}
+            options={[
+              { value: 'ask', label: tr('urlDecisionAsk') },
+              { value: 'allow', label: tr('urlDecisionAllow') },
+              { value: 'deny', label: tr('urlDecisionDeny') },
+            ]}
+            onChange={(v) => update({ urlSchemeDecision: v })}
           />
-        </Row>
-        {settings.enableSmartSend && (
-          <Row label={tr('smartSendDelay')}>
-            <NumberField
-              value={settings.smartSendDelay}
-              min={1}
-              max={10}
-              step={1}
-              onChange={(v) => update({ smartSendDelay: Math.round(v) })}
-            />
-          </Row>
-        )}
+        </SettingRow>
       </GlassCard>
     </div>
   );
@@ -968,7 +599,8 @@ export function InjectionSection({ settings, update, tr }: SectionProps) {
 
 // ---------------------------------------------------------------- 情境規則
 
-export function ContextRulesSection({ settings, update, tr }: SectionProps) {
+/// 嵌在「一般 → AI 理解」裡展開的規則編輯器（原生版是 sheet）
+export function ContextRulesEditor({ settings, update, tr }: Pick<SectionProps, 'settings' | 'update' | 'tr'>) {
   const [newApp, setNewApp] = useState('');
 
   const updateRule = (id: string, patch: Partial<ContextRule>) => {
@@ -997,9 +629,8 @@ export function ContextRulesSection({ settings, update, tr }: SectionProps) {
   };
 
   return (
-    <div className="max-w-3xl space-y-6">
-      <GlassCard title={tr('navContextRules')} icon={Layers}>
-        <Hint>{tr('contextRulesDesc')}</Hint>
+    <div className="space-y-3">
+        <SettingDescription>{tr('contextRulesDesc')}</SettingDescription>
 
         <div className="flex gap-2">
           <TextField
@@ -1062,7 +693,7 @@ export function ContextRulesSection({ settings, update, tr }: SectionProps) {
             </div>
           ))}
         </div>
-      </GlassCard>
+        {settings.contextRules.length === 0 && <SettingDescription>{tr('contextRulesEmpty')}</SettingDescription>}
     </div>
   );
 }
@@ -1084,10 +715,7 @@ export function DictionarySection({ tr }: SectionProps) {
   return (
     <div className="max-w-2xl space-y-6">
       <GlassCard title={tr('navDictionary')} icon={BookOpen}>
-        <Hint>
-          字典同時用在兩個地方：Whisper 的 prompt 偏置（降低同音錯字），
-          以及精煉階段的 personal_dictionary（統一慣用寫法）。
-        </Hint>
+        <SettingDescription>{tr('dictDesc')}</SettingDescription>
         <form
           onSubmit={(e) => {
             e.preventDefault();
@@ -1095,12 +723,12 @@ export function DictionarySection({ tr }: SectionProps) {
           }}
           className="flex gap-3 items-center"
         >
-          <TextField value={word} onChange={setWord} placeholder="原始詞彙（wifi）" className="flex-1" />
+          <TextField value={word} onChange={setWord} placeholder={`${tr('dictOriginalTerm')}（wifi）`} className="flex-1" />
           <ArrowRight className="w-4 h-4 text-white/30 flex-shrink-0" />
           <TextField
             value={replacement}
             onChange={setReplacement}
-            placeholder="偏好寫法（Wi-Fi）"
+            placeholder={`${tr('dictPreferredForm')}（Wi-Fi）`}
             className="flex-1"
           />
           <Button variant="primary" onClick={add}>
@@ -1131,6 +759,7 @@ export function DictionarySection({ tr }: SectionProps) {
             </div>
           ))}
         </div>
+        {dictionary.length === 0 && <SettingDescription>{tr('dictEmpty')}</SettingDescription>}
       </GlassCard>
     </div>
   );
@@ -1153,21 +782,19 @@ export function SkillsSection({ tr }: SectionProps) {
   return (
     <div className="max-w-2xl space-y-6">
       <GlassCard title={tr('navSkills')} icon={Cpu}>
-        <Hint>
-          技能會出現在意圖分類器的可用清單裡；說出觸發詞時，該技能的指令會被附加到精煉 prompt。
-        </Hint>
+        <SettingDescription>{tr('skillDesc')}</SettingDescription>
         <div className="flex flex-col gap-3">
           <div className="flex gap-3">
             <TextField
               value={trigger}
               onChange={setTrigger}
-              placeholder="觸發詞（翻譯）"
+              placeholder={tr('skillTriggerWord')}
               className="w-1/3"
             />
             <TextField
               value={prompt}
               onChange={setPrompt}
-              placeholder="自訂引導指令"
+              placeholder={tr('skillPromptInstruction')}
               className="flex-1"
             />
           </div>
@@ -1198,7 +825,19 @@ export function SkillsSection({ tr }: SectionProps) {
             </div>
           ))}
         </div>
+        {skills.length === 0 && <SettingDescription>{tr('skillEmpty')}</SettingDescription>}
       </GlassCard>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------- 字典／技能分頁
+
+export function DictionarySkillsSection(props: SectionProps) {
+  return (
+    <div className="max-w-2xl space-y-6">
+      <DictionarySection {...props} />
+      <SkillsSection {...props} />
     </div>
   );
 }
@@ -1288,7 +927,7 @@ export function LocalSttModelPanel() {
 
 // ---------------------------------------------------------------- 串流辨識設定
 
-function StreamingPanel({
+export function StreamingPanel({
   settings,
   update,
   tr,

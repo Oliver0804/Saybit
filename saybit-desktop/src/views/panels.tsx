@@ -22,12 +22,13 @@ import {
 
 import { db, type HistoryRecord } from '../services/db';
 import { formatUSD } from '../services/pricing';
-import type { L10nKey } from '../services/l10n';
+import type { Translator } from '../services/l10n';
 import { checkForUpdate, type CheckResult } from '../services/updateChecker';
-import { GlassCard, Button, Hint } from '../components/ui';
+import { writeText } from '@tauri-apps/plugin-clipboard-manager';
+import { GlassCard, Button, Hint, ConfirmDialog, ContextMenu } from '../components/ui';
 
 interface PanelProps {
-  tr: (key: L10nKey) => string;
+  tr: Translator;
 }
 
 // ---------------------------------------------------------------- 歷史紀錄
@@ -36,6 +37,9 @@ export function HistoryPanel({ tr }: PanelProps) {
   const history = useLiveQuery(() => db.history.orderBy('timestamp').reverse().toArray()) || [];
   const [selected, setSelected] = useState<HistoryRecord | null>(null);
   const [query, setQuery] = useState('');
+  const [menu, setMenu] = useState<{ x: number; y: number; record: HistoryRecord } | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<HistoryRecord | null>(null);
+  const [confirmClearAll, setConfirmClearAll] = useState(false);
 
   const filtered = useMemo(() => {
     if (!query.trim()) return history;
@@ -48,11 +52,19 @@ export function HistoryPanel({ tr }: PanelProps) {
     );
   }, [history, query]);
 
+  const deleteRecord = async (record: HistoryRecord) => {
+    if (record.id != null) await db.history.delete(record.id);
+    if (selected?.id === record.id) setSelected(null);
+  };
+
   const clearAll = async () => {
-    if (confirm('確定要清除所有語音輸入歷史紀錄嗎？')) {
-      await db.history.clear();
-      setSelected(null);
-    }
+    setConfirmClearAll(false);
+    await db.history.clear();
+    setSelected(null);
+  };
+
+  const copy = (text: string) => {
+    writeText(text).catch(() => {});
   };
 
   return (
@@ -62,14 +74,18 @@ export function HistoryPanel({ tr }: PanelProps) {
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="搜尋…"
+            placeholder={tr('histSearchPlaceholder')}
             className="flex-1 bg-slate-950 border border-white/10 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:border-emerald-500/50"
           />
-          <span className="text-[10px] text-white/40 whitespace-nowrap">{filtered.length} 筆</span>
+          <span className="text-[10px] text-white/40 whitespace-nowrap">
+            {tr('histRecordCount', { n: filtered.length })}
+          </span>
           {history.length > 0 && (
             <button
               type="button"
-              onClick={clearAll}
+              onClick={() => setConfirmClearAll(true)}
+              title={tr('histDeleteAll')}
+              aria-label={tr('histDeleteAll')}
               className="flex items-center space-x-1 text-xs text-red-400 hover:text-red-300 cursor-pointer"
             >
               <Trash2 className="w-3.5 h-3.5" />
@@ -82,6 +98,11 @@ export function HistoryPanel({ tr }: PanelProps) {
             <div
               key={record.id}
               onClick={() => setSelected(record)}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                setSelected(record);
+                setMenu({ x: e.clientX, y: e.clientY, record });
+              }}
               className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
                 selected?.id === record.id
                   ? 'bg-emerald-500/10 border-emerald-500/30'
@@ -105,29 +126,44 @@ export function HistoryPanel({ tr }: PanelProps) {
             </div>
           ))}
           {filtered.length === 0 && (
-            <div className="flex flex-col items-center justify-center h-48 text-white/20">
-              <HistoryIcon className="w-10 h-10 mb-2 stroke-[1.5]" />
-              <span className="text-xs">{tr('noData')}</span>
+            <div className="flex flex-col items-center justify-center h-48 text-white/30 text-center px-6">
+              <HistoryIcon className="w-10 h-10 mb-3 stroke-[1.5]" />
+              {history.length === 0 ? (
+                <>
+                  <span className="text-sm font-semibold text-white/50">{tr('histEmptyTitle')}</span>
+                  <span className="text-xs mt-1">{tr('histEmptyDesc')}</span>
+                </>
+              ) : (
+                <span className="text-xs">{tr('histNoMatch', { q: query })}</span>
+              )}
             </div>
           )}
         </div>
       </div>
 
       <div className="w-1/2 bg-slate-900/60 border border-white/5 rounded-2xl p-6 flex flex-col">
-        <h3 className="text-sm font-bold border-b border-white/5 pb-3">歷程詳細紀錄</h3>
+        <h3 className="text-sm font-bold border-b border-white/5 pb-3">{tr('histDetailTitle')}</h3>
         {selected ? (
           <div className="flex-grow space-y-4 overflow-y-auto mt-4 pr-1 text-left">
             <div className="space-y-1">
-              <span className="text-[10px] text-white/40 font-bold uppercase">原始轉錄</span>
-              <div className="p-3 bg-slate-950 rounded-xl border border-white/5 text-xs text-white/60 leading-relaxed">
+              <span className="text-[10px] text-white/40 font-bold uppercase">{tr('histRawTranscript')}</span>
+              <div className="p-3 bg-slate-950 rounded-xl border border-white/5 text-xs text-white/60 leading-relaxed select-text">
                 “{selected.rawTranscript}”
               </div>
             </div>
             <div className="space-y-1">
-              <span className="text-[10px] text-white/40 font-bold uppercase">精煉結果</span>
-              <div className="p-3 bg-slate-950 rounded-xl border border-emerald-500/20 text-xs text-emerald-300 leading-relaxed font-semibold">
+              <span className="text-[10px] text-white/40 font-bold uppercase">{tr('histProcessedText')}</span>
+              <div className="p-3 bg-slate-950 rounded-xl border border-emerald-500/20 text-xs text-emerald-300 leading-relaxed font-semibold select-text">
                 “{selected.processedText}”
               </div>
+            </div>
+            <div className="flex gap-2">
+              <Button onClick={() => copy(selected.processedText)}>{tr('histCopyResult')}</Button>
+              <Button onClick={() => copy(selected.rawTranscript)}>{tr('histCopyRaw')}</Button>
+              <div className="flex-1" />
+              <Button variant="danger" onClick={() => setPendingDelete(selected)}>
+                {tr('histDeleteRecord')}
+              </Button>
             </div>
             <div className="grid grid-cols-2 gap-3 border-t border-white/5 pt-3 text-[11px] text-white/40">
               <Detail label="前景 App" value={selected.appName || selected.appContext} />
@@ -150,10 +186,48 @@ export function HistoryPanel({ tr }: PanelProps) {
           </div>
         ) : (
           <div className="flex-grow flex items-center justify-center text-white/20">
-            <span className="text-xs">請點選左側紀錄查看詳情</span>
+            <span className="text-xs">{tr('histSelectRecord')}</span>
           </div>
         )}
       </div>
+
+      <ContextMenu
+        position={menu}
+        onClose={() => setMenu(null)}
+        items={
+          menu
+            ? [
+                { label: tr('histCopyResult'), onSelect: () => copy(menu.record.processedText) },
+                { label: tr('histCopyRaw'), onSelect: () => copy(menu.record.rawTranscript) },
+                'separator',
+                { label: tr('histDeleteRecord'), destructive: true, onSelect: () => setPendingDelete(menu.record) },
+              ]
+            : []
+        }
+      />
+      <ConfirmDialog
+        open={pendingDelete !== null}
+        title={tr('histDeleteRecord')}
+        message={tr('histConfirmDelete')}
+        confirmLabel={tr('delete')}
+        cancelLabel={tr('cancel')}
+        destructive
+        onConfirm={() => {
+          if (pendingDelete) deleteRecord(pendingDelete);
+          setPendingDelete(null);
+        }}
+        onCancel={() => setPendingDelete(null)}
+      />
+      <ConfirmDialog
+        open={confirmClearAll}
+        title={tr('histDeleteAll')}
+        message={tr('histConfirmDeleteAll', { n: history.length })}
+        confirmLabel={tr('delete')}
+        cancelLabel={tr('cancel')}
+        destructive
+        onConfirm={clearAll}
+        onCancel={() => setConfirmClearAll(false)}
+      />
     </div>
   );
 }

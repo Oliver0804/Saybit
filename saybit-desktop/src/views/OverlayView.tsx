@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Mic,
   Loader2,
@@ -10,6 +10,7 @@ import {
 import { getCurrentWindow, currentMonitor, LogicalPosition } from '@tauri-apps/api/window';
 import { invoke } from '@tauri-apps/api/core';
 import { type useVoicePipeline } from '../hooks/useVoicePipeline';
+import { makeTranslator } from '../services/l10n';
 
 interface OverlayViewProps {
   pipeline: ReturnType<typeof useVoicePipeline>;
@@ -34,7 +35,16 @@ export function OverlayView({ pipeline }: OverlayViewProps) {
     retryLastAction,
     cancelPreview,
     cancelConfirming,
+    activeModeName,
   } = pipeline;
+  const tr = useMemo(() => makeTranslator(settings.appLanguage), [settings.appLanguage]);
+
+  // 用語音模式錄音／處理時，膠囊上顯示紫色模式標籤（對齊原生 OverlayView.modeTag）
+  const modeTag = activeModeName ? (
+    <span className="flex-shrink-0 max-w-[90px] truncate px-2 py-0.5 rounded-full bg-purple-500/75 text-[10px] font-semibold text-white leading-tight">
+      {activeModeName}
+    </span>
+  ) : null;
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const animationRef = useRef<number | null>(null);
@@ -239,7 +249,7 @@ export function OverlayView({ pipeline }: OverlayViewProps) {
       style={{ fontFamily: 'system-ui, -apple-system, sans-serif' }}
     >
       <div
-        className={`inline-flex items-center h-11 px-3 rounded-full border backdrop-blur-xl transition-all duration-300 cursor-pointer bg-slate-900/75 ${borderClass}`}
+        className={`inline-flex items-center min-h-11 py-1 px-3 rounded-full border backdrop-blur-xl transition-all duration-300 cursor-pointer bg-slate-900/75 ${borderClass}`}
         // CSS transform 會連同邊框與圓角一起縮放，不會發生原生 SwiftUI 那種
         // 「內容縮了但膠囊形狀沒變」的問題。
         style={{ boxShadow: shadowStyle, transform: `scale(${settings.capsuleScale})` }}
@@ -258,13 +268,14 @@ export function OverlayView({ pipeline }: OverlayViewProps) {
           <div className="flex items-center space-x-2 pointer-events-none">
             <div className="w-2.5 h-2.5 rounded-full bg-orange-400 animate-pulse" />
             <canvas ref={canvasRef} className="w-[80px] h-[22px]" />
-            <span className="text-[11px] font-medium text-orange-300/80 pr-1">聆聽中</span>
+            <span className="text-[11px] font-medium text-orange-300/80 pr-1">{tr('ovListening')}</span>
           </div>
         )}
 
         {state === 'recording' && (
           <div className="flex items-center space-x-2 pointer-events-none">
             <div className="w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse" />
+            {modeTag}
             <canvas ref={canvasRef} className="w-[100px] h-[22px]" />
             <span className="text-[11px] font-mono text-white/50 tabular-nums">
               {fmtDuration(elapsedSec)}
@@ -281,7 +292,8 @@ export function OverlayView({ pipeline }: OverlayViewProps) {
         {state === 'processing' && (
           <div className="flex items-center space-x-2 pointer-events-none">
             <Loader2 className="w-3.5 h-3.5 text-orange-400 animate-spin" />
-            <span className="text-[12px] text-white/70 pr-1">處理中</span>
+            {modeTag}
+            <span className="text-[12px] text-white/70 pr-1">{tr('ovProcessing')}</span>
             {(rawText || partialText) && (
               <span className="text-[11px] text-white/30 max-w-[180px] truncate">
                 {rawText || partialText}
@@ -293,30 +305,30 @@ export function OverlayView({ pipeline }: OverlayViewProps) {
         {state === 'previewing' && (
           <div className="flex items-center space-x-2 pointer-events-none">
             <div className="flex flex-col min-w-0 max-w-[220px]">
-              <span className="text-[10px] font-semibold text-blue-300 leading-none">預覽</span>
+              <span className="text-[10px] font-semibold text-blue-300 leading-none">{tr('ovPreview')}</span>
               <span className="text-[12px] text-white truncate mt-0.5">
-                {processedText || '正在精煉...'}
+                {processedText || tr('ovRefining')}
               </span>
             </div>
             <div className="flex items-center space-x-1 pointer-events-auto" onClick={(e) => e.stopPropagation()}>
               <button
                 onClick={confirmInject}
                 className="flex items-center justify-center w-7 h-7 rounded-full bg-emerald-500/20 hover:bg-emerald-500 text-emerald-300 hover:text-white transition-all border border-emerald-500/30"
-                title="注入"
+                title={tr('ovInject')}
               >
                 <Check className="w-3.5 h-3.5" />
               </button>
               <button
                 onClick={regenerateResult}
                 className="flex items-center justify-center w-7 h-7 rounded-full bg-amber-500/20 hover:bg-amber-500 text-amber-300 hover:text-white transition-all border border-amber-500/30"
-                title="重新生成"
+                title={tr('ovRegenerate')}
               >
                 <RotateCw className="w-3 h-3" />
               </button>
               <button
                 onClick={cancelPreview}
                 className="flex items-center justify-center w-7 h-7 rounded-full bg-white/5 hover:bg-red-500/20 text-white/60 hover:text-red-400 transition-all border border-white/10"
-                title="取消"
+                title={tr('cancel')}
               >
                 <X className="w-3.5 h-3.5" />
               </button>
@@ -328,7 +340,7 @@ export function OverlayView({ pipeline }: OverlayViewProps) {
           <div className="flex items-center space-x-2 pointer-events-none">
             <Check className="w-3.5 h-3.5 text-emerald-400" />
             <span className="text-[12px] text-white truncate max-w-[280px]">
-              {processedText || rawText || '完成'}
+              {processedText || rawText || tr('done')}
             </span>
           </div>
         )}
@@ -343,7 +355,7 @@ export function OverlayView({ pipeline }: OverlayViewProps) {
               onClick={(e) => { e.stopPropagation(); cancelConfirming(); }}
               className="text-[11px] text-white/50 hover:text-red-400 border border-white/10 rounded-full px-2.5 py-1 transition-colors pointer-events-auto"
             >
-              取消
+              {tr('cancel')}
             </button>
           </div>
         )}
@@ -351,7 +363,10 @@ export function OverlayView({ pipeline }: OverlayViewProps) {
         {state === 'error' && (
           <div className="flex items-center space-x-2 pointer-events-none">
             <AlertCircle className="w-3.5 h-3.5 text-red-400 flex-shrink-0" />
-            <span className="text-[12px] text-red-300 truncate max-w-[220px]">{errorMsg}</span>
+            {/* 錯誤最多兩行（原生 lineLimit(2)），完整訊息放 title */}
+            <span className="text-[11px] leading-snug text-red-300 max-w-[260px] line-clamp-2 break-words" title={errorMsg}>
+              {errorMsg}
+            </span>
             {rawText && (
               <button
                 onClick={(e) => {
@@ -359,7 +374,7 @@ export function OverlayView({ pipeline }: OverlayViewProps) {
                   retryLastAction();
                 }}
                 className="flex items-center justify-center w-7 h-7 rounded-full bg-amber-500/20 hover:bg-amber-500 text-amber-300 hover:text-white transition-all border border-amber-500/30 flex-shrink-0 pointer-events-auto"
-                title="用剛才那段語音重試（不用再講一次）"
+                title={tr('ovRetryHint')}
               >
                 <RotateCw className="w-3 h-3" />
               </button>

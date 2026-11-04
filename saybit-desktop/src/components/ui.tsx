@@ -269,3 +269,237 @@ export function Button({
 export function Hint({ children }: { children: React.ReactNode }) {
   return <p className="text-[11px] text-white/30 leading-relaxed">{children}</p>;
 }
+
+// ---------------------------------------------------------------- 設定列（對應原生 SettingsView.swift 的 SettingRow 系列）
+// 規則同原生：左邊標題＋說明，右邊控制項；開關一律靠右、說明統一字級。
+
+export function SettingDescription({ children }: { children: React.ReactNode }) {
+  return <p className="text-xs text-white/45 leading-relaxed">{children}</p>;
+}
+
+export function SettingRow({
+  title,
+  description,
+  children,
+}: {
+  title: React.ReactNode;
+  description?: React.ReactNode;
+  children?: React.ReactNode;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-4 py-0.5">
+      <div className="min-w-0 flex-1 space-y-0.5">
+        <div className="text-sm text-white/90">{title}</div>
+        {description && <SettingDescription>{description}</SettingDescription>}
+      </div>
+      {children !== undefined && <div className="flex-shrink-0">{children}</div>}
+    </div>
+  );
+}
+
+export function SettingToggle({
+  title,
+  description,
+  checked,
+  onChange,
+  disabled,
+}: {
+  title: React.ReactNode;
+  description?: React.ReactNode;
+  checked: boolean;
+  onChange: (value: boolean) => void;
+  disabled?: boolean;
+}) {
+  return (
+    <SettingRow title={title} description={description}>
+      <Toggle checked={checked} onChange={onChange} disabled={disabled} />
+    </SettingRow>
+  );
+}
+
+/// 滑桿列：標題＋目前數值在上，滑桿在下（與原生 SettingSlider 相同排版）
+export function SettingSlider({
+  title,
+  valueText,
+  value,
+  onChange,
+  min,
+  max,
+  step,
+  description,
+}: {
+  title: React.ReactNode;
+  valueText: string;
+  value: number;
+  onChange: (value: number) => void;
+  min: number;
+  max: number;
+  step: number;
+  description?: React.ReactNode;
+}) {
+  return (
+    <div className="space-y-1">
+      <div className="flex items-center justify-between gap-4">
+        <span className="text-sm text-white/90">{title}</span>
+        <span className="text-xs font-mono tabular-nums text-white/50">{valueText}</span>
+      </div>
+      <input
+        type="range"
+        min={min}
+        max={max}
+        step={step}
+        value={value}
+        onChange={(e) => onChange(parseFloat(e.target.value))}
+        className="w-full accent-emerald-500 cursor-pointer"
+      />
+      {description && <SettingDescription>{description}</SettingDescription>}
+    </div>
+  );
+}
+
+/// 子設定（開關打開後才出現的細項）往內縮，左側一條細線
+export function SettingIndent({ children }: { children: React.ReactNode }) {
+  return <div className="pl-3.5 border-l-2 border-white/10 space-y-2">{children}</div>;
+}
+
+export function SettingDivider() {
+  return <div className="h-px bg-white/5" />;
+}
+
+export function Badge({
+  children,
+  tone = 'neutral',
+}: {
+  children: React.ReactNode;
+  tone?: 'neutral' | 'ok' | 'warn' | 'error' | 'mode';
+}) {
+  const styles = {
+    neutral: 'bg-white/5 text-white/60 border-white/10',
+    ok: 'bg-emerald-500/10 text-emerald-300 border-emerald-500/25',
+    warn: 'bg-amber-500/15 text-amber-300 border-amber-500/25',
+    error: 'bg-red-500/10 text-red-300 border-red-500/25',
+    mode: 'bg-purple-500/75 text-white border-purple-400/40',
+  }[tone];
+  return (
+    <span className={`inline-flex items-center px-2 py-0.5 rounded-full border text-[11px] font-medium ${styles}`}>
+      {children}
+    </span>
+  );
+}
+
+/// 確認對話框（取代 window.confirm：WKWebView 的 confirm 在部分環境會被吞掉，且無法在地化按鈕）
+export function ConfirmDialog({
+  open,
+  title,
+  message,
+  confirmLabel,
+  cancelLabel,
+  destructive,
+  onConfirm,
+  onCancel,
+  children,
+}: {
+  open: boolean;
+  title: string;
+  message?: React.ReactNode;
+  confirmLabel: string;
+  cancelLabel: string;
+  destructive?: boolean;
+  onConfirm: () => void;
+  onCancel: () => void;
+  children?: React.ReactNode;
+}) {
+  React.useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onCancel();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open, onCancel]);
+
+  if (!open) return null;
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+      onClick={onCancel}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        className="w-[420px] max-w-[90vw] bg-slate-900 border border-white/10 rounded-2xl p-6 space-y-4 shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h3 className="text-sm font-bold text-white">{title}</h3>
+        {message && <div className="text-xs text-white/60 leading-relaxed whitespace-pre-line">{message}</div>}
+        {children}
+        <div className="flex justify-end gap-2 pt-2">
+          <Button onClick={onCancel}>{cancelLabel}</Button>
+          <Button variant={destructive ? 'danger' : 'primary'} onClick={onConfirm}>
+            {confirmLabel}
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/// 右鍵選單：在游標位置顯示，點外面或按 Esc 關閉
+export function ContextMenu({
+  position,
+  items,
+  onClose,
+}: {
+  position: { x: number; y: number } | null;
+  items: Array<{ label: string; onSelect: () => void; destructive?: boolean } | 'separator'>;
+  onClose: () => void;
+}) {
+  React.useEffect(() => {
+    if (!position) return;
+    const close = () => onClose();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('click', close);
+    window.addEventListener('blur', close);
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('click', close);
+      window.removeEventListener('blur', close);
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [position, onClose]);
+
+  if (!position) return null;
+  // 靠近視窗右下緣時往內縮，避免選單被切掉
+  const x = Math.min(position.x, window.innerWidth - 200);
+  const y = Math.min(position.y, window.innerHeight - items.length * 32 - 16);
+  return (
+    <div
+      className="fixed z-50 min-w-[180px] py-1 bg-slate-900 border border-white/10 rounded-xl shadow-2xl"
+      style={{ left: x, top: y }}
+      onClick={(e) => e.stopPropagation()}
+      onContextMenu={(e) => e.preventDefault()}
+    >
+      {items.map((item, index) =>
+        item === 'separator' ? (
+          <div key={`sep-${index}`} className="h-px my-1 bg-white/5" />
+        ) : (
+          <button
+            key={item.label}
+            type="button"
+            onClick={() => {
+              onClose();
+              item.onSelect();
+            }}
+            className={`w-full text-left px-3 py-1.5 text-xs cursor-pointer hover:bg-white/5 ${
+              item.destructive ? 'text-red-300' : 'text-white/80'
+            }`}
+          >
+            {item.label}
+          </button>
+        )
+      )}
+    </div>
+  );
+}
