@@ -1,0 +1,6 @@
+# Linux 打包時附加到 Packager.toml 尾端（release-rs.yml 會 cat 兩個檔）：
+# 把 sherpa-onnx 的動態庫一起打包到 usr/lib/saybit/，執行檔的 rpath 有 $ORIGIN/../lib/saybit（見 crates/saybit-app/build.rs）。
+resources = [
+  "target/release/libsherpa-onnx-c-api.so",
+  "target/release/libonnxruntime.so",
+]

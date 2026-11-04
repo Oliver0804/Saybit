@@ -1,0 +1,28 @@
+# cargo-packager 設定（release-rs.yml 用）：cargo packager --release --config packaging/Packager.toml
+# 在 saybit-rs/ 目錄執行。路徑相對於 saybit-rs/。
+name = "saybit"
+product-name = "Saybit"
+identifier = "com.bashcat.saybit"
+version = "0.1.0"
+description = "Speech to polished text, typed into any app"
+authors = ["bashcat"]
+publisher = "bashcat"
+homepage = "https://bashcat.net"
+out-dir = "dist"
+binaries-dir = "target/release"
+binaries = [{ path = "saybit", main = true }]
+icons = [
+  "crates/saybit-app/assets/icon-256.png",
+  "crates/saybit-app/assets/icon.icns",
+  "crates/saybit-app/assets/icon.ico",
+]
+deep-link-protocols = [{ schemes = ["saybit"] }]
+
+[macos]
+minimum-system-version = "12.0"
+info-plist-path = "packaging/Info.plist"
+
+[deb]
+depends = ["libasound2", "libxdo3", "libxkbcommon0", "libdbus-1-3"]
+
+[appimage]

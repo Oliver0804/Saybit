@@ -1,0 +1,42 @@
+[package]
+name = "saybit-app"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Saybit desktop app (egui/eframe): tray, global hotkeys, floating capsule, settings"
+default-run = "saybit"
+
+[[bin]]
+name = "saybit"
+path = "src/main.rs"
+
+[dependencies]
+saybit-core = { path = "../saybit-core" }
+serde.workspace = true
+serde_json.workspace = true
+anyhow.workspace = true
+log.workspace = true
+parking_lot.workspace = true
+crossbeam-channel.workspace = true
+chrono.workspace = true
+eframe = { version = "0.37", default-features = false, features = ["default_fonts", "wgpu", "persistence", "wayland", "x11"] }
+egui = "0.37"
+# ---- 各批次在下方追加自己的依賴（只能用 Edit 追加，不要重排）----
+# A2（設定分頁）
+egui_plot = "0.38"
+rfd = "0.17"
+# A1（殼層：系統匣、全域快捷鍵、字型、圖示）
+# tray-icon 用 ksni（D-Bus StatusNotifier）而不是 libappindicator：Linux 上不必另跑 GTK main loop
+tray-icon = { version = "0.26", default-features = false, features = ["ksni"] }
+global-hotkey = "0.9"
+fontdb = "0.24"
+image = { version = "0.25", default-features = false, features = ["png"] }
+# 膠囊多螢幕 clamp（egui 只給目前螢幕大小，沒有螢幕清單）
+display-info = "0.5"
+# 只為了開 epaint 的 monochrome_emoji_fonts（膠囊／引導的 🎤 ✔ ⚠ 等圖示；egui 0.37 預設不含 emoji 字型）。
+# 等同 egui 的同名 feature，可併回上面 egui 那行
+epaint = { version = "0.37", default-features = false, features = ["monochrome_emoji_fonts"] }
+
+# A1：macOS 啟動時設 ActivationPolicy::Accessory（不出現在 Dock）；版本跟 eframe 0.37 用的 winit 0.30 一致
+[target.'cfg(target_os = "macos")'.dependencies]
+winit = { version = "0.30", default-features = false }
