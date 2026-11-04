@@ -7,6 +7,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **`speakertpyer/`** — the native macOS SwiftUI menu-bar app (bundle `com.bashcat.speakertpyer`). Everything below in this file describes it.
 - **`saybit-desktop/`** — a **separate** Tauri 2.0 cross-platform (Windows/macOS/Linux) app (bundle `com.oliver.saybit-desktop`), React + Rust. Same product concept, no shared code. It has its own `saybit-desktop/CLAUDE.md` — read that when working there. Don't confuse the two: launching `/Applications/Saybit.app` runs the native app, not the Tauri build.
 
+## Rust-native desktop app (`saybit-rs/`)
+
+- Cargo workspace replacing the Tauri app for Windows / Linux / macOS: `crates/saybit-core` (no GUI: audio capture via cpal, STT engines, LLM client, pipeline state machine, SQLite storage, injection, platform glue) and `crates/saybit-app` (egui/eframe 0.37: tray, global hotkeys, floating capsule as a deferred viewport, onboarding, settings pages). Own `README.md`; the cross-module contract is `crates/saybit-core/src/types.rs` — add fields/variants there, never rename.
+- Build from `saybit-rs/` (the Windows `+crt-static` lives in `saybit-rs/.cargo/config.toml` and only applies when cargo runs from there). `cargo clippy --workspace --all-targets -- -D warnings` must stay clean on Rust 1.99 (CI). `SAYBIT_SMOKE=1 cargo run -p saybit-app` opens the windows with fake pipeline states for 30 s without hotkeys/tray/mic.
+- Same invariants as the native app (generation counter, inject target check, URL gating via `url_scheme_decision`, sensitive logs, no store deletion). macOS shares the SenseVoice model dir with the Swift app (`~/Library/Application Support/Saybit/SherpaModels`). Linux links sherpa-onnx dynamically: the `.so` files are packaged via `packaging/Packager.linux-extra.toml` and found through the rpath in `crates/saybit-app/build.rs`.
+- Not ported (platform limits): Apple on-device LLM, screen-context OCR, auto-learn dictionary, per-sender URL allowlist.
+
 ## iOS app (same Xcode project)
 
 - Targets `SaybitiOS` (app, bundle `com.bashcat.speakertpyer`, scheme `SaybitiOS`) + `SaybitKeyboard` (keyboard extension, `com.bashcat.speakertpyer.keyboard`). App Group `group.com.bashcat.speakertpyer`.
