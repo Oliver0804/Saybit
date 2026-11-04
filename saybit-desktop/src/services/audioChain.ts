@@ -242,7 +242,8 @@ export class AudioChain {
   }
 
   /// 開始錄音。此刻環形緩衝的內容會成為錄音的前綴。
-  beginCapture(): void {
+  /// feedPrefixToTap：把預錄前綴也送進 live tap（SenseVoice 要整段音訊，否則開頭的字會掉）。
+  beginCapture(opts: { feedPrefixToTap?: boolean } = {}): void {
     this.captureChunks = [];
     this.captureLength = 0;
     // 先把環形緩衝的內容取出當前綴（依寫入順序，最舊到最新）
@@ -250,6 +251,14 @@ export class AudioChain {
     if (prefix.length > 0) {
       this.captureChunks.push(prefix);
       this.captureLength += prefix.length;
+      if (opts.feedPrefixToTap && this.liveTap) {
+        try {
+          const resampled = this.liveResampler ? this.liveResampler.process(prefix) : prefix;
+          if (resampled.length > 0) this.liveTap(resampled);
+        } catch {
+          /* 推送失敗不影響錄音 */
+        }
+      }
     }
     this.capturing = true;
   }

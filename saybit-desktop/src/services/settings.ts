@@ -10,8 +10,9 @@ import { defaultModelFor } from './providers';
 import type { ContextRule } from './contextRules';
 import { DEFAULT_CONTEXT_RULES } from './contextRules';
 import type { PromptStyle } from './systemPrompts';
-import type { AppLanguage } from './l10n';
+import { t, type AppLanguage } from './l10n';
 import type { StreamingProvider } from './streamingStt';
+import { DEFAULT_VOICE_MODES, sanitizeVoiceModes, type VoiceMode } from './voiceModes';
 
 export type { AppLanguage };
 export type ProcessingMode = 'dictation' | 'command' | 'edit';
@@ -19,8 +20,11 @@ export type ToneStyle = 'auto' | 'formal' | 'casual' | 'very_casual';
 export type InjectionMode = 'paste' | 'keypress' | 'replace_selection';
 export type HotkeyTriggerMode = 'toggle' | 'hold' | 'doubleTap';
 /// cloud = Whisper 相容 API；local = whisper.cpp；apple = SFSpeechRecognizer（僅 macOS）；
-/// streaming = WebSocket 串流辨識（阿里雲／訊飛），邊講邊辨識
-export type SttEngine = 'cloud' | 'local' | 'apple' | 'streaming';
+/// streaming = WebSocket 串流辨識（阿里雲／訊飛），邊講邊辨識；
+/// sensevoice = sherpa-onnx SenseVoice 離線辨識（邊講邊辨識，模型需另外下載）
+export type SttEngine = 'cloud' | 'local' | 'apple' | 'streaming' | 'sensevoice';
+export type UrlSchemeDecision = 'ask' | 'allow' | 'deny';
+const STT_ENGINES: SttEngine[] = ['cloud', 'local', 'apple', 'streaming', 'sensevoice'];
 
 export interface AppSettings {
   // ---- LLM 服務商 ----
@@ -47,6 +51,9 @@ export interface AppSettings {
   hotkey: string;
   hotkeyTriggerMode: HotkeyTriggerMode;
 
+  // ---- 語音模式（各自的指令與快捷鍵）----
+  voiceModes: VoiceMode[];
+
   // ---- 音訊輸入 ----
   selectedInputDeviceId: string;
   micSensitivity: number;
@@ -55,6 +62,10 @@ export interface AppSettings {
   preBufferSeconds: number;
   silenceTimeout: number;
   enableAutoStop: boolean;
+  /// 錄音時把系統輸出音量降到 20%，結束恢復
+  enableDucking: boolean;
+  /// 單次錄音上限（秒），超過自動停止
+  maxRecordingSeconds: number;
 
   // ---- STT ----
   sttEngine: SttEngine;
@@ -104,6 +115,10 @@ export interface AppSettings {
   // ---- per-app 規則 ----
   contextRules: ContextRule[];
 
+  // ---- URL scheme（saybit://）----
+  /// 第一次收到外部指令時詢問並記住
+  urlSchemeDecision: UrlSchemeDecision;
+
   // ---- 首次啟動 ----
   hasCompletedOnboarding: boolean;
 }
@@ -129,6 +144,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   hotkey: 'Ctrl+Alt+Space',
   hotkeyTriggerMode: 'toggle',
 
+  voiceModes: DEFAULT_VOICE_MODES,
+
   selectedInputDeviceId: '',
   micSensitivity: 2.0,
   enableVoiceBandpass: true,
@@ -136,6 +153,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   preBufferSeconds: 1.0,
   silenceTimeout: 2.0,
   enableAutoStop: true,
+  enableDucking: true,
+  maxRecordingSeconds: 300,
 
   sttEngine: 'cloud',
   sttBaseUrl: 'https://api.openai.com/v1',
@@ -176,6 +195,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
 
   contextRules: DEFAULT_CONTEXT_RULES,
 
+  urlSchemeDecision: 'ask',
+
   hasCompletedOnboarding: false,
 };
 
@@ -197,6 +218,15 @@ export function loadSettings(): AppSettings {
   // 陣列欄位若被存成非陣列（手改壞的設定檔）就回退預設，避免整個 UI 崩掉
   if (!Array.isArray(merged.customProviders)) merged.customProviders = [];
   if (!Array.isArray(merged.contextRules)) merged.contextRules = DEFAULT_CONTEXT_RULES;
+  // 舊設定沒有 voiceModes → 給預設三個；有但壞掉的項目逐筆丟掉
+  merged.voiceModes =
+    stored.voiceModes === undefined ? DEFAULT_VOICE_MODES.map((m) => ({ ...m })) : sanitizeVoiceModes(stored.voiceModes);
+  if (!STT_ENGINES.includes(merged.sttEngine)) merged.sttEngine = DEFAULT_SETTINGS.sttEngine;
+  if (!['ask', 'allow', 'deny'].includes(merged.urlSchemeDecision)) merged.urlSchemeDecision = 'ask';
+  if (typeof merged.enableDucking !== 'boolean') merged.enableDucking = DEFAULT_SETTINGS.enableDucking;
+  if (!Number.isFinite(merged.maxRecordingSeconds) || merged.maxRecordingSeconds < 5) {
+    merged.maxRecordingSeconds = DEFAULT_SETTINGS.maxRecordingSeconds;
+  }
 
   return merged;
 }
@@ -220,7 +250,8 @@ function migrateLegacySettings(): Partial<AppSettings> {
     sttEngine === 'cloud' ||
     sttEngine === 'local' ||
     sttEngine === 'apple' ||
-    sttEngine === 'streaming'
+    sttEngine === 'streaming' ||
+    sttEngine === 'sensevoice'
   ) {
     legacy.sttEngine = sttEngine;
   }
@@ -337,4 +368,65 @@ export function modelAfterProviderSwitch(
   currentModel: string
 ): string {
   return defaultModelFor(providerId) ?? currentModel;
+}
+
+// ---------------------------------------------------------------- 端點驗證
+
+export type BaseUrlValidation = 'ok' | 'insecureRemote' | 'invalid';
+
+/// 判斷 host 是否為本機 / 區網（loopback、RFC1918、*.local）—— 只有這些允許走 http。
+function isLocalHost(host: string): boolean {
+  const h = host.toLowerCase().replace(/^\[|\]$/g, '');
+  if (h === 'localhost' || h.endsWith('.localhost') || h.endsWith('.local')) return true;
+  if (h === '::1') return true;
+  const m = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(h);
+  if (!m) return false;
+  const [a, b] = [Number(m[1]), Number(m[2])];
+  if ([a, b, Number(m[3]), Number(m[4])].some((n) => n > 255)) return false;
+  if (a === 127 || a === 10) return true;
+  if (a === 172 && b >= 16 && b <= 31) return true;
+  if (a === 192 && b === 168) return true;
+  return false;
+}
+
+/// 審查 M12：自訂 baseURL 必須 https；http 只允許本機／區網，否則金鑰會明文外送。
+export function validateBaseUrl(raw: string): BaseUrlValidation {
+  const trimmed = (raw ?? '').trim();
+  if (!trimmed) return 'invalid';
+  let url: URL;
+  try {
+    url = new URL(trimmed);
+  } catch {
+    return 'invalid';
+  }
+  if (!url.hostname) return 'invalid';
+  if (url.protocol === 'https:') return 'ok';
+  if (url.protocol === 'http:') return isLocalHost(url.hostname) ? 'ok' : 'insecureRemote';
+  return 'invalid';
+}
+
+/// 有金鑰要送出前的檢查：不安全就丟可讀錯誤（不送 key）。
+export function assertSafeBaseUrl(raw: string, hasKey: boolean): void {
+  const v = validateBaseUrl(raw);
+  if (v === 'invalid') {
+    throw new Error(`${tr('errBaseUrlInvalid', '端點網址格式錯誤')}：${raw}`);
+  }
+  if (v === 'insecureRemote' && hasKey) {
+    throw new Error(
+      `${tr('errBaseUrlInsecure', '端點不是 https，為避免 API Key 明文外送已停止傳送；請改用 https，或只對本機／區網位址使用 http')}：${raw}`
+    );
+  }
+}
+
+// ---------------------------------------------------------------- 字串
+
+/// 呼叫 l10n 的 t()，key 還沒進表時退回預設字串（l10n.ts 由 UI 批次維護，
+/// 新 key 可能比這裡的程式碼晚加進去）。
+export function tr(key: string, fallback: string): string {
+  try {
+    const s = (t as unknown as (k: string) => string | undefined)(key);
+    return typeof s === 'string' && s ? s : fallback;
+  } catch {
+    return fallback;
+  }
 }

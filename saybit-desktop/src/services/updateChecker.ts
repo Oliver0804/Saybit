@@ -43,23 +43,51 @@ export async function fetchLatestRelease(): Promise<ReleaseInfo> {
   };
 }
 
-/// 語意化版本比較。回傳 >0 表示 a 比 b 新。
+/// Semver 2.0 precedence：先比 major.minor.patch（缺項補 0），相同時有 pre-release 的較舊
+/// （`1.5.0-beta.1 < 1.5.0`），兩者都有則逐段比較識別字；`+build` 忽略（審查 L2）。
+/// 回傳 >0 表示 a 比 b 新。
 export function compareVersions(a: string, b: string): number {
-  const normalize = (v: string) =>
-    v
-      .replace(/^v/i, '')
-      .split(/[.\-+]/)
-      .map((part) => parseInt(part, 10))
+  const split = (raw: string): { core: number[]; pre: string[] | null } => {
+    const s = raw.trim().replace(/^v/i, '');
+    const noBuild = s.split('+')[0] ?? '';
+    const dash = noBuild.indexOf('-');
+    const coreStr = dash >= 0 ? noBuild.slice(0, dash) : noBuild;
+    const preStr = dash >= 0 ? noBuild.slice(dash + 1) : '';
+    const core = coreStr
+      .split('.')
+      .map((p) => (/^\d+$/.test(p) ? parseInt(p, 10) : NaN))
       .filter((n) => !Number.isNaN(n));
+    return { core, pre: preStr ? preStr.split('.') : null };
+  };
 
-  const left = normalize(a);
-  const right = normalize(b);
-  const length = Math.max(left.length, right.length);
+  const l = split(a);
+  const r = split(b);
+  const length = Math.max(l.core.length, r.core.length);
   for (let i = 0; i < length; i++) {
-    const diff = (left[i] ?? 0) - (right[i] ?? 0);
+    const diff = (l.core[i] ?? 0) - (r.core[i] ?? 0);
     if (diff !== 0) return diff;
   }
-  return 0;
+  if (!l.pre && !r.pre) return 0;
+  if (!l.pre) return 1;
+  if (!r.pre) return -1;
+
+  const isNum = (x: string) => /^\d+$/.test(x);
+  const n = Math.min(l.pre.length, r.pre.length);
+  for (let i = 0; i < n; i++) {
+    const x = l.pre[i];
+    const y = r.pre[i];
+    if (isNum(x) && isNum(y)) {
+      const d = parseInt(x, 10) - parseInt(y, 10);
+      if (d !== 0) return d;
+    } else if (isNum(x)) {
+      return -1; // 數字識別字 < 文字識別字
+    } else if (isNum(y)) {
+      return 1;
+    } else if (x !== y) {
+      return x < y ? -1 : 1;
+    }
+  }
+  return l.pre.length - r.pre.length;
 }
 
 export async function checkForUpdate(): Promise<CheckResult> {

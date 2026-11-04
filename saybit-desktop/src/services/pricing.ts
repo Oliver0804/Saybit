@@ -6,7 +6,8 @@ export interface ModelPricing {
   outputPer1K: number;
 }
 
-// Key 採模型 ID 子字串比對（小寫）。第一個命中的採用，故順序由「具體 → 通用」排列。
+// 比對方式見 priceFor()：去掉 `provider/` 前綴後做前綴比對（含邊界）。
+// 第一個命中的採用，故順序由「具體 → 通用」排列。
 const TABLE: Array<[string, ModelPricing]> = [
   // OpenAI
   ['gpt-4.1-nano', { inputPer1K: 0.0001, outputPer1K: 0.0004 }],
@@ -22,7 +23,10 @@ const TABLE: Array<[string, ModelPricing]> = [
   ['claude-sonnet-4-7', { inputPer1K: 0.003, outputPer1K: 0.015 }],
   ['claude-sonnet-4-6', { inputPer1K: 0.003, outputPer1K: 0.015 }],
   ['claude-sonnet-4', { inputPer1K: 0.003, outputPer1K: 0.015 }],
-  ['claude-opus-4-7', { inputPer1K: 0.015, outputPer1K: 0.075 }],
+  // Opus 4.5 起降價為 $5 / $25 per 1M；4.0 / 4.1 仍為 $15 / $75
+  ['claude-opus-4-7', { inputPer1K: 0.005, outputPer1K: 0.025 }],
+  ['claude-opus-4-6', { inputPer1K: 0.005, outputPer1K: 0.025 }],
+  ['claude-opus-4-5', { inputPer1K: 0.005, outputPer1K: 0.025 }],
   ['claude-opus-4', { inputPer1K: 0.015, outputPer1K: 0.075 }],
 
   // Google
@@ -49,10 +53,26 @@ const TABLE: Array<[string, ModelPricing]> = [
   ['qwen2.5-72b', { inputPer1K: 0.0012, outputPer1K: 0.0012 }],
 ];
 
+/// 去掉 `provider/` 前綴與 `:tag` 後綴，`.` 視同 `-`。
+function normalizeModel(model: string): string {
+  let lower = model.toLowerCase().trim();
+  const slash = lower.lastIndexOf('/');
+  if (slash >= 0) lower = lower.slice(slash + 1);
+  const colon = lower.indexOf(':');
+  if (colon >= 0) lower = lower.slice(0, colon);
+  return lower.replace(/\./g, '-');
+}
+
+/// 前綴比對且要求邊界（下一字元非英數），避免 `sao10k/...` 被 `o1` 之類的子字串誤配（審查 L1）。
 export function priceFor(model: string): ModelPricing | null {
-  const lower = model.toLowerCase();
+  const name = normalizeModel(model);
+  if (!name) return null;
   for (const [pattern, price] of TABLE) {
-    if (lower.includes(pattern)) return price;
+    const p = normalizeModel(pattern);
+    if (!name.startsWith(p)) continue;
+    const next = name.charAt(p.length);
+    if (next && /[a-z0-9]/.test(next)) continue;
+    return price;
   }
   return null;
 }
@@ -66,6 +86,8 @@ export function costFor(
   const lower = model.toLowerCase();
   if (!lower) return null;
   if (lower.startsWith('local/') || lower.startsWith('ollama/')) return 0;
+  // OpenRouter 免費版模型（`…:free`）
+  if (lower.endsWith(':free')) return 0;
   const p = priceFor(model);
   if (!p) return null;
   return (promptTokens / 1000) * p.inputPer1K + (completionTokens / 1000) * p.outputPer1K;

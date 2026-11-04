@@ -8,6 +8,59 @@
 import { fetch } from '@tauri-apps/plugin-http';
 import type { LLMProvider } from './providers';
 import { buildIntentClassificationPrompt, type IntentResponse } from './systemPrompts';
+import { assertSafeBaseUrl } from './settings';
+
+/// 外部取消（使用者按取消 / 新的 session 作廢舊的）。與逾時、網路錯誤分開，
+/// 呼叫端看到這個就靜默收工，不顯示成錯誤。
+export class CancelledError extends Error {
+  constructor() {
+    super('cancelled');
+    this.name = 'CancelledError';
+  }
+}
+
+export function isCancelledError(e: unknown): boolean {
+  return e instanceof CancelledError || (e as { name?: string } | null)?.name === 'CancelledError';
+}
+
+/// plugin-http 被 abort 時丟的是一般 Error("Request cancelled")，只能看 signal 判斷
+function throwIfAborted(signal?: AbortSignal | null): void {
+  if (signal?.aborted) throw new CancelledError();
+}
+
+/// 非 2xx 時讀 body 前 4KB，放進錯誤訊息（審查 M16）
+async function readErrorBody(response: Response): Promise<string> {
+  try {
+    const text = await response.text();
+    return text.slice(0, 4096);
+  } catch {
+    return '';
+  }
+}
+
+/// 從錯誤 body / SSE error 物件取出人看得懂的訊息
+function extractErrorMessage(obj: unknown): string | null {
+  if (!obj || typeof obj !== 'object') return null;
+  const err = (obj as { error?: unknown }).error;
+  if (err == null) return null;
+  if (typeof err === 'string') return err;
+  if (typeof err === 'object') {
+    const e = err as { message?: unknown; code?: unknown; metadata?: { raw?: unknown } };
+    if (typeof e.message === 'string' && e.message) return e.message;
+    if (e.code != null) return `error code ${String(e.code)}`;
+  }
+  return JSON.stringify(err).slice(0, 300);
+}
+
+function summarizeErrorBody(body: string): string {
+  try {
+    const msg = extractErrorMessage(JSON.parse(body));
+    if (msg) return msg.slice(0, 300);
+  } catch {
+    /* 非 JSON 就截斷原文 */
+  }
+  return body.slice(0, 300);
+}
 
 export interface LLMPayload {
   transcript: string;
@@ -80,7 +133,20 @@ function retryDelayMs(attempt: number): number {
   return BASE_DELAY_MS * Math.pow(2, attempt) + Math.random() * 500;
 }
 
-const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+/// 可被 signal 中斷的 sleep（重試退避期間取消要立刻生效）
+const sleep = (ms: number, signal?: AbortSignal | null) =>
+  new Promise<void>((resolve, reject) => {
+    if (signal?.aborted) return reject(new CancelledError());
+    const timer = setTimeout(() => {
+      signal?.removeEventListener('abort', onAbort);
+      resolve();
+    }, ms);
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(new CancelledError());
+    };
+    signal?.addEventListener('abort', onAbort, { once: true });
+  });
 
 // ---------------------------------------------------------------- STT
 
@@ -91,8 +157,11 @@ export async function transcribeAudio(
   model = 'whisper-1',
   language = 'zh',
   baseUrl = 'https://api.openai.com/v1',
-  prompt = ''
+  prompt = '',
+  signal?: AbortSignal | null
 ): Promise<string> {
+  assertSafeBaseUrl(baseUrl, Boolean(apiKey));
+  throwIfAborted(signal);
   const formData = new FormData();
   // 副檔名/類型必須與實際編碼一致（MediaRecorder 錄的是 WebM/Opus），
   // 伺服器按副檔名選解碼器，標錯會讓解碼走 fallback、品質受損。
@@ -105,14 +174,21 @@ export async function transcribeAudio(
   // Whisper prompt 偏置：提示繁體中文語境 + 個人字典專有名詞，可大幅降低同音錯字
   if (prompt) formData.append('prompt', prompt);
 
-  const response = await fetch(`${baseUrl.replace(/\/$/, '')}/audio/transcriptions`, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${apiKey}` },
-    body: formData,
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${baseUrl.replace(/\/$/, '')}/audio/transcriptions`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${apiKey}` },
+      body: formData,
+      signal: signal ?? undefined,
+    });
+  } catch (e) {
+    throwIfAborted(signal);
+    throw e;
+  }
 
   if (!response.ok) {
-    const errText = await response.text();
+    const errText = await readErrorBody(response);
     if (response.status === 401) {
       throw new Error(
         'STT 401：key 與供應商不符（OpenAI 需 sk-...，Groq 需 gsk_...），請到設定確認。'
@@ -132,32 +208,146 @@ export async function transcribeAudio(
 
 // ---------------------------------------------------------------- LLM 串流
 
-/// 組出送給模型的 user message。有選取文字時用結構化格式，讓模型分得清
-/// 「指令」與「被操作的文字」（對齊原生版）。
-function buildUserMessage(payload: LLMPayload): string {
-  const payloadString = JSON.stringify(payload);
-  if (payload.existing_text) {
-    return `## Voice Instruction
-${payload.transcript}
-
-## Selected Text
-${payload.existing_text}
-
-## Metadata
-${payloadString}`;
-  }
-  return payloadString;
+/// 內容中若出現同名標籤（可能是刻意注入），轉義後再包，避免提早閉合（對齊原生 taggedBlock）。
+export function taggedBlock(tag: string, content: string): string {
+  const escaped = content
+    .split(`</${tag}>`)
+    .join(`&lt;/${tag}&gt;`)
+    .split(`<${tag}>`)
+    .join(`&lt;${tag}&gt;`);
+  return `<${tag}>\n${escaped}\n</${tag}>`;
 }
 
-/// 本地服務（LM Studio / Ollama / 自訂端點）常常不吃 stream_options 與
-/// response_format，帶了整個請求會 400 —— 對意圖分類來說等於永遠降級成聽寫，
-/// 所以這兩個欄位都要按 provider 判斷。
+/// 組出送給模型的 user message（審查 M11）。`existing_text` / `screen_context` 是資料，
+/// 用專屬標籤包起來與指令（transcript）分開，也不再重複放進 JSON metadata。
+export function buildUserMessage(payload: LLMPayload): string {
+  const metadata: LLMPayload = { ...payload, existing_text: null, screen_context: null };
+  const metadataJSON = JSON.stringify(metadata);
+  const blocks: string[] = [];
+  if (payload.existing_text) blocks.push(taggedBlock('existing_text', payload.existing_text));
+  if (payload.screen_context) blocks.push(taggedBlock('screen_context', payload.screen_context));
+  if (blocks.length === 0) return metadataJSON;
+  return `## Voice Instruction
+${payload.transcript}
+
+## Metadata
+${metadataJSON}
+
+${blocks.join('\n\n')}`;
+}
+
+/// 本地服務（LM Studio / Ollama）常常不吃 stream_options 與 response_format，帶了整個
+/// 請求會 400 —— 對意圖分類來說等於永遠降級成聽寫，所以這兩個欄位都要按 provider 判斷。
 function isLocalOrCustom(provider: LLMProvider): boolean {
   return (
     provider.id === 'lmstudio' ||
     provider.id === 'ollama' ||
     provider.id.startsWith('custom-')
   );
+}
+
+function isCustomProvider(provider: LLMProvider): boolean {
+  return provider.id.startsWith('custom-');
+}
+
+export interface ChatMessage {
+  role: 'system' | 'user' | 'assistant';
+  content: string;
+}
+
+export interface StreamChatOptions {
+  apiKey: string;
+  provider: LLMProvider;
+  model: string;
+  messages: ChatMessage[];
+  temperature: number;
+  params?: LLMParams;
+  onChunk: (text: string) => void;
+  signal?: AbortSignal | null;
+}
+
+/// 串流 chat completion 的共用核心：重試、取消、SSE error 處理都在這裡。
+export async function streamChat(opts: StreamChatOptions): Promise<RefineResult> {
+  const { apiKey, provider, model, messages, temperature, onChunk, signal } = opts;
+  const params = opts.params ?? {};
+  assertSafeBaseUrl(provider.baseUrl, Boolean(apiKey));
+
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    ...provider.extraHeaders,
+  };
+  if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
+
+  // 自訂端點先試著要 usage（審查 M16：不送 token 永遠是 0），回 400 就拿掉重試一次；
+  // LM Studio / Ollama 已知不吃，直接不送。
+  const custom = isCustomProvider(provider);
+  let useStreamOptions = custom || !isLocalOrCustom(provider);
+
+  const makeBody = () => {
+    const body: Record<string, unknown> = { model, messages, stream: true, temperature };
+    if (useStreamOptions) body.stream_options = { include_usage: true };
+    if (params.maxTokens != null) body.max_tokens = params.maxTokens;
+    if (params.frequencyPenalty != null) body.frequency_penalty = params.frequencyPenalty;
+    if (params.presencePenalty != null) body.presence_penalty = params.presencePenalty;
+    if (params.topP != null) body.top_p = params.topP;
+    return JSON.stringify(body);
+  };
+
+  let lastStatus = 0;
+  let lastBody = '';
+  let skipNextDelay = false;
+
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    if (attempt > 0 && !skipNextDelay) await sleep(retryDelayMs(attempt - 1), signal);
+    skipNextDelay = false;
+    throwIfAborted(signal);
+
+    let response: Response;
+    try {
+      response = await fetch(provider.baseUrl, {
+        method: 'POST',
+        headers,
+        body: makeBody(),
+        signal: signal ?? undefined,
+      });
+    } catch (e) {
+      throwIfAborted(signal);
+      throw e;
+    }
+
+    if (!response.ok) {
+      lastStatus = response.status;
+      lastBody = await readErrorBody(response);
+      throwIfAborted(signal);
+      if (response.status === 400 && custom && useStreamOptions && attempt < MAX_RETRIES) {
+        useStreamOptions = false;
+        skipNextDelay = true;
+        continue;
+      }
+      if (RETRYABLE.has(response.status) && attempt < MAX_RETRIES) continue;
+      const detail = lastBody ? `｜${summarizeErrorBody(lastBody)}` : '';
+      if (RETRYABLE.has(response.status)) {
+        throw new Error(
+          `重試 ${MAX_RETRIES} 次後仍失敗（${humanReadableStatus(response.status)}）${detail}`
+        );
+      }
+      throw new Error(`${humanReadableStatus(response.status)}${detail}`);
+    }
+
+    const reader = response.body?.getReader();
+    if (!reader) throw new Error('無法取得串流讀取器');
+
+    try {
+      return await consumeSSE(reader, onChunk, signal);
+    } catch (e) {
+      throwIfAborted(signal);
+      throw e;
+    } finally {
+      reader.cancel().catch(() => {});
+    }
+  }
+
+  throw new Error(`重試 ${MAX_RETRIES} 次後仍失敗（${humanReadableStatus(lastStatus)}）`);
 }
 
 export async function refineTextStream(
@@ -168,70 +358,90 @@ export async function refineTextStream(
   systemPrompt: string,
   temperature: number,
   params: LLMParams,
-  onChunk: (text: string) => void
+  onChunk: (text: string) => void,
+  signal?: AbortSignal | null
 ): Promise<RefineResult> {
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-    ...provider.extraHeaders,
-  };
-  if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
-
-  const body: Record<string, unknown> = {
+  return streamChat({
+    apiKey,
+    provider,
     model,
     messages: [
       { role: 'system', content: systemPrompt },
       { role: 'user', content: buildUserMessage(payload) },
     ],
-    stream: true,
     temperature,
-  };
-  if (!isLocalOrCustom(provider)) {
-    body.stream_options = { include_usage: true };
+    params,
+    onChunk,
+    signal,
+  });
+}
+
+/// 解析一行 SSE / 非 SSE。回傳 'done' 代表收到 [DONE]。伺服器送 {"error":…} 直接丟錯（審查 M16）。
+export function parseSSELine(
+  line: string
+): { kind: 'skip' } | { kind: 'done' } | { kind: 'chunk'; text: string; usage: LLMUsage | null } {
+  const clean = line.trim();
+  if (!clean) return { kind: 'skip' };
+
+  let jsonStr: string;
+  if (clean.startsWith('data:')) {
+    jsonStr = clean.slice(5).trim();
+    if (jsonStr === '[DONE]') return { kind: 'done' };
+  } else if (clean.startsWith('{')) {
+    // 非 SSE 格式的行 —— 可能是錯誤 JSON
+    jsonStr = clean;
+  } else {
+    return { kind: 'skip' };
   }
-  if (params.maxTokens != null) body.max_tokens = params.maxTokens;
-  if (params.frequencyPenalty != null) body.frequency_penalty = params.frequencyPenalty;
-  if (params.presencePenalty != null) body.presence_penalty = params.presencePenalty;
-  if (params.topP != null) body.top_p = params.topP;
 
-  let lastStatus = 0;
+  let parsed: any;
+  try {
+    parsed = JSON.parse(jsonStr);
+  } catch {
+    return { kind: 'skip' };
+  }
+  const errMsg = extractErrorMessage(parsed);
+  if (errMsg) throw new Error(`LLM 串流錯誤：${errMsg.slice(0, 300)}`);
 
-  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-    const response = await fetch(provider.baseUrl, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(body),
-    });
-
-    if (!response.ok) {
-      lastStatus = response.status;
-      const errText = await response.text();
-      if (RETRYABLE.has(response.status) && attempt < MAX_RETRIES) {
-        await sleep(retryDelayMs(attempt));
-        continue;
+  const text: string = parsed?.choices?.[0]?.delta?.content || '';
+  const usage: LLMUsage | null = parsed?.usage
+    ? {
+        promptTokens: parsed.usage.prompt_tokens ?? 0,
+        completionTokens: parsed.usage.completion_tokens ?? 0,
+        totalTokens: parsed.usage.total_tokens ?? 0,
       }
-      throw new Error(`${humanReadableStatus(response.status)}｜${errText.slice(0, 200)}`);
-    }
-
-    const reader = response.body?.getReader();
-    if (!reader) throw new Error('無法取得串流讀取器');
-
-    return await consumeSSE(reader, onChunk);
-  }
-
-  throw new Error(`重試 ${MAX_RETRIES} 次後仍失敗（${humanReadableStatus(lastStatus)}）`);
+    : null;
+  return { kind: 'chunk', text, usage };
 }
 
 async function consumeSSE(
   reader: ReadableStreamDefaultReader<Uint8Array>,
-  onChunk: (text: string) => void
+  onChunk: (text: string) => void,
+  signal?: AbortSignal | null
 ): Promise<RefineResult> {
   const decoder = new TextDecoder('utf-8');
   let accumulated = '';
   let buffer = '';
   let usage: LLMUsage | null = null;
 
+  const handle = (line: string): boolean => {
+    const r = parseSSELine(line);
+    if (r.kind === 'done') return true;
+    if (r.kind === 'chunk') {
+      if (r.text) {
+        accumulated += r.text;
+        onChunk(r.text);
+      }
+      // usage 通常在最後一個 chunk（choices 為空陣列）才出現
+      if (r.usage) usage = r.usage;
+    }
+    return false;
+  };
+
   for (;;) {
+    throwIfAborted(signal);
     const { done, value } = await reader.read();
+    throwIfAborted(signal);
     if (done) break;
 
     buffer += decoder.decode(value, { stream: true });
@@ -240,31 +450,10 @@ async function consumeSSE(
     buffer = lines.pop() || '';
 
     for (const line of lines) {
-      const clean = line.trim();
-      if (!clean || !clean.startsWith('data: ')) continue;
-      const jsonStr = clean.slice(6);
-      if (jsonStr === '[DONE]') continue;
-
-      try {
-        const parsed = JSON.parse(jsonStr);
-        const chunkText: string = parsed.choices?.[0]?.delta?.content || '';
-        if (chunkText) {
-          accumulated += chunkText;
-          onChunk(chunkText);
-        }
-        // usage 通常在最後一個 chunk（choices 為空陣列）才出現
-        if (parsed.usage) {
-          usage = {
-            promptTokens: parsed.usage.prompt_tokens ?? 0,
-            completionTokens: parsed.usage.completion_tokens ?? 0,
-            totalTokens: parsed.usage.total_tokens ?? 0,
-          };
-        }
-      } catch {
-        // 忽略無效的 JSON chunk
-      }
+      if (handle(line)) return { text: accumulated, usage };
     }
   }
+  if (buffer) handle(buffer);
 
   return { text: accumulated, usage };
 }
@@ -282,8 +471,12 @@ export async function classifyIntent(
   provider: LLMProvider,
   model: string,
   skills: Record<string, string>,
-  hasSelectedText: boolean
+  hasSelectedText: boolean,
+  signal?: AbortSignal | null
 ): Promise<IntentResponse> {
+  // 端點不安全不是「分類失敗」，要讓使用者看到 —— 不降級
+  assertSafeBaseUrl(provider.baseUrl, Boolean(apiKey));
+  throwIfAborted(signal);
   const degraded = (reason: string): IntentResponse => ({
     intent: 'dictation',
     content: transcript,
@@ -312,9 +505,12 @@ export async function classifyIntent(
   }
 
   try {
-    // AbortController 讓逾時真的取消掉底層請求，而不是放著它繼續跑
+    // AbortController 讓逾時真的取消掉底層請求，而不是放著它繼續跑（審查 M13）；
+    // 外部取消也接到同一個 controller，但事後要分辨是哪一種
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), INTENT_TIMEOUT_MS);
+    const onExternalAbort = () => controller.abort();
+    signal?.addEventListener('abort', onExternalAbort, { once: true });
 
     let response: Response;
     try {
@@ -326,11 +522,14 @@ export async function classifyIntent(
       });
     } finally {
       clearTimeout(timer);
+      signal?.removeEventListener('abort', onExternalAbort);
     }
+    throwIfAborted(signal);
 
     if (!response.ok) return degraded(humanReadableStatus(response.status));
 
     const data = await response.json();
+    throwIfAborted(signal);
     const content = data.choices?.[0]?.message?.content;
     if (!content) return degraded('回應沒有 content 欄位');
 
@@ -343,9 +542,11 @@ export async function classifyIntent(
     if (!parsed.intent) return degraded('JSON 缺少 intent 欄位');
     return parsed;
   } catch (e: any) {
-    // AbortError 代表撞到 INTENT_TIMEOUT_MS，跟一般網路錯誤要分開講
+    // 外部取消要往外丟，不能被當成「分類失敗 → 降級聽寫」繼續跑下去
+    if (signal?.aborted || isCancelledError(e)) throw new CancelledError();
+    // 被 controller abort 代表撞到 INTENT_TIMEOUT_MS，跟一般網路錯誤要分開講
     const reason =
-      e?.name === 'AbortError'
+      e?.name === 'AbortError' || /cancel/i.test(String(e?.message || e))
         ? `逾時 ${INTENT_TIMEOUT_MS / 1000}s`
         : String(e?.message || e);
     return degraded(reason);
@@ -376,8 +577,11 @@ export async function completeJSON<T>(
   userContent: string,
   apiKey: string,
   provider: LLMProvider,
-  model: string
+  model: string,
+  signal?: AbortSignal | null
 ): Promise<T | null> {
+  assertSafeBaseUrl(provider.baseUrl, Boolean(apiKey));
+  throwIfAborted(signal);
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     ...provider.extraHeaders,
@@ -401,7 +605,9 @@ export async function completeJSON<T>(
       method: 'POST',
       headers,
       body: JSON.stringify(body),
+      signal: signal ?? undefined,
     });
+    throwIfAborted(signal);
     if (!response.ok) return null;
     const data = await response.json();
     const content = data.choices?.[0]?.message?.content;
@@ -411,7 +617,8 @@ export async function completeJSON<T>(
       .replace(/^```(?:json)?\s*/i, '')
       .replace(/```$/, '');
     return JSON.parse(stripped) as T;
-  } catch {
+  } catch (e) {
+    if (signal?.aborted || isCancelledError(e)) throw new CancelledError();
     return null;
   }
 }
