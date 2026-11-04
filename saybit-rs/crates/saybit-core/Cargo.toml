@@ -1,0 +1,87 @@
+[package]
+name = "saybit-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Saybit core: audio capture, STT engines, LLM refine, pipeline state machine, injection, storage"
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+anyhow.workspace = true
+thiserror.workspace = true
+log.workspace = true
+parking_lot.workspace = true
+crossbeam-channel.workspace = true
+directories.workspace = true
+chrono.workspace = true
+uuid.workspace = true
+ureq.workspace = true
+# ---- 各批次在下方追加自己的依賴（只能用 Edit 追加，不要重排）----
+# C3（平台）：注入、剪貼簿、金鑰庫（keyring-core 直接用，測試才能換 mock store）、單一實例、URL 解析
+enigo = "0.6"
+arboard = "3.7"
+keyring-core = "1"
+interprocess = "2"
+url = "2"
+# C1（音訊 / STT）：擷取、重取樣、檔案解碼、whisper.cpp、串流 WebSocket（阻塞式）與訊飛簽章
+cpal = "0.18"
+rubato = "5"
+symphonia = { version = "0.6", default-features = false, features = ["mp3", "aac", "alac", "flac", "pcm", "wav", "aiff", "isomp4"] }
+whisper-rs = "0.16"
+tungstenite = { version = "0.30", features = ["rustls-tls-webpki-roots"] }
+hmac = "0.12"
+sha1 = "0.10"
+md-5 = "0.10"
+base64 = "0.22"
+# C2（設定 / LLM / 儲存）：SQLite（內建編譯）、本地時區名稱（chrono 已間接依賴）
+rusqlite = { version = "0.41", features = ["bundled"] }
+iana-time-zone = "0.1"
+
+# C3（平台）macOS：前景 App / AX / NSPasteboard / NSSound / EventKit / SMAppService / 金鑰庫
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6"
+block2 = "0.6"
+objc2-app-kit = { version = "0.3", features = ["NSWorkspace", "NSRunningApplication", "NSPasteboard", "NSSound", "NSApplication", "NSPasteboardItem"] }
+objc2-foundation = { version = "0.3", features = ["NSString", "NSDate", "NSCalendar", "NSError", "NSISO8601DateFormatter", "NSFormatter", "NSDictionary", "NSValue", "NSURL", "NSNotification", "NSOperation", "NSBundle", "NSData", "NSArray"] }
+objc2-event-kit = { version = "0.3", features = ["EKEventStore", "EKEvent", "EKReminder", "EKCalendar", "EKCalendarItem", "EKObject", "EKTypes"] }
+objc2-service-management = { version = "0.3", features = ["SMAppService"] }
+apple-native-keyring-store = { version = "1", features = ["keychain"] }
+
+# C3（平台）Windows：前景視窗、音量、登錄檔、ShellExecute、PlaySound、金鑰庫
+[target.'cfg(target_os = "windows")'.dependencies]
+windows = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_UI_WindowsAndMessaging",
+    "Win32_UI_Shell",
+    "Win32_System_Threading",
+    "Win32_System_Registry",
+    "Win32_Security",
+    "Win32_Media_Audio",
+    "Win32_Media_Audio_Endpoints",
+    "Win32_System_Com",
+    "Win32_System_Com_StructuredStorage",
+    "Win32_System_Variant",
+] }
+windows-native-keyring-store = "1.1"
+
+# C3（平台）Linux：Secret Service 金鑰庫
+[target.'cfg(target_os = "linux")'.dependencies]
+zbus-secret-service-keyring-store = { version = "1", features = ["crypto-rust"] }
+
+# C1（STT）SenseVoice：macOS / Windows 靜態連結 sherpa-onnx 預編譯庫（不需 cmake、不用打包 dylib/dll）。
+# Windows 預編譯庫是 /MT，需 +crt-static（見 .cargo/config.toml 說明）。
+[target.'cfg(any(target_os = "macos", target_os = "windows"))'.dependencies]
+sherpa-rs = { version = "0.6.8", default-features = false, features = ["download-binaries", "static"] }
+
+# C1（STT）SenseVoice：Linux 動態連結 .so（靜態庫非 PIC）；rpath 見 build.rs
+[target.'cfg(all(target_os = "linux", unix))'.dependencies]
+sherpa-rs = { version = "0.6.8", default-features = false, features = ["download-binaries"] }
+
+# C1（STT）Apple Speech（SFSpeechRecognizer）。用不同的 cfg 寫法避免與 C3 的 macOS 區段重複宣告同一個 table。
+[target.'cfg(all(target_os = "macos", target_vendor = "apple"))'.dependencies]
+objc2-speech = { version = "0.3", features = ["SFSpeechRecognizer", "SFSpeechRecognitionRequest", "SFSpeechRecognitionResult", "SFSpeechRecognitionTask", "SFTranscription"] }
+objc2-avf-audio = "0.3"
+objc2-foundation = { version = "0.3", features = ["NSString", "NSError", "NSLocale", "NSBundle", "NSDictionary"] }
+objc2 = "0.6"
+block2 = "0.6"
