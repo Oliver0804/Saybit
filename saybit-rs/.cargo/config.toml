@@ -3,8 +3,11 @@
 # 開 crt-static 後 cmake / cc crate 也會改用 /MT，整個程式一致。
 #
 # 放在 workspace 根目錄（saybit-rs/.cargo/），從這裡執行 cargo 才會生效。
+# advapi32.lib：sherpa-rs 宣告 crate-type = ["cdylib","rlib"]，每次建置都會把它連成 DLL；
+# 靜態的 onnxruntime 用到 ETW（EventRegister / EventWriteTransfer）與登錄機碼（RegOpenKeyExA），
+# 這些在 advapi32，而 Rust std 不再預設連結它。cargo check 不連結所以看不到，cargo test / build 會 LNK2019。
 [target.x86_64-pc-windows-msvc]
-rustflags = ["-C", "target-feature=+crt-static"]
+rustflags = ["-C", "target-feature=+crt-static", "-C", "link-arg=advapi32.lib"]
 
 [target.aarch64-pc-windows-msvc]
-rustflags = ["-C", "target-feature=+crt-static"]
+rustflags = ["-C", "target-feature=+crt-static", "-C", "link-arg=advapi32.lib"]
