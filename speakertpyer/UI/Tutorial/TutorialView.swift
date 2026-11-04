@@ -273,7 +273,7 @@ struct TutorialView: View {
                 }
 
                 // Get API Key link based on selection
-                if let url = Self.keyPortalURL(for: settingsStore.selectedProviderID) {
+                if let url = settingsStore.selectedProvider.keyPortalURL {
                     Link(destination: url) {
                         Label(L10n.Onboarding.apiTutorialGetKey, systemImage: "link")
                             .font(.callout)
@@ -326,16 +326,6 @@ struct TutorialView: View {
         tutorialKeySaved = !(KeychainHelper.loadAPIKey(for: settingsStore.selectedProvider.id) ?? "").isEmpty
     }
 
-    private static func keyPortalURL(for providerID: String) -> URL? {
-        switch providerID {
-        case "openrouter": URL(string: "https://openrouter.ai/keys")
-        case "openai":     URL(string: "https://platform.openai.com/api-keys")
-        case "deepseek":   URL(string: "https://platform.deepseek.com/api_keys")
-        case "groq":       URL(string: "https://console.groq.com/keys")
-        case "together":   URL(string: "https://api.together.xyz/settings/api-keys")
-        default:           nil
-        }
-    }
 
     private func priceRow(text: String, highlight: Bool) -> some View {
         HStack(spacing: 6) {

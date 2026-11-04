@@ -42,6 +42,34 @@ struct LLMProvider: Codable, Identifiable, Hashable {
         requiresAPIKey = try container.decodeIfPresent(Bool.self, forKey: .requiresAPIKey) ?? true
     }
 
+    /// 申請 API Key 的網頁（只有內建雲端服務商有）
+    var keyPortalURL: URL? {
+        switch id {
+        case "openrouter": URL(string: "https://openrouter.ai/keys")
+        case "openai":     URL(string: "https://platform.openai.com/api-keys")
+        case "deepseek":   URL(string: "https://platform.deepseek.com/api_keys")
+        case "groq":       URL(string: "https://console.groq.com/keys")
+        case "together":   URL(string: "https://api.together.xyz/settings/api-keys")
+        default:           nil
+        }
+    }
+
+    /// 要先儲值才能呼叫（沒儲值時會回 402「餘額不足」）；Groq 有免費額度
+    var needsPrepaidCredit: Bool {
+        ["openrouter", "openai", "deepseek"].contains(id)
+    }
+
+    /// 引導頁用的一句話介紹
+    var onboardingBlurb: String? {
+        switch id {
+        case "openrouter": L10n.Onboarding.blurbOpenRouter
+        case "openai":     L10n.Onboarding.blurbOpenAI
+        case "deepseek":   L10n.Onboarding.blurbDeepSeek
+        case "groq":       L10n.Onboarding.blurbGroq
+        default:           nil
+        }
+    }
+
     /// Ollama API base for fetching models: GET /api/tags
     var ollamaAPIBase: String? {
         guard id == "ollama" else { return nil }

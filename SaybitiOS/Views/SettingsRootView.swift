@@ -270,12 +270,20 @@ struct ProviderSettingsView: View {
                     status = .saved
                 }
                 .disabled(!provider.requiresAPIKey)
+                if provider.requiresAPIKey, let url = provider.keyPortalURL {
+                    Link(destination: url) {
+                        Label("取得 \(provider.name) API Key", systemImage: "key")
+                    }
+                }
             } header: {
                 Text("API Key")
             } footer: {
-                Text(provider.requiresAPIKey
-                     ? "Key 存在 iOS 鑰匙圈，只在這台裝置上使用，不會傳給 Saybit。清空後按儲存可以刪除。"
-                     : "此服務商不需要 API Key。")
+                if provider.requiresAPIKey {
+                    let credit = provider.needsPrepaidCredit ? "\(provider.name) 要先儲值才能呼叫（US$5 就能用很久），沒儲值時測試會顯示「餘額不足」。" : ""
+                    Text("Key 存在 iOS 鑰匙圈，只在這台裝置上使用，不會傳給 Saybit。清空後按儲存可以刪除。\(credit.isEmpty ? "" : "\n" + credit)")
+                } else {
+                    Text("此服務商不需要 API Key。")
+                }
             }
 
             Section {

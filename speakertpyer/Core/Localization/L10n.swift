@@ -527,7 +527,44 @@ enum L10n {
         static var apiTutorialPrice4: String { d("US$5 可以用超久！", "US$5 可以用超久！", "$5 USD lasts a very long time!", "US$5 で超長持ち！") }
         static var apiTutorialGetKey: String { d("取得 API Key（免費註冊）", "获取 API Key（免费注册）", "Get API Key (Free signup)", "API Key を取得（無料登録）") }
 
-        // Test step
+        // AI choice step
+        static var aiChoiceTitle: String { d("要用哪種 AI 來整理文字？", "要用哪种 AI 来整理文字？", "Which AI should polish your text?", "どの AI でテキストを整えますか？") }
+        static var aiChoiceDesc: String { d("Saybit 會先把你說的話轉成文字，再交給 AI 去除贅字、補標點、調整語氣。這一步選擇由誰來做，之後隨時可以在「設定 → AI 引擎」更改。", "Saybit 会先把你说的话转成文字，再交给 AI 去除赘字、补标点、调整语气。这一步选择由谁来做，之后随时可以在「设置 → AI 引擎」更改。", "Saybit transcribes your speech, then an AI removes fillers, adds punctuation and adjusts tone. Choose who does that here; you can change it anytime in Settings → AI Engine.", "Saybit は音声をテキストにした後、AI が言い淀みを除き句読点や口調を整えます。ここでその AI を選びます。後から「設定 → AI エンジン」で変更できます。") }
+        static var choiceCloudTitle: String { d("雲端 AI（推薦）", "云端 AI（推荐）", "Cloud AI (recommended)", "クラウド AI（推奨）") }
+        static var choiceCloudDesc: String { d("品質最好、速度快。用你自己的 API Key 按量計費，每次不到 1 分錢；語音內容會送到你選的服務商。", "质量最好、速度快。用你自己的 API Key 按量计费，每次不到 1 分钱；语音内容会发送到你选的服务商。", "Best quality and fast. Uses your own API key, pay-per-use (a fraction of a cent per request). Your speech text is sent to the provider you choose.", "最高品質で高速。自分の API Key で従量課金（1 回 1 円未満）。音声テキストは選んだプロバイダーに送られます。") }
+        static var choiceLocalTitle: String { d("Apple 本機模型（離線）", "Apple 本机模型（离线）", "Apple on-device model (offline)", "Apple オンデバイスモデル（オフライン）") }
+        static var choiceLocalDesc: String { d("完全不離開這台 Mac、免費、不用申請任何帳號。品質較弱，偶爾會留下「嗯、那個」。需要 macOS 26 並開啟 Apple Intelligence。", "完全不离开这台 Mac、免费、不用申请任何账号。质量较弱，偶尔会留下「嗯、那个」。需要 macOS 26 并开启 Apple Intelligence。", "Never leaves this Mac, free, no account needed. Weaker quality — may leave some fillers. Requires macOS 26 with Apple Intelligence on.", "この Mac から出ません。無料でアカウント不要。品質はやや劣り、言い淀みが残ることがあります。macOS 26 と Apple Intelligence が必要です。") }
+        static var choiceServerTitle: String { d("自架伺服器（Ollama / LM Studio）", "自建服务器（Ollama / LM Studio）", "Self-hosted server (Ollama / LM Studio)", "セルフホスト（Ollama / LM Studio）") }
+        static var choiceServerDesc: String { d("進階選項：先選這個，完成引導後到「設定 → AI 引擎」填入伺服器位址。", "进阶选项：先选这个，完成引导后到「设置 → AI 引擎」填入服务器地址。", "Advanced: pick this now, then enter the server address in Settings → AI Engine after setup.", "上級者向け：これを選び、セットアップ後に「設定 → AI エンジン」でサーバーアドレスを入力します。") }
+        static var localAvailable: String { d("這台 Mac 可以使用", "这台 Mac 可以使用", "Available on this Mac", "この Mac で利用できます") }
+
+        // API key step (detailed)
+        static var apiKeyIntro: String { d("API Key 是一串像密碼的字串，代表你在服務商的帳號。Saybit 只把它存在這台 Mac 的鑰匙圈，呼叫 AI 時隨請求送給服務商，不會傳到其他地方。", "API Key 是一串像密码的字符串，代表你在服务商的账号。Saybit 只把它存在这台 Mac 的钥匙串，调用 AI 时随请求发给服务商，不会传到其他地方。", "An API key is a password-like string that identifies your account with the provider. Saybit keeps it only in this Mac's Keychain and sends it with each request to that provider — nowhere else.", "API Key はプロバイダーのアカウントを表すパスワードのような文字列です。Saybit はこの Mac のキーチェーンにのみ保存し、リクエスト時にそのプロバイダーへ送るだけです。") }
+        static func keyStep1(_ provider: String) -> String { d("到 \(provider) 網站註冊帳號（免費）", "到 \(provider) 网站注册账号（免费）", "Create a free account at \(provider)", "\(provider) のサイトでアカウントを作成（無料）") }
+        static var keyStep2: String { d("建立一把 API Key，複製整串（通常只會顯示一次）", "创建一个 API Key，复制整串（通常只会显示一次）", "Create an API key and copy the whole string (it is usually shown only once)", "API Key を作成し、全体をコピー（通常は一度しか表示されません）") }
+        static var keyStep3: String { d("貼到下面的欄位，按「儲存並測試」", "粘贴到下面的输入框，点「保存并测试」", "Paste it below and click \"Save & Test\"", "下の欄に貼り付けて「保存してテスト」を押す") }
+        static func keyNeedsCredit(_ provider: String) -> String { d("\(provider) 需要先儲值才能呼叫（US$5 就能用很久）。沒儲值時測試會顯示「餘額不足」。", "\(provider) 需要先充值才能调用（US$5 就能用很久）。没充值时测试会显示「余额不足」。", "\(provider) requires adding credit first (US$5 lasts a long time). Without credit the test reports \"insufficient balance\".", "\(provider) は先にクレジットのチャージが必要です（US$5 で長く使えます）。未チャージだとテストで「残高不足」と表示されます。") }
+        static var openKeyPage: String { d("打開申請頁面", "打开申请页面", "Open key page", "取得ページを開く") }
+        static var pasteFromClipboard: String { d("從剪貼簿貼上", "从剪贴板粘贴", "Paste from clipboard", "クリップボードから貼り付け") }
+        static var saveAndTest: String { d("儲存並測試", "保存并测试", "Save & Test", "保存してテスト") }
+        static var skipKeyHint: String { d("還沒有 Key？可以先按「下一步」，之後到「設定 → AI 引擎」再填。", "还没有 Key？可以先按「下一步」，之后到「设置 → AI 引擎」再填。", "No key yet? Click \"Next\" and add it later in Settings → AI Engine.", "まだ Key がない場合は「次へ」を押し、後で「設定 → AI エンジン」で入力できます。") }
+        static var testHint401: String { d("服務商拒絕這把 Key。檢查是否複製完整、前後有沒有多餘空白，或 Key 是否已被撤銷。", "服务商拒绝这个 Key。检查是否复制完整、前后有没有多余空格，或 Key 是否已被撤销。", "The provider rejected this key. Check that it is complete, has no extra spaces, and has not been revoked.", "プロバイダーがこの Key を拒否しました。コピー漏れ、余分な空白、失効していないかを確認してください。") }
+        static func testHint402(_ provider: String) -> String { d("Key 正確，但 \(provider) 帳號沒有餘額。到服務商網站儲值後再按一次測試。", "Key 正确，但 \(provider) 账号没有余额。到服务商网站充值后再按一次测试。", "The key works, but your \(provider) account has no credit. Add credit on the provider site and test again.", "Key は正しいですが \(provider) の残高がありません。チャージ後にもう一度テストしてください。") }
+        static var testHintNetwork: String { d("連不到服務商。檢查網路、VPN 或防火牆設定後再試。", "连不上服务商。检查网络、VPN 或防火墙设置后再试。", "Could not reach the provider. Check your network, VPN or firewall and try again.", "プロバイダーに接続できません。ネットワーク、VPN、ファイアウォールを確認してください。") }
+        static var blurbOpenRouter: String { d("一把 Key 用所有主流模型，可隨時換模型。最推薦。", "一个 Key 用所有主流模型，可随时换模型。最推荐。", "One key for all major models, switch anytime. Most recommended.", "1 つの Key で主要モデルをすべて利用可能。最もおすすめ。") }
+        static var blurbOpenAI: String { d("GPT 系列，穩定可靠；價格略高。", "GPT 系列，稳定可靠；价格略高。", "GPT models, reliable; slightly pricier.", "GPT シリーズ。安定していますがやや高め。") }
+        static var blurbDeepSeek: String { d("最便宜，中文品質好；尖峰時段偶爾變慢。", "最便宜，中文质量好；高峰时段偶尔变慢。", "Cheapest, strong Chinese quality; occasionally slow at peak times.", "最安で中国語品質が高い。混雑時はやや遅くなることも。") }
+        static var blurbGroq: String { d("速度最快，有免費額度，適合先試用。", "速度最快，有免费额度，适合先试用。", "Fastest, with a free tier — good for trying things out.", "最速で無料枠あり。まず試すのに最適。") }
+
+        // Done step
+        static var doneTitle: String { d("可以開始了", "可以开始了", "You're ready", "準備完了") }
+        static func doneHotkey(_ hotkey: String) -> String { d("在任何輸入框按 \(hotkey) 開始說話，再按一次結束，整理好的文字會自動輸入。", "在任何输入框按 \(hotkey) 开始说话，再按一次结束，整理好的文字会自动输入。", "In any text field press \(hotkey) to start talking, press again to stop; the polished text is typed for you.", "任意の入力欄で \(hotkey) を押して話し、もう一度押して終了。整えられたテキストが自動入力されます。") }
+        static var doneSettings: String { d("選單列的麥克風圖示 → 設定，可以調整快捷鍵、AI 服務、語氣與字典。", "菜单栏的麦克风图标 → 设置，可以调整快捷键、AI 服务、语气与字典。", "Menu bar mic icon → Settings to change the hotkey, AI service, tone and dictionary.", "メニューバーのマイクアイコン → 設定でショートカット、AI サービス、口調、辞書を変更できます。") }
+        static var doneOffline: String { d("想連語音辨識都離線？到「設定 → 一般 → 語音辨識」選 SenseVoice 並下載模型。", "想连语音识别都离线？到「设置 → 通用 → 语音识别」选 SenseVoice 并下载模型。", "Want speech recognition offline too? Choose SenseVoice in Settings → General → Speech Recognition and download the model.", "音声認識もオフラインにするには「設定 → 一般 → 音声認識」で SenseVoice を選びモデルをダウンロードします。") }
+        static var doneNoKeyWarning: String { d("尚未設定 API Key：第一次使用時會提示你補上。", "尚未设置 API Key：第一次使用时会提示你补上。", "No API key yet: Saybit will remind you the first time you use it.", "API Key が未設定です。初回使用時に入力を促します。") }
+        static var doneServerHint: String { d("記得到「設定 → AI 引擎」填入 Ollama / LM Studio 的位址，否則第一次使用會失敗。", "记得到「设置 → AI 引擎」填入 Ollama / LM Studio 的地址，否则第一次使用会失败。", "Remember to enter the Ollama / LM Studio address in Settings → AI Engine, or the first use will fail.", "「設定 → AI エンジン」で Ollama / LM Studio のアドレスを入力してください。未設定だと初回使用に失敗します。") }
+
+                // Test step
         static var readyTitle: String { d("準備完成！", "准备完成！", "All Set!", "準備完了！") }
         static var readyDesc: String { d("測試 API 連線是否正常，確認一切就緒。", "测试 API 连接是否正常，确认一切就绪。", "Test the API connection to make sure everything works.", "API 接続をテストして、すべてが正常に動作することを確認します。") }
         static var testing: String { d("測試中...", "测试中...", "Testing...", "テスト中...") }

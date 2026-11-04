@@ -107,6 +107,28 @@ struct APISettingsView: View {
 
                             // API Key section (for providers that require key)
                             if currentProvider.requiresAPIKey {
+                                // 怎麼拿 Key、要不要儲值：讓第一次設定的人不用去翻文件
+                                VStack(alignment: .leading, spacing: 4) {
+                                    HStack(spacing: 10) {
+                                        if let blurb = currentProvider.onboardingBlurb {
+                                            Text(blurb).font(.callout).foregroundStyle(.secondary)
+                                        }
+                                        Spacer()
+                                        if let url = currentProvider.keyPortalURL {
+                                            Link(destination: url) {
+                                                Label(L10n.Onboarding.getProviderKey(currentProvider.name), systemImage: "key")
+                                                    .font(.callout)
+                                            }
+                                        }
+                                    }
+                                    if currentProvider.needsPrepaidCredit {
+                                        Text(L10n.Onboarding.keyNeedsCredit(currentProvider.name))
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                }
+                                .padding(.bottom, 2)
+
                                 HStack(spacing: 8) {
                                     Group {
                                         if showKey {

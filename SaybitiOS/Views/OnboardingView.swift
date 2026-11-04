@@ -187,11 +187,24 @@ struct OnboardingView: View {
 
     private var ai: some View {
         page(icon: "key.fill", title: Step.ai.title,
-             subtitle: "Saybit 用你自己的 API Key 呼叫 AI，預設為 OpenRouter（一組 Key 可用多家模型）。") {
+             subtitle: "Saybit 把你說的話轉成文字後，交給 AI 去除贅字、補標點。這需要你自己的 API Key：一串像密碼的字串，代表你在服務商的帳號，只存在這支手機的鑰匙圈。") {
             VStack(spacing: 12) {
                 if hasAPIKey {
                     Label("已設定 \(settingsStore.selectedProvider.name)", systemImage: "checkmark.circle.fill")
                         .foregroundStyle(.green)
+                } else {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Label("到服務商網站註冊（免費），建立一把 API Key 並複製", systemImage: "1.circle")
+                        Label("回到 Saybit 貼上並儲存，按「測試連線」確認", systemImage: "2.circle")
+                        Label("OpenRouter / OpenAI / DeepSeek 要先儲值；Groq 有免費額度", systemImage: "3.circle")
+                    }
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    if let url = settingsStore.selectedProvider.keyPortalURL {
+                        Link("打開 \(settingsStore.selectedProvider.name) 的申請頁面", destination: url)
+                            .font(.footnote)
+                    }
                 }
                 NavigationLink("設定服務商與 API Key") { ProviderSettingsView() }
                     .buttonStyle(.bordered)
