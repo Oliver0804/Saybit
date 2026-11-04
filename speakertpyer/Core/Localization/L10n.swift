@@ -20,7 +20,7 @@ enum L10n {
         static var reportIssue: String { d("回報問題", "反馈问题", "Report Issue", "問題を報告") }
         static var description: String { d("智慧語音輸入助手，將語音轉換為精準文字，支援聽寫、指令與編輯模式。", "智能语音输入助手，将语音转换为精准文字，支持听写、指令与编辑模式。", "Smart voice input assistant that converts speech to precise text. Supports dictation, command, and edit modes.", "スマート音声入力アシスタント。音声を正確なテキストに変換し、ディクテーション、コマンド、編集モードをサポートします。") }
         static var priceTitle: String { d("超低成本，用多少算多少", "超低成本，用多少算多少", "Ultra-low cost, pay as you go", "超低コスト、使った分だけ") }
-        static var priceDesc: String { d("使用 GPT-4.1-nano，每次請求不到 1 分錢。相比訂閱制產品（$9-10/月），US$5 可用超久！", "使用 GPT-4.1-nano，每次请求不到 1 分钱。相比订阅制产品（$9-10/月），US$5 可用超久！", "Uses GPT-4.1-nano, ~$0.0002/request. Compared to subscriptions ($9-10/mo), $5 lasts forever!", "GPT-4.1-nano 使用、リクエストごとに 1 分以下。サブスク（$9-10/月）と比べ、US$5 で超長持ち！") }
+        static var priceDesc: String { d("使用 GPT-4.1-nano，每次請求不到 1 分錢。相比訂閱制產品（$9-10/月），US$5 可用超久！", "使用 GPT-4.1-nano，每次请求不到 1 分钱。相比订阅制产品（$9-10/月），US$5 可用超久！", "Uses GPT-4.1-nano, ~$0.0002/request. Compared to subscriptions ($9-10/mo), $5 lasts forever!", "GPT-4.1-nano 使用、1 リクエストあたり約 0.03 円。サブスク（月額 $9-10）と比べ、US$5 で超長持ち！") }
     }
 
     // MARK: - Common
@@ -62,11 +62,15 @@ enum L10n {
         static var searchSettings: String { d("搜尋設定…", "搜索设置…", "Search settings…", "設定を検索…") }
         static var all: String { d("全部", "全部", "All", "すべて") }
         static var noResults: String { d("找不到符合的設定", "找不到匹配的设置", "No matching settings", "一致する設定が見つかりません") }
+        static var clearSearch: String { d("清除搜尋", "清除搜索", "Clear Search", "検索をクリア") }
     }
 
     // MARK: - Tabs
 
     enum Tabs {
+        static var groupSettings: String { d("設定", "设置", "Settings", "設定") }
+        static var groupTools: String { d("工具", "工具", "Tools", "ツール") }
+        static var groupData: String { d("紀錄", "记录", "Data", "記録") }
         static var general: String { d("一般", "通用", "General", "一般") }
         static var ai: String { d("AI 引擎", "AI 引擎", "AI Engine", "AIエンジン") }
         static var hotkey: String { d("快捷鍵", "快捷键", "Hotkey", "ショートカット") }
@@ -74,6 +78,7 @@ enum L10n {
         static var history: String { d("歷史", "历史", "History", "履歴") }
         static var statistics: String { d("統計", "统计", "Statistics", "統計") }
         static var logs: String { d("日誌", "日志", "Logs", "ログ") }
+        static var transcribe: String { d("檔案轉錄", "文件转录", "File Transcription", "ファイル文字起こし") }
     }
 
     // MARK: - Settings (Logs)
@@ -100,13 +105,39 @@ enum L10n {
         static var autoLanguageDetection: String { d("自動語言偵測", "自动语言检测", "Auto Language Detection", "自動言語検出") }
         static var autoLanguageDetectionDesc: String { d("讓 Whisper API 自動偵測說話語言，無需手動指定", "让 Whisper API 自动检测说话语言，无需手动指定", "Let Whisper API auto-detect the spoken language", "Whisper API に話す言語を自動検出させます") }
 
+        // Sections
+        static var sectionRecording: String { d("錄音", "录音", "Recording", "録音") }
+        static var sectionRecognition: String { d("語音辨識", "语音识别", "Speech Recognition", "音声認識") }
+        static var sectionAI: String { d("AI 理解", "AI 理解", "AI Understanding", "AI の理解") }
+        static var sectionOutput: String { d("輸出", "输出", "Output", "出力") }
+        static var sectionInterface: String { d("介面", "界面", "Interface", "インターフェース") }
+        static var sectionSystem: String { d("系統", "系统", "System", "システム") }
+        static var screenContext: String { d("讀取螢幕內容", "读取屏幕内容", "Use Screen Content", "画面の内容を使用") }
+        static var screenContextDesc: String { d("錄音時辨識前景視窗上的文字給 AI 參考，人名與專有名詞會拼得更準。截圖只在本機辨識；辨識出的文字會隨你的語音一起送到所選的 AI 服務（Apple 本機模型除外）。", "录音时识别前台窗口上的文字给 AI 参考，人名与专有名词会拼得更准。截图只在本机识别；识别出的文字会随你的语音一起发送到所选的 AI 服务（Apple 本机模型除外）。", "Reads text in the front window so the AI spells names and terms right. The screenshot is recognized on this Mac only; the recognized text is sent along with your speech to the selected AI service (except Apple's on-device model).", "録音中に前面のウィンドウの文字を認識して AI の参考にし、人名や固有名詞をより正確にします。スクリーンショットはこの Mac 上でのみ認識しますが、認識した文字は音声と一緒に選択中の AI サービスへ送信されます（Apple のオンデバイスモデルを除く）。") }
+        static var grantScreenRecording: String { d("授權螢幕錄製", "授权屏幕录制", "Grant Screen Recording", "画面収録を許可") }
+        static var screenRecording: String { d("螢幕錄製", "屏幕录制", "Screen Recording", "画面収録") }
+        static var ducking: String { d("錄音時降低系統音量", "录音时降低系统音量", "Lower System Volume While Recording", "録音中にシステム音量を下げる") }
+        static var duckingDesc: String { d("把音樂、影片等聲音降到 20%，錄完自動恢復", "把音乐、视频等声音降到 20%，录完自动恢复", "Lowers music and video to 20%, restored when recording ends", "音楽や動画の音量を 20% に下げ、録音後に戻します") }
+        static var voiceBandpass: String { d("人聲降噪", "人声降噪", "Voice Noise Filter", "音声ノイズフィルター") }
+        static var voiceBandpassDesc: String { d("只保留 80Hz–8kHz 的人聲頻段，濾掉風扇、電源嗡嗡聲與高頻雜音", "只保留 80Hz–8kHz 的人声频段，滤掉风扇、电源嗡嗡声与高频杂音", "Keeps the 80 Hz–8 kHz voice band, filtering fan hum and hiss", "80Hz–8kHz の音声帯域のみを残し、ファンやハム音を除去") }
+        static var echoCancellation: String { d("回音消除", "回声消除", "Echo Cancellation", "エコーキャンセル") }
+        static var echoCancellationDesc: String { d("邊播放聲音邊講話時，消除喇叭漏進麥克風的音樂、影片與通話聲。戴耳機可關閉，切換時收音會短暫重啟。", "边播放声音边讲话时，消除扬声器漏进麦克风的音乐、视频与通话声。戴耳机可关闭，切换时收音会短暂重启。", "Removes speaker audio leaking into the mic. Not needed with headphones; toggling briefly restarts capture.", "スピーカーからマイクへ漏れる音を除去します。ヘッドホン使用時は不要です。") }
+        static var continuousSTTDesc: String { d("辨識在背景持續運行，按下快捷鍵時不會漏掉開頭的字。會多用一點 CPU。", "识别在背景持续运行，按下快捷键时不会漏掉开头的字。会多用一点 CPU。", "Keeps recognition running so the first words are never cut off. Uses a bit more CPU.", "認識をバックグラウンドで継続し、話し始めの欠落を防ぎます。") }
+        static var requiredBadge: String { d("必要", "必要", "Required", "必須") }
+        static var speechRecognition: String { d("語音辨識", "语音识别", "Speech Recognition", "音声認識") }
+        static var deviceUnavailable: String { d("已選的裝置目前未連接", "已选的设备当前未连接", "Selected device is not connected", "選択したデバイスは未接続です") }
+        static var contextRulesEmpty: String { d("還沒有規則。按「新增規則」為特定 App 指定語氣與額外指令。", "还没有规则。点「新增规则」为特定 App 指定语气与额外指令。", "No rules yet. Click \"Add Rule\" to set a tone and extra instructions for a specific app.", "ルールはまだありません。「ルールを追加」で特定アプリのトーンと追加指示を設定できます。") }
+        static var expand: String { d("展開", "展开", "Expand", "展開") }
+        static var screenRecordingMissing: String { d("尚未取得「螢幕錄製」權限，這個功能目前不會作用。", "尚未取得「屏幕录制」权限，这个功能目前不会生效。", "Screen Recording permission is missing, so this has no effect yet.", "画面収録の権限がないため、まだ機能しません。") }
+        static var tutorialDesc: String { d("重新看一次快捷鍵與基本操作說明", "重新看一次快捷键与基本操作说明", "Walk through the hotkey and basics again", "ホットキーと基本操作をもう一度確認") }
+
         // Features
         static var features: String { d("功能", "功能", "Features", "機能") }
-        static var contextAwareness: String { "Context Awareness" }
-        static var contextAwarenessDesc: String { d("讀取目前選取的文字作為上下文", "读取当前选中的文字作为上下文", "Reads selected text as context", "選択中のテキストをコンテキストとして読み取る") }
+        static var contextAwareness: String { d("讀取選取的文字", "读取选中的文字", "Use Selected Text", "選択テキストを使用") }
+        static var contextAwarenessDesc: String { d("錄音時若有選取文字，AI 會把它當上下文，可以口頭指示「改寫這段」「翻成英文」", "录音时若有选中文字，AI 会把它当上下文，可以口头指示「改写这段」「翻成英文」", "Selected text is sent as context, so you can say \"rewrite this\" or \"translate to English\"", "選択中のテキストをコンテキストとして使い、「書き直して」などの音声指示が可能") }
         static var soundFeedback: String { d("音效回饋", "音效反馈", "Sound Feedback", "サウンドフィードバック") }
-        static var whisperMode: String { "Whisper Mode" }
-        static var whisperModeDesc: String { d("提示 LLM 過濾背景噪音與雜訊", "提示 LLM 过滤背景噪音与杂讯", "Hints LLM to filter background noise", "LLM にバックグラウンドノイズのフィルタリングを指示") }
+        static var whisperMode: String { d("嘈雜環境模式", "嘈杂环境模式", "Noisy Environment Mode", "騒がしい環境モード") }
+        static var whisperModeDesc: String { d("提醒 AI 忽略辨識到的背景人聲與雜訊，只保留你說的內容", "提醒 AI 忽略识别到的背景人声与杂讯，只保留你说的内容", "Tells the AI to drop background chatter and noise picked up by recognition", "認識された背景の声やノイズを AI に無視させます") }
         static var continuousBackgroundSTT: String { d("持續背景辨識", "持续背景识别", "Continuous Background Recognition", "継続的バックグラウンド認識") }
 
         // STT Engine
@@ -114,7 +145,7 @@ enum L10n {
         static var sttEnginePicker: String { d("辨識引擎", "识别引擎", "Engine", "エンジン") }
         static var whisperAPIKey: String { "Whisper API Key" }
         static var whisperDesc: String { d("使用 OpenAI Whisper API 進行語音辨識，辨識準確度更高，但需網路連線且會產生 API 費用", "使用 OpenAI Whisper API 进行语音识别，识别准确度更高，但需网络连接且会产生 API 费用", "Uses OpenAI Whisper API for speech recognition. Higher accuracy but requires internet and incurs API costs.", "OpenAI Whisper API を使用した音声認識。精度は高いですが、ネット接続と API 費用が必要です。") }
-        static var onDeviceSTT: String { "On-Device STT" }
+        static var onDeviceSTT: String { d("僅在本機辨識", "仅在本机识别", "On-Device Only", "デバイス上のみで認識") }
         static var onDeviceSTTDesc: String { d("使用本地語音辨識，不需網路", "使用本地语音识别，不需网络", "Uses on-device speech recognition, no internet needed", "ローカル音声認識を使用、ネット不要") }
 
         // Capsule
@@ -137,7 +168,7 @@ enum L10n {
 
         // Auto Stop
         static var silenceAutoStop: String { d("靜音自動停止", "静音自动停止", "Silence Auto-Stop", "無音時自動停止") }
-        static var enableAutoStop: String { d("啟用自動停止", "启用自动停止", "Enable Auto-Stop", "自動停止を有効化") }
+        static var enableAutoStop: String { d("說完自動停止", "说完自动停止", "Stop When I Stop Talking", "話し終えたら自動停止") }
         static var silenceTimeout: String { d("靜音等待時間", "静音等待时间", "Silence Timeout", "無音待機時間") }
         static var silenceAutoStopDesc: String { d("說完話後等待此時間未偵測到聲音即自動結束錄音", "说完话后等待此时间未检测到声音即自动结束录音", "Automatically stops recording after this duration of silence", "この時間無音が続くと自動的に録音を停止します") }
 
@@ -149,12 +180,12 @@ enum L10n {
         // Preview & Send
         static var previewAndSend: String { d("預覽與送出", "预览与发送", "Preview & Send", "プレビューと送信") }
         static var previewBeforeInject: String { d("注入前預覽", "注入前预览", "Preview Before Inject", "注入前プレビュー") }
-        static var enablePreview: String { d("啟用注入前預覽", "启用注入前预览", "Enable Preview Before Inject", "注入前プレビューを有効化") }
+        static var enablePreview: String { d("輸入前先預覽", "输入前先预览", "Preview Before Inject", "注入前にプレビュー") }
         static var previewDesc: String { d("LLM 處理完成後先顯示預覽，手動確認後再注入文字", "LLM 处理完成后先显示预览，手动确认后再注入文字", "Shows a preview after LLM processing. Manually confirm before injecting text.", "LLM 処理完了後にプレビューを表示し、手動確認後にテキストを注入します。") }
 
         // Smart Send
-        static var smartSend: String { "Smart Send" }
-        static var enableSmartSend: String { d("啟用 Smart Send", "启用 Smart Send", "Enable Smart Send", "Smart Send を有効化") }
+        static var smartSend: String { d("智慧送出", "智能发送", "Smart Send", "スマート送信") }
+        static var enableSmartSend: String { d("智慧送出", "智能发送", "Smart Send", "スマート送信") }
         static var smartSendDesc: String { d("文字貼上後自動倒數，到期自動按下 Enter 送出", "文字粘贴后自动倒数，到期自动按下 Enter 发送", "Auto-countdown after paste, then auto-presses Enter to send", "貼り付け後自動カウントダウンし、Enter を自動送信") }
         static var countdownSeconds: String { d("倒數秒數", "倒计时秒数", "Countdown", "カウントダウン") }
         static var previewTimeout: String { d("預覽超時", "预览超时", "Preview Timeout", "プレビュータイムアウト") }
@@ -181,10 +212,10 @@ enum L10n {
 
         // Permissions
         static var permissionStatus: String { d("權限狀態", "权限状态", "Permission Status", "権限状態") }
-        static var accessibility: String { "Accessibility" }
+        static var accessibility: String { d("輔助使用", "辅助功能", "Accessibility", "アクセシビリティ") }
         static var microphone: String { d("麥克風", "麦克风", "Microphone", "マイク") }
         static var automation: String { d("自動化", "自动化", "Automation", "オートメーション") }
-        static var reminders: String { d("備忘錄", "提醒事项", "Reminders", "リマインダー") }
+        static var reminders: String { d("提醒事項", "提醒事项", "Reminders", "リマインダー") }
         static var calendar: String { d("行事曆", "日历", "Calendar", "カレンダー") }
 
         // Launch at Login
@@ -242,6 +273,14 @@ enum L10n {
         static func connectionSuccessModel(_ model: String) -> String {
             "✓ \(d("連線成功", "连接成功", "Connected", "接続成功")) (\(model))"
         }
+        static var serverAddress: String { d("伺服器位址", "服务器地址", "Server Address", "サーバーアドレス") }
+        static var apiKeyOptional: String { d("API Key（選填）", "API Key（选填）", "API Key (optional)", "API Key（任意）") }
+        static var lmStudioHint: String { d("連接 LM Studio 本地伺服器，支援所有 OpenAI 相容模型。", "连接 LM Studio 本地服务器，支持所有 OpenAI 兼容模型。", "Connects to a local LM Studio server; works with any OpenAI-compatible model.", "LM Studio のローカルサーバーに接続します。OpenAI 互換モデルすべてに対応。") }
+        static var appleAvailable: String { d("Apple Intelligence 本機模型可用", "Apple Intelligence 本机模型可用", "Apple Intelligence on-device model is available", "Apple Intelligence のオンデバイスモデルが利用可能") }
+        static var appleDesc: String { d("完全在這台 Mac 上處理，不連網、不需 API Key、不收費。搭配 SenseVoice 離線辨識時整條流程都是離線的。本機模型較小，複雜指令（翻譯長文、寫信）品質不如雲端模型。", "完全在这台 Mac 上处理，不联网、不需 API Key、不收费。搭配 SenseVoice 离线识别时整条流程都是离线的。本机模型较小，复杂指令（翻译长文、写信）质量不如云端模型。", "Runs entirely on this Mac: no network, no API key, no cost. Paired with SenseVoice offline recognition, the whole pipeline is offline. The on-device model is small, so complex instructions (long translations, emails) are weaker than cloud models.", "この Mac 上だけで処理し、通信・API Key・料金は不要です。SenseVoice のオフライン認識と組み合わせれば全工程がオフラインになります。モデルが小さいため、複雑な指示（長文翻訳、メール作成）はクラウドモデルに劣ります。") }
+        static var invalidURL: String { d("網址格式不正確", "网址格式不正确", "Invalid URL", "URL の形式が正しくありません") }
+        static var insecureURLWarning: String { d("只有本機或區域網路位址（localhost、127.x、10.x、172.16–31.x、192.168.x、*.local）可以用 http://；其他端點請改用 https://，否則 API Key 會以明文傳送。", "只有本机或局域网地址（localhost、127.x、10.x、172.16–31.x、192.168.x、*.local）可以用 http://；其他端点请改用 https://，否则 API Key 会以明文传送。", "http:// is only allowed for local or LAN addresses (localhost, 127.x, 10.x, 172.16–31.x, 192.168.x, *.local). Use https:// for other endpoints, or your API key would be sent in plain text.", "http:// はローカルまたは LAN アドレス（localhost、127.x、10.x、172.16–31.x、192.168.x、*.local）のみ使用できます。それ以外は https:// を使用してください。API Key が平文で送信されてしまいます。") }
+        static var localHTTPNote: String { d("這是本機 / 區網的 http:// 端點，API Key 不會加密傳送。", "这是本机 / 局域网的 http:// 端点，API Key 不会加密传送。", "This is a local/LAN http:// endpoint; the API key is not encrypted in transit.", "ローカル / LAN の http:// エンドポイントです。API Key は暗号化されずに送信されます。") }
 
         // Advanced LLM Parameters
         static var advancedParams: String { d("進階參數", "高级参数", "Advanced Parameters", "詳細パラメータ") }
@@ -296,8 +335,8 @@ enum L10n {
         static var addEntry: String { d("新增詞條", "新增词条", "Add Entry", "エントリーを追加") }
         static var originalTerm: String { d("原始詞", "原始词", "Original Term", "元の語") }
         static var preferredForm: String { d("偏好寫法", "偏好写法", "Preferred Form", "優先表記") }
-        static var dictDesc: String { d("語音辨識容易出錯的詞彙，LLM 會自動替換", "语音识别容易出错的词汇，LLM 会自动替换", "Words often misrecognized by speech recognition. LLM will auto-replace them.", "音声認識で誤認識されやすい語彙。LLM が自動的に置換します。") }
-        static var dictList: String { d("字典列表", "字典列表", "Dictionary List", "辞書リスト") }
+        static var dictDesc: String { d("辨識常出錯的詞：辨識完會直接換成偏好寫法，Apple 辨識也會優先認出這些詞。按 Enter 新增。", "识别常出错的词：识别完会直接换成偏好写法，Apple 识别也会优先认出这些词。按 Enter 新增。", "Words that get misrecognized are replaced right after recognition, and Apple Speech is biased toward them. Press Enter to add.", "誤認識されやすい語を認識直後に置換し、Apple 音声認識でも優先されます。Enter で追加。") }
+        static var dictList: String { d("個人字典", "个人字典", "Personal Dictionary", "個人辞書") }
         static var emptyDict: String { d("尚無字典項目", "尚无字典项目", "No dictionary entries yet", "辞書エントリーがありません") }
 
         // Voice Skills
@@ -310,6 +349,16 @@ enum L10n {
         static var exampleSummary: String { d("觸發詞「摘要」→ Prompt「請將以下內容整理為 3-5 條重點摘要」", "触发词「摘要」→ Prompt「请将以下内容整理为 3-5 条重点摘要」", "Trigger \"summary\" → Prompt \"Summarize the following into 3-5 key points\"", "トリガー「要約」→ プロンプト「以下の内容を3-5つの要点にまとめてください」") }
         static var skillList: String { d("語音技能列表", "语音技能列表", "Voice Skill List", "ボイススキルリスト") }
         static var emptySkills: String { d("尚無語音技能", "尚无语音技能", "No voice skills yet", "ボイススキルがありません") }
+        static func duplicateTerm(_ term: String) -> String {
+            d("「\(term)」已在字典裡，新增會覆蓋原本的寫法", "「\(term)」已在字典里，新增会覆盖原本的写法", "\"\(term)\" is already in the dictionary; adding it will overwrite the preferred form", "「\(term)」は既に辞書にあります。追加すると表記が上書きされます")
+        }
+        static var autoLearn: String { d("自動學習更正", "自动学习更正", "Learn Corrections Automatically", "修正を自動学習") }
+        static var autoLearnDesc: String { d("文字輸入後 30 秒內，你手動把某個詞改掉（例如「鄭」→「John」），Saybit 會把這組更正加進字典，學到時有提示音。只學單一短詞的修改。", "文字输入后 30 秒内，你手动把某个词改掉（例如「郑」→「John」），Saybit 会把这组更正加进字典，学到时有提示音。只学单一短词的修改。", "If you manually change a word within 30 seconds after text is inserted (e.g. \"Jon\" → \"John\"), Saybit adds the correction to the dictionary and plays a sound. Only single short-word edits are learned.", "テキスト入力後 30 秒以内に単語を手動で修正すると（例：「Jon」→「John」）、Saybit がその修正を辞書に追加し、効果音で知らせます。短い単語 1 つの修正のみ学習します。") }
+        static var filterPlaceholder: String { d("篩選詞條", "筛选词条", "Filter entries", "エントリーを絞り込む") }
+        static func noFilterMatch(_ q: String) -> String {
+            d("沒有符合「\(q)」的詞條", "没有匹配「\(q)」的词条", "No entries match \"\(q)\"", "「\(q)」に一致するエントリーはありません")
+        }
+        static var deleteSkill: String { d("刪除語音技能", "删除语音技能", "Delete Voice Skill", "ボイススキルを削除") }
     }
 
     // MARK: - Prompt Settings
@@ -339,6 +388,9 @@ enum L10n {
         static var times: String { d("次", "次", "times", "回") }
         static var tokenTrend: String { d("Token 消耗趨勢", "Token 消耗趋势", "Token Usage Trend", "Token 消費トレンド") }
         static var modeDistribution: String { d("模式分佈", "模式分布", "Mode Distribution", "モード分布") }
+        static var chartDate: String { d("日期", "日期", "Date", "日付") }
+        static var chartCount: String { d("次數", "次数", "Count", "回数") }
+        static var chartMode: String { d("模式", "模式", "Mode", "モード") }
     }
 
     // MARK: - History
@@ -371,13 +423,26 @@ enum L10n {
         static func inputTokens(_ n: Int32) -> String { d("輸入 \(n)", "输入 \(n)", "Input \(n)", "入力 \(n)") }
         static func outputTokens(_ n: Int32) -> String { d("輸出 \(n)", "输出 \(n)", "Output \(n)", "出力 \(n)") }
         static func totalTokensLabel(_ n: Int32) -> String { d("共 \(n) tokens", "共 \(n) tokens", "Total \(n) tokens", "合計 \(n) tokens") }
+        static var searchPlaceholder: String { d("搜尋紀錄…", "搜索记录…", "Search records…", "記録を検索…") }
+        static var emptyTitle: String { d("還沒有紀錄", "还没有记录", "No Records Yet", "記録はまだありません") }
+        static var emptyDesc: String { d("按下快捷鍵說話，結果會出現在這裡。", "按下快捷键说话，结果会出现在这里。", "Press the hotkey and speak; results will appear here.", "ショートカットを押して話すと、結果がここに表示されます。") }
+        static var yesterday: String { d("昨天", "昨天", "Yesterday", "昨日") }
+        // Markdown export
+        static var mdTitle: String { d("Saybit 歷史紀錄", "Saybit 历史记录", "Saybit History", "Saybit 履歴") }
+        static func mdCount(_ n: Int) -> String { d("共 \(n) 筆", "共 \(n) 条", "\(n) records", "全 \(n) 件") }
+        static func mdTokens(_ p: Int32, _ c: Int32, _ t: Int32) -> String {
+            d("\(p) → \(c)（合計 \(t)）", "\(p) → \(c)（合计 \(t)）", "\(p) → \(c) (total \(t))", "\(p) → \(c)（合計 \(t)）")
+        }
+        static var mdDuration: String { d("時長", "时长", "Duration", "時間") }
+        static var mdRaw: String { d("原文", "原文", "Original", "原文") }
+        static var mdProcessed: String { d("處理後", "处理后", "Processed", "処理後") }
     }
 
     // MARK: - MenuBar
 
     enum Menu {
-        static func promptLabel(_ name: String) -> String { "Prompt: \(name)" }
-        static func toneLabel(_ name: String) -> String { d("語調: \(name)", "语调: \(name)", "Tone: \(name)", "トーン: \(name)") }
+        static func promptLabel(_ name: String) -> String { d("處理風格：\(name)", "处理风格：\(name)", "Style: \(name)", "スタイル：\(name)") }
+        static func toneLabel(_ name: String) -> String { d("語調：\(name)", "语调：\(name)", "Tone: \(name)", "トーン：\(name)") }
         static func reregisterHotkey(_ label: String) -> String {
             d("重新註冊快捷鍵 (\(label))", "重新注册快捷键 (\(label))", "Re-register Hotkey (\(label))", "ショートカットを再登録 (\(label))")
         }
@@ -445,8 +510,8 @@ enum L10n {
         static var getOpenAIKey: String { d("取得 OpenAI API Key →", "获取 OpenAI API Key →", "Get OpenAI API Key →", "OpenAI API Key を取得 →") }
         // Price comparison
         static var priceCompareTitle: String { d("💰 超划算的價格", "💰 超划算的价格", "💰 Super Affordable", "💰 超お得な価格") }
-        static var priceCompareDesc: String { d("相比 Wispr Flow（每月 $300）或 Superwhisper（每月 $270），Saybit 使用 API 按量計費，成本極低：", "相比 Wispr Flow（每月 $300）或 Superwhisper（每月 $270），Saybit 使用 API 按量计费，成本极低：", "Compared to Wispr Flow ($10/mo) or Superwhisper ($9/mo), Saybit uses pay-per-use API with ultra-low cost:", "Wispr Flow（月額 $10）や Superwhisper（月額 $9）と比べて、Saybit は従量課金 API を使用し、コストが非常に低いです：") }
-        static var pricePerRequest: String { d("每次請求不到 1 分錢", "每次请求不到 1 分钱", "~$0.0002 USD per request", "リクエストごとに 1 分以下") }
+        static var priceCompareDesc: String { d("相比 Wispr Flow（每月約 NT$300）或 Superwhisper（每月約 NT$270），Saybit 使用 API 按量計費，成本極低：", "相比 Wispr Flow（每月约 US$10）或 Superwhisper（每月约 US$9），Saybit 使用 API 按量计费，成本极低：", "Compared to Wispr Flow ($10/mo) or Superwhisper ($9/mo), Saybit uses pay-per-use API with ultra-low cost:", "Wispr Flow（月額 $10）や Superwhisper（月額 $9）と比べて、Saybit は従量課金 API を使用し、コストが非常に低いです：") }
+        static var pricePerRequest: String { d("每次請求不到 1 分錢", "每次请求不到 1 分钱", "~$0.0002 USD per request", "1 リクエストあたり約 0.03 円") }
         static var priceExample1: String { d("1 塊台幣 ≈ 200 次請求", "1 块台币 ≈ 200 次请求", "$1 USD ≈ 6,000 requests", "1 台湾ドル ≈ 200 リクエスト") }
         static var priceExample2: String { d("100 塊台幣 ≈ 20,000 次請求", "100 块台币 ≈ 20,000 次请求", "$10 USD ≈ 60,000 requests", "100 台湾ドル ≈ 20,000 リクエスト") }
         static var priceExample3: String { d("1,000 塊台幣可用約 200,000 次！", "1,000 块台币可用约 200,000 次！", "$100 USD ≈ 600,000 requests!", "1,000 台湾ドル ≈ 200,000 リクエスト！") }
@@ -456,13 +521,50 @@ enum L10n {
         static var apiTutorialTitle: String { d("超低成本 AI 語音輸入", "超低成本 AI 语音输入", "Ultra-Low Cost AI Voice Input", "超低コスト AI 音声入力") }
         static var apiTutorialDesc: String { d("Saybit 使用 OpenAI GPT-4.1-nano 模型，按量計費，用多少算多少，費用完全自己掌控。", "Saybit 使用 OpenAI GPT-4.1-nano 模型，按量计费，用多少算多少，费用完全自己掌控。", "Saybit uses OpenAI GPT-4.1-nano model with pay-as-you-go pricing. You only pay for what you use.", "Saybit は OpenAI GPT-4.1-nano モデルを使用し、従量課金制で、使った分だけお支払い。") }
         static var apiTutorialCompare: String { d("相比其他語音輸入產品（Wispr Flow $10/月、Superwhisper $9/月），Saybit 成本可低至：", "相比其他语音输入产品（Wispr Flow $10/月、Superwhisper $9/月），Saybit 成本可低至：", "Compared to other voice input products (Wispr Flow $10/mo, Superwhisper $9/mo), Saybit costs as low as:", "他の音声入力製品（Wispr Flow $10/月、Superwhisper $9/月）と比較して、Saybit のコストは：") }
-        static var apiTutorialPrice1: String { d("每次請求不到 1 分錢", "每次请求不到 1 分钱", "~$0.0002 USD per request", "リクエストごとに 1 分以下") }
+        static var apiTutorialPrice1: String { d("每次請求不到 1 分錢", "每次请求不到 1 分钱", "~$0.0002 USD per request", "1 リクエストあたり約 0.03 円") }
         static var apiTutorialPrice2: String { d("NT$1 ≈ 200 次請求", "NT$1 ≈ 200 次请求", "$1 USD ≈ 6,000 requests", "NT$1 ≈ 200 リクエスト") }
         static var apiTutorialPrice3: String { d("NT$100 ≈ 20,000 次請求", "NT$100 ≈ 20,000 次请求", "$10 USD ≈ 60,000 requests", "NT$100 ≈ 20,000 リクエスト") }
         static var apiTutorialPrice4: String { d("US$5 可以用超久！", "US$5 可以用超久！", "$5 USD lasts a very long time!", "US$5 で超長持ち！") }
         static var apiTutorialGetKey: String { d("取得 API Key（免費註冊）", "获取 API Key（免费注册）", "Get API Key (Free signup)", "API Key を取得（無料登録）") }
 
-        // Test step
+        // AI choice step
+        static var aiChoiceTitle: String { d("要用哪種 AI 來整理文字？", "要用哪种 AI 来整理文字？", "Which AI should polish your text?", "どの AI でテキストを整えますか？") }
+        static var aiChoiceDesc: String { d("Saybit 會先把你說的話轉成文字，再交給 AI 去除贅字、補標點、調整語氣。這一步選擇由誰來做，之後隨時可以在「設定 → AI 引擎」更改。", "Saybit 会先把你说的话转成文字，再交给 AI 去除赘字、补标点、调整语气。这一步选择由谁来做，之后随时可以在「设置 → AI 引擎」更改。", "Saybit transcribes your speech, then an AI removes fillers, adds punctuation and adjusts tone. Choose who does that here; you can change it anytime in Settings → AI Engine.", "Saybit は音声をテキストにした後、AI が言い淀みを除き句読点や口調を整えます。ここでその AI を選びます。後から「設定 → AI エンジン」で変更できます。") }
+        static var choiceCloudTitle: String { d("雲端 AI（推薦）", "云端 AI（推荐）", "Cloud AI (recommended)", "クラウド AI（推奨）") }
+        static var choiceCloudDesc: String { d("品質最好、速度快。用你自己的 API Key 按量計費，每次不到 1 分錢；語音內容會送到你選的服務商。", "质量最好、速度快。用你自己的 API Key 按量计费，每次不到 1 分钱；语音内容会发送到你选的服务商。", "Best quality and fast. Uses your own API key, pay-per-use (a fraction of a cent per request). Your speech text is sent to the provider you choose.", "最高品質で高速。自分の API Key で従量課金（1 回 1 円未満）。音声テキストは選んだプロバイダーに送られます。") }
+        static var choiceLocalTitle: String { d("Apple 本機模型（離線）", "Apple 本机模型（离线）", "Apple on-device model (offline)", "Apple オンデバイスモデル（オフライン）") }
+        static var choiceLocalDesc: String { d("完全不離開這台 Mac、免費、不用申請任何帳號。品質較弱，偶爾會留下「嗯、那個」。需要 macOS 26 並開啟 Apple Intelligence。", "完全不离开这台 Mac、免费、不用申请任何账号。质量较弱，偶尔会留下「嗯、那个」。需要 macOS 26 并开启 Apple Intelligence。", "Never leaves this Mac, free, no account needed. Weaker quality — may leave some fillers. Requires macOS 26 with Apple Intelligence on.", "この Mac から出ません。無料でアカウント不要。品質はやや劣り、言い淀みが残ることがあります。macOS 26 と Apple Intelligence が必要です。") }
+        static var choiceServerTitle: String { d("自架伺服器（Ollama / LM Studio）", "自建服务器（Ollama / LM Studio）", "Self-hosted server (Ollama / LM Studio)", "セルフホスト（Ollama / LM Studio）") }
+        static var choiceServerDesc: String { d("進階選項：先選這個，完成引導後到「設定 → AI 引擎」填入伺服器位址。", "进阶选项：先选这个，完成引导后到「设置 → AI 引擎」填入服务器地址。", "Advanced: pick this now, then enter the server address in Settings → AI Engine after setup.", "上級者向け：これを選び、セットアップ後に「設定 → AI エンジン」でサーバーアドレスを入力します。") }
+        static var localAvailable: String { d("這台 Mac 可以使用", "这台 Mac 可以使用", "Available on this Mac", "この Mac で利用できます") }
+
+        // API key step (detailed)
+        static var apiKeyIntro: String { d("API Key 是一串像密碼的字串，代表你在服務商的帳號。Saybit 只把它存在這台 Mac 的鑰匙圈，呼叫 AI 時隨請求送給服務商，不會傳到其他地方。", "API Key 是一串像密码的字符串，代表你在服务商的账号。Saybit 只把它存在这台 Mac 的钥匙串，调用 AI 时随请求发给服务商，不会传到其他地方。", "An API key is a password-like string that identifies your account with the provider. Saybit keeps it only in this Mac's Keychain and sends it with each request to that provider — nowhere else.", "API Key はプロバイダーのアカウントを表すパスワードのような文字列です。Saybit はこの Mac のキーチェーンにのみ保存し、リクエスト時にそのプロバイダーへ送るだけです。") }
+        static func keyStep1(_ provider: String) -> String { d("到 \(provider) 網站註冊帳號（免費）", "到 \(provider) 网站注册账号（免费）", "Create a free account at \(provider)", "\(provider) のサイトでアカウントを作成（無料）") }
+        static var keyStep2: String { d("建立一把 API Key，複製整串（通常只會顯示一次）", "创建一个 API Key，复制整串（通常只会显示一次）", "Create an API key and copy the whole string (it is usually shown only once)", "API Key を作成し、全体をコピー（通常は一度しか表示されません）") }
+        static var keyStep3: String { d("貼到下面的欄位，按「儲存並測試」", "粘贴到下面的输入框，点「保存并测试」", "Paste it below and click \"Save & Test\"", "下の欄に貼り付けて「保存してテスト」を押す") }
+        static func keyNeedsCredit(_ provider: String) -> String { d("\(provider) 需要先儲值才能呼叫（US$5 就能用很久）。沒儲值時測試會顯示「餘額不足」。", "\(provider) 需要先充值才能调用（US$5 就能用很久）。没充值时测试会显示「余额不足」。", "\(provider) requires adding credit first (US$5 lasts a long time). Without credit the test reports \"insufficient balance\".", "\(provider) は先にクレジットのチャージが必要です（US$5 で長く使えます）。未チャージだとテストで「残高不足」と表示されます。") }
+        static var openKeyPage: String { d("打開申請頁面", "打开申请页面", "Open key page", "取得ページを開く") }
+        static var pasteFromClipboard: String { d("從剪貼簿貼上", "从剪贴板粘贴", "Paste from clipboard", "クリップボードから貼り付け") }
+        static var saveAndTest: String { d("儲存並測試", "保存并测试", "Save & Test", "保存してテスト") }
+        static var skipKeyHint: String { d("還沒有 Key？可以先按「下一步」，之後到「設定 → AI 引擎」再填。", "还没有 Key？可以先按「下一步」，之后到「设置 → AI 引擎」再填。", "No key yet? Click \"Next\" and add it later in Settings → AI Engine.", "まだ Key がない場合は「次へ」を押し、後で「設定 → AI エンジン」で入力できます。") }
+        static var testHint401: String { d("服務商拒絕這把 Key。檢查是否複製完整、前後有沒有多餘空白，或 Key 是否已被撤銷。", "服务商拒绝这个 Key。检查是否复制完整、前后有没有多余空格，或 Key 是否已被撤销。", "The provider rejected this key. Check that it is complete, has no extra spaces, and has not been revoked.", "プロバイダーがこの Key を拒否しました。コピー漏れ、余分な空白、失効していないかを確認してください。") }
+        static func testHint402(_ provider: String) -> String { d("Key 正確，但 \(provider) 帳號沒有餘額。到服務商網站儲值後再按一次測試。", "Key 正确，但 \(provider) 账号没有余额。到服务商网站充值后再按一次测试。", "The key works, but your \(provider) account has no credit. Add credit on the provider site and test again.", "Key は正しいですが \(provider) の残高がありません。チャージ後にもう一度テストしてください。") }
+        static var testHintNetwork: String { d("連不到服務商。檢查網路、VPN 或防火牆設定後再試。", "连不上服务商。检查网络、VPN 或防火墙设置后再试。", "Could not reach the provider. Check your network, VPN or firewall and try again.", "プロバイダーに接続できません。ネットワーク、VPN、ファイアウォールを確認してください。") }
+        static var blurbOpenRouter: String { d("一把 Key 用所有主流模型，可隨時換模型。最推薦。", "一个 Key 用所有主流模型，可随时换模型。最推荐。", "One key for all major models, switch anytime. Most recommended.", "1 つの Key で主要モデルをすべて利用可能。最もおすすめ。") }
+        static var blurbOpenAI: String { d("GPT 系列，穩定可靠；價格略高。", "GPT 系列，稳定可靠；价格略高。", "GPT models, reliable; slightly pricier.", "GPT シリーズ。安定していますがやや高め。") }
+        static var blurbDeepSeek: String { d("最便宜，中文品質好；尖峰時段偶爾變慢。", "最便宜，中文质量好；高峰时段偶尔变慢。", "Cheapest, strong Chinese quality; occasionally slow at peak times.", "最安で中国語品質が高い。混雑時はやや遅くなることも。") }
+        static var blurbGroq: String { d("速度最快，有免費額度，適合先試用。", "速度最快，有免费额度，适合先试用。", "Fastest, with a free tier — good for trying things out.", "最速で無料枠あり。まず試すのに最適。") }
+
+        // Done step
+        static var doneTitle: String { d("可以開始了", "可以开始了", "You're ready", "準備完了") }
+        static func doneHotkey(_ hotkey: String) -> String { d("在任何輸入框按 \(hotkey) 開始說話，再按一次結束，整理好的文字會自動輸入。", "在任何输入框按 \(hotkey) 开始说话，再按一次结束，整理好的文字会自动输入。", "In any text field press \(hotkey) to start talking, press again to stop; the polished text is typed for you.", "任意の入力欄で \(hotkey) を押して話し、もう一度押して終了。整えられたテキストが自動入力されます。") }
+        static var doneSettings: String { d("選單列的麥克風圖示 → 設定，可以調整快捷鍵、AI 服務、語氣與字典。", "菜单栏的麦克风图标 → 设置，可以调整快捷键、AI 服务、语气与字典。", "Menu bar mic icon → Settings to change the hotkey, AI service, tone and dictionary.", "メニューバーのマイクアイコン → 設定でショートカット、AI サービス、口調、辞書を変更できます。") }
+        static var doneOffline: String { d("想連語音辨識都離線？到「設定 → 一般 → 語音辨識」選 SenseVoice 並下載模型。", "想连语音识别都离线？到「设置 → 通用 → 语音识别」选 SenseVoice 并下载模型。", "Want speech recognition offline too? Choose SenseVoice in Settings → General → Speech Recognition and download the model.", "音声認識もオフラインにするには「設定 → 一般 → 音声認識」で SenseVoice を選びモデルをダウンロードします。") }
+        static var doneNoKeyWarning: String { d("尚未設定 API Key：第一次使用時會提示你補上。", "尚未设置 API Key：第一次使用时会提示你补上。", "No API key yet: Saybit will remind you the first time you use it.", "API Key が未設定です。初回使用時に入力を促します。") }
+        static var doneServerHint: String { d("記得到「設定 → AI 引擎」填入 Ollama / LM Studio 的位址，否則第一次使用會失敗。", "记得到「设置 → AI 引擎」填入 Ollama / LM Studio 的地址，否则第一次使用会失败。", "Remember to enter the Ollama / LM Studio address in Settings → AI Engine, or the first use will fail.", "「設定 → AI エンジン」で Ollama / LM Studio のアドレスを入力してください。未設定だと初回使用に失敗します。") }
+
+                // Test step
         static var readyTitle: String { d("準備完成！", "准备完成！", "All Set!", "準備完了！") }
         static var readyDesc: String { d("測試 API 連線是否正常，確認一切就緒。", "测试 API 连接是否正常，确认一切就绪。", "Test the API connection to make sure everything works.", "API 接続をテストして、すべてが正常に動作することを確認します。") }
         static var testing: String { d("測試中...", "测试中...", "Testing...", "テスト中...") }
@@ -500,7 +602,7 @@ enum L10n {
 
         // Page 4: Smart Send & Skills
         static var advancedTitle: String { d("進階功能", "进阶功能", "Advanced Features", "高度な機能") }
-        static var smartSendFeature: String { "Smart Send" }
+        static var smartSendFeature: String { d("智慧送出", "智能发送", "Smart Send", "スマート送信") }
         static var smartSendDesc: String { d("文字注入後自動倒數，時間到自動按下 Enter 送出。說話可取消倒數。", "文字注入后自动倒数，时间到自动按下 Enter 发送。说话可取消倒数。", "Auto-countdown after text injection, then auto-presses Enter. Speaking cancels the countdown.", "テキスト注入後に自動カウントダウンし、Enter を自動送信。話すとカウントダウンがキャンセルされます。") }
         static var voiceSkills: String { d("語音技能", "语音技能", "Voice Skills", "ボイススキル") }
         static var voiceSkillsDesc: String { d("設定觸發詞來載入自訂 Prompt，例如說「寫信」自動切換到書信格式。", "设定触发词来载入自定义 Prompt，例如说「写信」自动切换到书信格式。", "Set trigger words to load custom prompts. Say \"write email\" to auto-switch to letter format.", "トリガーワードでカスタムプロンプトを読み込みます。「メール作成」と言うとレター形式に自動切り替え。") }
@@ -612,7 +714,7 @@ enum L10n {
 
     static func hotkeyTriggerModeDesc(_ mode: HotkeyTriggerMode) -> String {
         switch mode {
-        case .toggle: return d("按一下開始錄音，說完後自動停止（2 秒靜音）", "按一下开始录音，说完后自动停止（2 秒静音）", "Tap once to start recording, auto-stops after 2s silence", "1回タップで録音開始、2秒の無音で自動停止")
+        case .toggle: return d("按一下開始錄音，再按一下停止；開啟「說完自動停止」時，靜音達設定秒數會自動結束", "按一下开始录音，再按一下停止；开启「说完自动停止」时，静音达到设定秒数会自动结束", "Tap to start, tap again to stop. With \"Stop When I Stop Talking\" on, recording ends after the configured silence", "1回タップで録音開始、もう一度で停止。「話し終えたら自動停止」がオンなら、設定した無音時間で自動終了")
         case .hold: return d("按住開始錄音，放開停止", "按住开始录音，放开停止", "Hold to record, release to stop", "押し続けて録音、離すと停止")
         case .doubleTap: return d("快速雙擊快捷鍵開始錄音，再雙擊停止", "快速双击快捷键开始录音，再双击停止", "Double-tap to start, double-tap again to stop", "ダブルタップで録音開始、もう一度ダブルタップで停止")
         }
@@ -622,6 +724,7 @@ enum L10n {
         switch engine {
         case .appleSpeech: return d("Apple Speech (本地)", "Apple Speech (本地)", "Apple Speech (Local)", "Apple Speech (ローカル)")
         case .whisperAPI: return d("Whisper API (雲端)", "Whisper API (云端)", "Whisper API (Cloud)", "Whisper API (クラウド)")
+        case .sherpaSenseVoice: return d("SenseVoice (離線・快速)", "SenseVoice (离线・快速)", "SenseVoice (Offline, Fast)", "SenseVoice (オフライン・高速)")
         }
     }
 
@@ -704,6 +807,90 @@ enum L10n {
         static var asMarkdown: String { d("匯出為 Markdown", "导出为 Markdown", "Export as Markdown", "Markdown でエクスポート") }
         static var asCSV: String { d("匯出為 CSV", "导出为 CSV", "Export as CSV", "CSV でエクスポート") }
         static var savePanelTitle: String { d("匯出歷史紀錄", "导出历史记录", "Export History", "履歴をエクスポート") }
+    }
+
+    // MARK: - File Transcription
+
+    enum Transcribe {
+        static var title: String { d("檔案轉錄", "文件转录", "File Transcription", "ファイル文字起こし") }
+        static var subtitle: String { d("把會議錄音、語音備忘錄、影片拖進來，在這台 Mac 上轉成逐字稿，不上傳音訊。", "把会议录音、语音备忘录、视频拖进来，在这台 Mac 上转成逐字稿，不上传音频。", "Drop in meeting recordings, voice memos or videos to transcribe them on this Mac. Audio is never uploaded.", "会議の録音、ボイスメモ、動画をドロップすると、この Mac 上で文字起こしします。音声はアップロードされません。") }
+        static var modelMissing: String { d("檔案轉錄使用 SenseVoice 離線模型，請先到「一般 › 語音辨識引擎」選 SenseVoice 並下載模型。", "文件转录使用 SenseVoice 离线模型，请先到「通用 › 语音识别引擎」选 SenseVoice 并下载模型。", "File transcription uses the SenseVoice offline model. Go to General › Speech Recognition, choose SenseVoice and download the model first.", "ファイル文字起こしには SenseVoice オフラインモデルを使用します。先に「一般 › 音声認識」で SenseVoice を選び、モデルをダウンロードしてください。") }
+        static var dropHint: String { d("拖入音檔或影片", "拖入音频或视频", "Drop an audio or video file", "音声または動画ファイルをドロップ") }
+        static var chooseFile: String { d("選擇檔案…", "选择文件…", "Choose File…", "ファイルを選択…") }
+        static var stop: String { d("停止", "停止", "Stop", "停止") }
+        static var stopped: String { d("已停止", "已停止", "Stopped", "停止しました") }
+        static var transcript: String { d("逐字稿", "逐字稿", "Transcript", "文字起こし") }
+        static var timestamps: String { d("時間戳", "时间戳", "Timestamps", "タイムスタンプ") }
+        static func progress(_ percent: Int, _ seconds: Int) -> String {
+            d("轉錄中 \(percent)%（已 \(seconds) 秒）", "转录中 \(percent)%（已 \(seconds) 秒）", "Transcribing \(percent)% (\(seconds)s elapsed)", "文字起こし中 \(percent)%（\(seconds) 秒経過）")
+        }
+        static func finished(_ count: Int, _ seconds: String) -> String {
+            d("完成：\(count) 段，花費 \(seconds) 秒", "完成：\(count) 段，耗时 \(seconds) 秒", "Done: \(count) segments in \(seconds)s", "完了：\(count) 区間、\(seconds) 秒")
+        }
+        static var copy: String { d("複製", "复制", "Copy", "コピー") }
+        static var saveText: String { d("存成文字檔…", "存为文本文件…", "Save as Text…", "テキストとして保存…") }
+        static var transcriptSuffix: String { d("逐字稿", "逐字稿", "transcript", "文字起こし") }
+        static var summarize: String { d("AI 整理成筆記", "AI 整理成笔记", "Summarize into Notes", "AI でノートにまとめる") }
+        static var notes: String { d("AI 筆記", "AI 笔记", "AI Notes", "AI ノート") }
+        static var saveMarkdown: String { d("存成 Markdown…", "存为 Markdown…", "Save as Markdown…", "Markdown として保存…") }
+        static var notesSuffix: String { d("筆記", "笔记", "notes", "ノート") }
+        static func summarizeFailed(_ msg: String) -> String {
+            d("AI 整理失敗：\(msg)", "AI 整理失败：\(msg)", "Summarizing failed: \(msg)", "AI のまとめに失敗：\(msg)")
+        }
+    }
+
+    // MARK: - Voice Modes
+
+    enum VoiceModes {
+        static var title: String { d("語音模式", "语音模式", "Voice Modes", "音声モード") }
+        static var addMode: String { d("新增模式", "新增模式", "Add Mode", "モードを追加") }
+        static var newModeName: String { d("新模式", "新模式", "New Mode", "新しいモード") }
+        static var desc: String { d("每個模式有自己的指令和快捷鍵。用模式快捷鍵錄音時，AI 直接照該模式的指令處理（例如寫成 email、翻譯成英文），不必每次口頭交代。", "每个模式有自己的指令和快捷键。用模式快捷键录音时，AI 直接照该模式的指令处理（例如写成 email、翻译成英文），不必每次口头交代。", "Each mode has its own instructions and hotkey. When you record with a mode's hotkey, the AI follows that mode's instructions (e.g. write an email, translate to English) without you saying so every time.", "各モードには独自の指示とショートカットがあります。モードのショートカットで録音すると、AI はそのモードの指示（メール作成、英語に翻訳など）に従って処理するため、毎回口頭で伝える必要はありません。") }
+        static var urlControlToggle: String { d("允許其他 App 透過 saybit:// 控制錄音", "允许其他 App 通过 saybit:// 控制录音", "Allow other apps to control recording via saybit://", "他のアプリに saybit:// での録音操作を許可") }
+        static var urlControlDesc: String { d("關閉後 saybit://toggle 等指令一律忽略（saybit://settings 不受影響）。開啟時，第一次遇到的來源 App 會先詢問你是否允許。", "关闭后 saybit://toggle 等指令一律忽略（saybit://settings 不受影响）。开启时，第一次遇到的来源 App 会先询问你是否允许。", "When off, saybit://toggle and similar commands are ignored (saybit://settings still works). When on, you are asked the first time a new app sends a command.", "オフにすると saybit://toggle などのコマンドは無視されます（saybit://settings は影響なし）。オンの場合、新しいアプリからの初回コマンド時に確認します。") }
+        static var allowedSenders: String { d("已允許的來源", "已允许的来源", "Allowed Sources", "許可済みの送信元") }
+        static var allowedSendersEmpty: String { d("尚無已允許的來源", "尚无已允许的来源", "No allowed sources yet", "許可済みの送信元はありません") }
+        static var removeSender: String { d("移除", "移除", "Remove", "削除") }
+        static var resetSenders: String { d("恢復預設", "恢复默认", "Reset to Defaults", "デフォルトに戻す") }
+        static var externalTrigger: String { d("從其他 App 觸發（Raycast、捷徑、Stream Deck）", "从其他 App 触发（Raycast、快捷指令、Stream Deck）", "Trigger from Other Apps (Raycast, Shortcuts, Stream Deck)", "他のアプリから起動（Raycast、ショートカット、Stream Deck）") }
+        static var urlHelp: String {
+            d("saybit://toggle　開始 / 停止錄音\nsaybit://start、saybit://stop、saybit://cancel\nsaybit://toggle?mode=Email　用指定模式錄音\nsaybit://settings?tab=dictionary　打開設定的指定分頁",
+              "saybit://toggle　开始 / 停止录音\nsaybit://start、saybit://stop、saybit://cancel\nsaybit://toggle?mode=Email　用指定模式录音\nsaybit://settings?tab=dictionary　打开设置的指定分页",
+              "saybit://toggle　Start / stop recording\nsaybit://start, saybit://stop, saybit://cancel\nsaybit://toggle?mode=Email　Record with a specific mode\nsaybit://settings?tab=dictionary　Open a specific settings tab",
+              "saybit://toggle　録音の開始 / 停止\nsaybit://start、saybit://stop、saybit://cancel\nsaybit://toggle?mode=Email　指定モードで録音\nsaybit://settings?tab=dictionary　設定の指定タブを開く")
+        }
+        static func deleteConfirm(_ name: String) -> String {
+            d("刪除語音模式「\(name)」？", "删除语音模式「\(name)」？", "Delete voice mode \"\(name)\"?", "音声モード「\(name)」を削除しますか？")
+        }
+        static var deleteMessage: String { d("模式的指令和快捷鍵會一起移除。", "模式的指令和快捷键会一起移除。", "The mode's instructions and hotkey will be removed too.", "モードの指示とショートカットも削除されます。") }
+        static var namePlaceholder: String { d("模式名稱", "模式名称", "Mode name", "モード名") }
+        static var clearHotkey: String { d("清除快捷鍵", "清除快捷键", "Clear Hotkey", "ショートカットをクリア") }
+        static var deleteMode: String { d("刪除模式", "删除模式", "Delete Mode", "モードを削除") }
+        static var instructions: String { d("指令", "指令", "Instructions", "指示") }
+        static var instructionsExample: String { d("例：「把內容寫成給客戶的正式回覆，結尾加上『敬祝 商祺』」。有選取文字時，指令會套用在選取的文字上。", "例：「把内容写成给客户的正式回复，结尾加上『敬祝 商祺』」。有选中文字时，指令会套用在选中的文字上。", "E.g. \"Write this as a formal reply to a client, ending with 'Best regards'\". When text is selected, the instructions apply to the selection.", "例：「顧客への正式な返信として書き、最後に『よろしくお願いいたします』を付ける」。テキストを選択している場合は、選択範囲に指示が適用されます。") }
+        static var setHotkey: String { d("設定快捷鍵", "设置快捷键", "Set Hotkey", "ショートカットを設定") }
+        static func pressHotkey(_ remaining: Int) -> String {
+            d("按下快捷鍵…（\(remaining) 秒）", "按下快捷键…（\(remaining) 秒）", "Press hotkey… (\(remaining)s)", "ショートカットを押してください…（\(remaining) 秒）")
+        }
+        static var cancelRecordingHelp: String { d("再按一次取消錄製；Esc 也可取消", "再按一次取消录制；Esc 也可取消", "Click again to cancel; Esc also cancels", "もう一度クリックでキャンセル。Esc でもキャンセルできます") }
+        static var conflictsWithMain: String { d("這組快捷鍵和主快捷鍵相同，請換一組。", "这组快捷键和主快捷键相同，请换一组。", "This is the same as the main hotkey. Choose a different one.", "メインのショートカットと同じです。別の組み合わせを選んでください。") }
+    }
+
+    // MARK: - SenseVoice (Sherpa) model
+
+    enum Sherpa {
+        static var modelTitle: String { d("SenseVoice 離線模型", "SenseVoice 离线模型", "SenseVoice Offline Model", "SenseVoice オフラインモデル") }
+        static var modelDesc: String { d("完全在本機辨識：速度快、中英夾雜表現好、不需網路。每句講完才定稿，字幕會比 Apple 稍晚出現。", "完全在本机识别：速度快、中英夹杂表现好、不需网络。每句讲完才定稿，字幕会比 Apple 稍晚出现。", "Recognizes entirely on this Mac: fast, handles mixed Chinese/English well, no network needed. Each sentence is finalized after you finish it, so live text appears a bit later than with Apple.", "完全にこの Mac 上で認識します。高速で中英混在にも強く、ネット不要です。文ごとに確定するため、字幕は Apple より少し遅れて表示されます。") }
+        static var installed: String { d("已安裝", "已安装", "Installed", "インストール済み") }
+        static var showInFinder: String { d("在 Finder 中顯示", "在 Finder 中显示", "Show in Finder", "Finder で表示") }
+        static func deleteModel(_ size: String) -> String { d("刪除模型（\(size)）…", "删除模型（\(size)）…", "Delete Model (\(size))…", "モデルを削除（\(size)）…") }
+        static func download(_ size: String) -> String { d("下載模型（\(size)）", "下载模型（\(size)）", "Download Model (\(size))", "モデルをダウンロード（\(size)）") }
+        static var retry: String { d("重試", "重试", "Retry", "再試行") }
+        static var moreActions: String { d("更多動作", "更多操作", "More Actions", "その他の操作") }
+        static var deleteConfirmTitle: String { d("刪除 SenseVoice 模型？", "删除 SenseVoice 模型？", "Delete the SenseVoice model?", "SenseVoice モデルを削除しますか？") }
+        static func deleteConfirmMessage(_ size: String) -> String {
+            d("刪除後要重新下載（\(size)）才能使用離線辨識。", "删除后要重新下载（\(size)）才能使用离线识别。", "You'll need to download it again (\(size)) to use offline recognition.", "オフライン認識を使うには再ダウンロード（\(size)）が必要になります。")
+        }
     }
 
     // MARK: - Private Helper

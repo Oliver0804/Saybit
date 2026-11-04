@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- cargo-packager 會把這份合併進產生的 Info.plist（macos.info-plist-path） -->
+<plist version="1.0">
+<dict>
+	<key>LSUIElement</key>
+	<true/>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Saybit 需要使用麥克風錄下你說的話並轉成文字。</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Saybit 使用 Apple 語音辨識把你的語音轉成文字。</string>
+	<key>NSCalendarsFullAccessUsageDescription</key>
+	<string>Saybit 會在你確認後，把語音指令建立成行事曆事件。</string>
+	<key>NSRemindersFullAccessUsageDescription</key>
+	<string>Saybit 會在你確認後，把語音指令建立成提醒事項。</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>com.bashcat.saybit.url</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>saybit</string>
+			</array>
+		</dict>
+	</array>
+</dict>
+</plist>

@@ -7,7 +7,9 @@
 
 import Combine
 import Foundation
+#if os(macOS)
 import ServiceManagement
+#endif
 
 class SettingsStore: ObservableObject {
     static var shared: SettingsStore?
@@ -200,6 +202,21 @@ class SettingsStore: ObservableObject {
         didSet { UserDefaults.standard.set(enableEchoCancellation, forKey: "enableEchoCancellation") }
     }
 
+    /// 輸入後觀察使用者的手動更正，自動加進個人字典（macOS）
+    @Published var enableAutoLearnDictionary: Bool {
+        didSet { UserDefaults.standard.set(enableAutoLearnDictionary, forKey: "enableAutoLearnDictionary") }
+    }
+
+    /// 錄音時 OCR 前景視窗文字給 AI 參考（macOS，需螢幕錄製權限）
+    @Published var enableScreenContext: Bool {
+        didSet { UserDefaults.standard.set(enableScreenContext, forKey: "enableScreenContext") }
+    }
+
+    /// 錄音時降低系統音量（macOS）
+    @Published var enableDuckingWhileRecording: Bool {
+        didSet { UserDefaults.standard.set(enableDuckingWhileRecording, forKey: "enableDuckingWhileRecording") }
+    }
+
     // MARK: - Silence Detection
 
     @Published var silenceTimeout: Double {
@@ -280,11 +297,13 @@ class SettingsStore: ObservableObject {
 
     @Published var launchAtLogin: Bool {
         didSet {
+            #if os(macOS)
             if launchAtLogin {
                 try? SMAppService.mainApp.register()
             } else {
                 try? SMAppService.mainApp.unregister()
             }
+            #endif
         }
     }
 
@@ -306,6 +325,33 @@ class SettingsStore: ObservableObject {
         }
     }
 
+    // MARK: - Voice Modes
+
+    @Published var voiceModes: [VoiceMode] {
+        didSet {
+            // 編輯指令時每個按鍵都會觸發；debounce 0.4 秒再整包編碼寫入
+            voiceModesSaveWork?.cancel()
+            let work = DispatchWorkItem { [weak self] in self?.flushVoiceModes() }
+            voiceModesSaveWork = work
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4, execute: work)
+        }
+    }
+
+    private var voiceModesSaveWork: DispatchWorkItem?
+
+    /// 立即寫入尚未落盤的 voiceModes（debounce 期間要結束時可呼叫）
+    func flushVoiceModes() {
+        voiceModesSaveWork?.cancel()
+        voiceModesSaveWork = nil
+        if let data = try? JSONEncoder().encode(voiceModes) {
+            UserDefaults.standard.set(data, forKey: "voiceModes")
+        }
+    }
+
+    func voiceMode(named name: String) -> VoiceMode? {
+        voiceModes.first { $0.name.compare(name, options: [.caseInsensitive]) == .orderedSame }
+    }
+
     /// Find matching rule for a given app context identifier
     func contextRule(for appIdentifier: String) -> ContextRule? {
         contextRules.first { $0.appIdentifier == appIdentifier && $0.isEnabled }
@@ -323,6 +369,25 @@ class SettingsStore: ObservableObject {
 
     @Published var hasCustomOverlayPosition: Bool {
         didSet { UserDefaults.standard.set(hasCustomOverlayPosition, forKey: "hasCustomOverlayPosition") }
+    }
+
+    // MARK: - URL Scheme / 捷徑控制
+
+    /// 允許其他 App 透過 saybit:// URL 或「捷徑」控制錄音（saybit://settings 不受影響）
+    @Published var enableURLSchemeControl: Bool = UserDefaults.standard.object(forKey: "enableURLSchemeControl") as? Bool ?? true {
+        didSet { UserDefaults.standard.set(enableURLSchemeControl, forKey: "enableURLSchemeControl") }
+    }
+
+    /// 不用詢問即可透過 saybit:// 控制錄音的來源 App（bundle ID）
+    static let defaultURLSchemeAllowedSenders = [
+        "com.apple.shortcuts",
+        "com.raycast.macos",
+        "com.runningwithcrayons.Alfred",
+        "com.elgato.StreamDeck",
+    ]
+
+    @Published var urlSchemeAllowedSenders: [String] = UserDefaults.standard.stringArray(forKey: "urlSchemeAllowedSenders") ?? SettingsStore.defaultURLSchemeAllowedSenders {
+        didSet { UserDefaults.standard.set(urlSchemeAllowedSenders, forKey: "urlSchemeAllowedSenders") }
     }
 
     // MARK: - Init
@@ -363,6 +428,9 @@ class SettingsStore: ObservableObject {
         self.enableSoundFeedback = defaults.object(forKey: "enableSoundFeedback") as? Bool ?? true
         self.enableWhisperMode = defaults.object(forKey: "enableWhisperMode") as? Bool ?? false
         self.enableVoiceBandpass = defaults.object(forKey: "enableVoiceBandpass") as? Bool ?? true
+        self.enableScreenContext = defaults.bool(forKey: "enableScreenContext")
+        self.enableAutoLearnDictionary = defaults.object(forKey: "enableAutoLearnDictionary") as? Bool ?? false
+        self.enableDuckingWhileRecording = defaults.object(forKey: "enableDuckingWhileRecording") as? Bool ?? true
         self.enableEchoCancellation = defaults.object(forKey: "enableEchoCancellation") as? Bool ?? false
         self.silenceTimeout = defaults.object(forKey: "silenceTimeout") as? Double ?? 2.0
         self.enableAutoStop = defaults.object(forKey: "enableAutoStop") as? Bool ?? true
@@ -376,7 +444,11 @@ class SettingsStore: ObservableObject {
         self.smartSendDelay = defaults.object(forKey: "smartSendDelay") as? Double ?? 3.0
         self.capsuleScale = defaults.object(forKey: "capsuleScale") as? Double ?? 1.0
         self.micSensitivity = defaults.object(forKey: "micSensitivity") as? Double ?? 2.0
+        #if os(macOS)
         self.launchAtLogin = SMAppService.mainApp.status == .enabled
+        #else
+        self.launchAtLogin = false
+        #endif
         self.overlayPositionX = defaults.object(forKey: "overlayPositionX") as? Double ?? 0
         self.overlayPositionY = defaults.object(forKey: "overlayPositionY") as? Double ?? 0
         self.hasCustomOverlayPosition = defaults.bool(forKey: "hasCustomOverlayPosition")
@@ -387,6 +459,12 @@ class SettingsStore: ObservableObject {
             self.contextRules = decoded
         } else {
             self.contextRules = ContextRule.defaultRules
+        }
+        if let data = defaults.data(forKey: "voiceModes"),
+           let decoded = try? JSONDecoder().decode([VoiceMode].self, from: data) {
+            self.voiceModes = decoded
+        } else {
+            self.voiceModes = VoiceMode.presets
         }
     }
 }

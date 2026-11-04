@@ -17,11 +17,24 @@ struct HotKeySettingsView: View {
     @State private var countdownTask: Task<Void, Never>?
     private let recordingTimeout = 10
 
+    // 每張卡片的搜尋關鍵字（卡片顯示與「沒有結果」共用同一份）
+    private enum Keys {
+        static let hotkey = ["快捷鍵", "hotkey", "shortcut", "快捷键", "鍵盤", "keyboard", "錄製", "record"]
+        static let trigger = ["觸發", "trigger", "模式", "mode", "toggle", "hold", "按住", "雙擊", "double tap", "快捷键"]
+        static let voiceModes = ["語音模式", "模式", "mode", "email", "翻譯", "快捷鍵", "url", "raycast", "捷徑"]
+        static let guide = ["說明", "guide", "usage", "使用", "步驟", "step", "教學"]
+        static let all = [hotkey, trigger, voiceModes, guide]
+    }
+
+    private func shows(_ keys: [String]) -> Bool {
+        settingsMatchesSearch(keys, searchText: searchState.searchText)
+    }
+
     var body: some View {
         ScrollView {
             VStack(spacing: 16) {
                 // MARK: - 快捷鍵
-                if settingsMatchesSearch(["快捷鍵", "hotkey", "shortcut", "快捷键", "鍵盤", "keyboard", "錄製", "record"], searchText: searchState.searchText) {
+                if shows(Keys.hotkey) {
                     GlassCard {
                         VStack(alignment: .leading, spacing: 12) {
                             GlassSectionHeader(title: L10n.HotKey.hotkey, icon: "command")
@@ -72,7 +85,7 @@ struct HotKeySettingsView: View {
                             Text(isRecording
                                 ? L10n.HotKey.recordingHint
                                 : L10n.HotKey.requirement)
-                                .font(.title3)
+                                .font(.callout)
                                 .foregroundStyle(isRecording ? .orange : .secondary)
 
                             if !isRecording, let conflict = currentConflict {
@@ -80,7 +93,7 @@ struct HotKeySettingsView: View {
                                     Image(systemName: "exclamationmark.triangle.fill")
                                         .foregroundStyle(.orange)
                                     Text(L10n.HotKey.conflictWarning(conflict.name))
-                                        .font(.title3)
+                                        .font(.callout)
                                         .foregroundStyle(.orange)
                                 }
                                 .padding(.top, 2)
@@ -90,7 +103,7 @@ struct HotKeySettingsView: View {
                 }
 
                 // MARK: - 觸發模式
-                if settingsMatchesSearch(["觸發", "trigger", "模式", "mode", "toggle", "hold", "雙擊", "double tap", "快捷键"], searchText: searchState.searchText) {
+                if shows(Keys.trigger) {
                     GlassCard {
                         VStack(alignment: .leading, spacing: 10) {
                             GlassSectionHeader(title: L10n.HotKey.triggerMode, icon: "hand.tap")
@@ -108,15 +121,20 @@ struct HotKeySettingsView: View {
                             }
 
                             Text(settingsStore.hotkeyTriggerMode.description)
-                                .font(.title3)
+                                .font(.callout)
                                 .foregroundStyle(.secondary)
                                 .padding(.top, 2)
                         }
                     }
                 }
 
+                // MARK: - 語音模式
+                if shows(Keys.voiceModes) {
+                    VoiceModesSection()
+                }
+
                 // MARK: - 使用說明
-                if settingsMatchesSearch(["說明", "guide", "usage", "使用", "步驟", "step", "教學"], searchText: searchState.searchText) {
+                if shows(Keys.guide) {
                     GlassCard {
                         VStack(alignment: .leading, spacing: 10) {
                             GlassSectionHeader(title: L10n.HotKey.usageGuide, icon: "questionmark.circle")
@@ -147,15 +165,8 @@ struct HotKeySettingsView: View {
                     }
                 }
 
-                if !searchState.searchText.isEmpty
-                    && !settingsMatchesSearch(["快捷鍵", "hotkey", "shortcut", "快捷键", "鍵盤", "keyboard", "錄製", "record"], searchText: searchState.searchText)
-                    && !settingsMatchesSearch(["觸發", "trigger", "模式", "mode", "toggle", "hold", "雙擊", "double tap", "快捷键"], searchText: searchState.searchText)
-                    && !settingsMatchesSearch(["說明", "guide", "usage", "使用", "步驟", "step", "教學"], searchText: searchState.searchText)
-                {
-                    Text(L10n.Common.noResults)
-                        .foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity)
-                        .padding(.top, 40)
+                if !searchState.searchText.isEmpty && !Keys.all.contains(where: shows) {
+                    SettingsNoResults()
                 }
             }
             .padding(20)
@@ -233,7 +244,7 @@ private struct StepRow: View {
                 .background(Circle().fill(Color.accentColor.opacity(0.7)))
 
             Text(text)
-                .font(.title3)
+                .font(.callout)
         }
     }
 }

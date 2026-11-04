@@ -4,139 +4,120 @@
 //
 //  Created by 顏國明 on 2026/1/27.
 //
+//  選單列（MenuBarExtra .menu 樣式）：上面放最常用的動作，
+//  只有出問題（缺權限、缺 API Key）時才顯示警示，平常保持精簡。
+//
 
 import SwiftUI
 
 struct MenuBarView: View {
     @EnvironmentObject var settingsStore: SettingsStore
+    let appDelegate: AppDelegate
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            // Status
-            HStack {
-                Image(systemName: "mic.fill")
-                    .foregroundColor(.accentColor)
-                Text("Saybit")
-                    .font(.headline)
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
+        // 錄音
+        Button(isRecording ? "停止錄音" : "開始錄音（\(currentHotkeyLabel)）") {
+            // 引導還沒走完不允許開始錄音（停止仍可）
+            guard isRecording || appDelegate.isRecordingAllowed else { return }
+            appDelegate.voicePipeline?.toggleRecording()
+        }
+        .disabled(appDelegate.voicePipeline == nil || (!isRecording && !appDelegate.isRecordingAllowed))
 
+        if !settingsStore.voiceModes.isEmpty {
+            Menu("用語音模式錄音") {
+                ForEach(settingsStore.voiceModes) { mode in
+                    Button(modeLabel(mode)) {
+                        guard isRecording || appDelegate.isRecordingAllowed else { return }
+                        appDelegate.voicePipeline?.toggleRecording(mode: mode)
+                    }
+                }
+            }
+            .disabled(!isRecording && !appDelegate.isRecordingAllowed)
+        }
+
+        Divider()
+
+        // 處理方式
+        Picker(L10n.Menu.promptLabel(settingsStore.promptStyle.displayName), selection: $settingsStore.promptStyle) {
+            ForEach(PromptStyle.allCases) { style in
+                Text(style.displayName).tag(style)
+            }
+        }
+        Picker(L10n.Menu.toneLabel(settingsStore.toneStyle.displayName), selection: $settingsStore.toneStyle) {
+            ForEach(ToneStyle.allCases) { tone in
+                Text(tone.displayName).tag(tone)
+            }
+        }
+        Toggle(L10n.General.smartSend, isOn: $settingsStore.enableSmartSend)
+        Toggle(L10n.General.whisperMode, isOn: $settingsStore.enableWhisperMode)
+
+        // 只在需要處理時才出現
+        if !apiKeyReady || !AccessibilityManager.shared.isAuthorized {
             Divider()
-
-            // Prompt Style
-            Menu(L10n.Menu.promptLabel(settingsStore.promptStyle.displayName)) {
-                ForEach(PromptStyle.allCases) { style in
-                    Button(style.displayName) {
-                        settingsStore.promptStyle = style
-                    }
+            if !apiKeyReady {
+                Button("⚠️ " + L10n.Menu.apiKeyStatus(false) + "…") {
+                    OverlayWindowController.shared.openSettings(tab: .api)
                 }
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 4)
-
-            // Tone
-            Menu(L10n.Menu.toneLabel(settingsStore.toneStyle.displayName)) {
-                ForEach(ToneStyle.allCases) { tone in
-                    Button(tone.displayName) {
-                        settingsStore.toneStyle = tone
-                    }
+            if !AccessibilityManager.shared.isAuthorized {
+                Button("⚠️ " + L10n.Menu.accessibilityStatus(false) + "…") {
+                    AccessibilityManager.shared.promptIfNeeded()
                 }
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 4)
+        }
 
-            // Whisper Mode
-            Button {
-                settingsStore.enableWhisperMode.toggle()
-            } label: {
-                HStack {
-                    Text("Whisper Mode")
-                    Spacer()
-                    if settingsStore.enableWhisperMode {
-                        Image(systemName: "checkmark")
-                    }
-                }
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 4)
-
+        if !settingsStore.availableUpdateTag.isEmpty,
+           let url = URL(string: settingsStore.availableUpdateURL),
+           !settingsStore.availableUpdateURL.isEmpty {
             Divider()
+            Link(L10n.Menu.updateAvailable(settingsStore.availableUpdateTag), destination: url)
+        }
 
-            // Quick actions
+        Divider()
+
+        Button("檔案轉錄…") {
+            OverlayWindowController.shared.openSettings(tab: .transcribe)
+        }
+        Button("歷史紀錄…") {
+            OverlayWindowController.shared.openSettings(tab: .history)
+        }
+        Button(L10n.Common.settings + "…") {
+            OverlayWindowController.shared.openSettings()
+        }
+        .keyboardShortcut(",")
+
+        Menu("疑難排解") {
             Button(L10n.Menu.reregisterHotkey(currentHotkeyLabel)) {
                 GlobalHotKeyManager.shared.register(
                     keyCode: UInt16(settingsStore.hotkeyKeyCode),
                     modifiers: CGEventFlags(rawValue: UInt64(settingsStore.hotkeyModifiers))
                 )
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 4)
-
-            Divider()
-
-            // API Key status (依目前選擇的 provider 判斷；本地服務不需 key 永遠視為已備妥)
-            HStack {
-                Circle()
-                    .fill(apiKeyReady ? Color.green : Color.red)
-                    .frame(width: 8, height: 8)
-                Text(L10n.Menu.apiKeyStatus(apiKeyReady))
-                    .font(.caption)
-                    .foregroundColor(.secondary)
+            Button(L10n.Overlay.resetPosition) {
+                OverlayWindowController.shared.resetPosition()
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 4)
-
-            // Accessibility status
-            HStack {
-                Circle()
-                    .fill(AccessibilityManager.shared.isAuthorized ? Color.green : Color.red)
-                    .frame(width: 8, height: 8)
-                Text(L10n.Menu.accessibilityStatus(AccessibilityManager.shared.isAuthorized))
-                    .font(.caption)
-                    .foregroundColor(.secondary)
+            Button("日誌…") {
+                OverlayWindowController.shared.openSettings(tab: .logs)
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 4)
-
-            Divider()
-
-            // Update notification (only shown when a new version is available)
-            if !settingsStore.availableUpdateTag.isEmpty {
-                if let url = URL(string: settingsStore.availableUpdateURL),
-                   !settingsStore.availableUpdateURL.isEmpty {
-                    Link(destination: url) {
-                        HStack {
-                            Image(systemName: "sparkles")
-                                .foregroundStyle(.green)
-                            Text(L10n.Menu.updateAvailable(settingsStore.availableUpdateTag))
-                                .font(.caption)
-                                .foregroundStyle(.green)
-                        }
-                    }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 4)
-                    Divider()
-                }
-            }
-
-            // Settings
-            SettingsLink {
-                Text(L10n.Common.settings)
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 4)
-
-            Divider()
-
-            // Quit
-            Button(L10n.Common.quit) {
-                NSApplication.shared.terminate(nil)
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 4)
         }
-        .frame(width: 240)
+
+        Divider()
+
+        Button(L10n.Common.quit) {
+            NSApplication.shared.terminate(nil)
+        }
+        .keyboardShortcut("q")
+    }
+
+    private var isRecording: Bool {
+        if case .recording = appDelegate.voicePipeline?.session.state { return true }
+        return false
+    }
+
+    private func modeLabel(_ mode: VoiceMode) -> String {
+        guard let code = mode.keyCode, mode.hasHotkey else { return mode.name }
+        let hotkey = GlobalHotKeyManager.hotkeyDescription(keyCode: UInt16(code), modifiers: CGEventFlags(rawValue: mode.modifiers))
+        return "\(mode.name)（\(hotkey)）"
     }
 
     private var currentHotkeyLabel: String {

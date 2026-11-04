@@ -110,6 +110,8 @@ struct LogsView: View {
                                     .font(.system(size: 11))
                             }
                             .buttonStyle(.plain)
+                            .help(L10n.Common.clearSearch)
+                            .accessibilityLabel(L10n.Common.clearSearch)
                         }
                     }
                     .padding(6)
@@ -210,7 +212,8 @@ struct LogsView: View {
                     }
                 }
             }
-            .onChange(of: logger.entries.count) { _, _ in
+            // 監聽最後一筆的 id：日誌到上限後 count 不再變，但最後一筆仍會換
+            .onChange(of: logger.entries.last?.id) { _, _ in
                 if autoScroll, let lastEntry = filteredEntries.last {
                     withAnimation(.easeOut(duration: 0.2)) {
                         proxy.scrollTo(lastEntry.id, anchor: .bottom)

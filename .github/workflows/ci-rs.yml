@@ -1,0 +1,66 @@
+name: CI (Saybit Rust)
+
+# 只管 saybit-rs/（egui 原生版）；與 ci.yml（Xcode）、ci-desktop.yml（Tauri）互不干擾。
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'saybit-rs/**'
+      - '.github/workflows/ci-rs.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'saybit-rs/**'
+      - '.github/workflows/ci-rs.yml'
+
+defaults:
+  run:
+    working-directory: ./saybit-rs
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  rust:
+    name: Rust (${{ matrix.platform }})
+    runs-on: ${{ matrix.platform }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [macos-latest, windows-latest, ubuntu-22.04]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@1.99
+        with:
+          components: clippy
+
+      # cpal（ALSA）、enigo（xdo）、global-hotkey / winit（X11 / xkbcommon / wayland）、
+      # ksni 系統匣與 secret-service（D-Bus）、whisper-rs（cmake + clang 給 bindgen）
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libasound2-dev libxdo-dev libxkbcommon-dev libxcb1-dev \
+            libxcb-randr0-dev libxcb-shape0-dev libxcb-xfixes0-dev libwayland-dev \
+            libdbus-1-dev libgtk-3-dev cmake clang pkg-config
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: './saybit-rs -> target'
+          # sherpa-rs-sys 把預編譯庫下載到使用者快取目錄，連結時以絕對路徑搜尋；
+          # 只快取 target/ 而不快取這裡，第二次跑會 "unable to find library -lsherpa-onnx-c-api"
+          cache-directories: |
+            ~/.cache/sherpa-rs
+            ~/Library/Caches/sherpa-rs
+            ~/AppData/Local/sherpa-rs
+
+      - name: cargo check
+        run: cargo check --workspace --all-targets
+
+      - name: cargo clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: cargo test
+        run: cargo test --workspace

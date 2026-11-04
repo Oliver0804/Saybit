@@ -6,7 +6,20 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		3E3B46924A62E69E97C14E90 /* SaybitKeyboard.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = C929EFE91060899A95C42CA7 /* SaybitKeyboard.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		4E166BB2E46B7BF4A61C8D8A /* onnxruntime.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = A234486E49377FDD64709D18 /* onnxruntime.xcframework */; };
+		E4AFB53FA98BD28261DE10B2 /* sherpa-onnx.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = DEF2D0F532589B204E1659EC /* sherpa-onnx.xcframework */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
+		135A6139AE1643B8ADA41B04 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = A703DEB92F289E5200CAB3F9 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = BE5439DD5DBB498B9DEBD766;
+			remoteInfo = SaybitKeyboard;
+		};
 		A703DED42F289E5300CAB3F9 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = A703DEB92F289E5200CAB3F9 /* Project object */;
@@ -23,31 +36,145 @@
 		};
 /* End PBXContainerItemProxy section */
 
+/* Begin PBXCopyFilesBuildPhase section */
+		E92111AF2846BE15AAB47058 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				3E3B46924A62E69E97C14E90 /* SaybitKeyboard.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
 /* Begin PBXFileReference section */
+		815CCB851FA8FA338EED1D7B /* Saybit.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Saybit.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		A234486E49377FDD64709D18 /* onnxruntime.xcframework */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = wrapper.xcframework; path = onnxruntime.xcframework; sourceTree = "<group>"; };
 		A703DEC12F289E5200CAB3F9 /* speakertpyer.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; name = speakertpyer.app; path = Saybit.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A703DED32F289E5300CAB3F9 /* speakertpyerTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = speakertpyerTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		A703DEDD2F289E5300CAB3F9 /* speakertpyerUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = speakertpyerUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		C929EFE91060899A95C42CA7 /* SaybitKeyboard.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = SaybitKeyboard.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		DEF2D0F532589B204E1659EC /* sherpa-onnx.xcframework */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = wrapper.xcframework; path = "sherpa-onnx.xcframework"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		0921151F9AA8CB45B492451A /* Exceptions for "SaybitKeyboard" folder in "SaybitKeyboard" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+				SaybitKeyboard.entitlements,
+			);
+			target = BE5439DD5DBB498B9DEBD766 /* SaybitKeyboard */;
+		};
+		2192821F8774D05AB5454E4E /* Exceptions for "speakertpyer" folder in "SaybitiOS" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				App/AppDelegate.swift,
+				App/SpeakerTyperApp.swift,
+				App/SpeakerTyperShortcuts.swift,
+				Assets.xcassets,
+				Core/Accessibility/AccessibilityManager.swift,
+				Core/Accessibility/ClipboardBackup.swift,
+				Core/Accessibility/TextExtractor.swift,
+				Core/Accessibility/TextInjector.swift,
+				Core/HotKey/GlobalHotKeyManager.swift,
+				Core/HotKey/HotKeyConflictChecker.swift,
+				Core/Pipeline/VoicePipeline.swift,
+				Core/SpeechRecognition/BackgroundSTTEngine.swift,
+				Core/SpeechRecognition/MicLevelTester.swift,
+				Core/Update/UpdateChecker.swift,
+				UI/History/HistoryView.swift,
+				UI/MenuBar/MenuBarView.swift,
+				UI/Onboarding/OnboardingView.swift,
+				UI/Overlay/OverlayView.swift,
+				UI/Overlay/OverlayWindow.swift,
+				UI/Settings/APISettingsView.swift,
+				UI/Settings/AboutView.swift,
+				UI/Settings/ContextRulesView.swift,
+				UI/Settings/DictionarySettingsView.swift,
+				UI/Settings/GeneralSettingsView.swift,
+				UI/Settings/HotKeySettingsView.swift,
+				UI/Settings/LogsView.swift,
+				UI/Settings/PromptSettingsView.swift,
+				UI/Settings/SettingsView.swift,
+				UI/Statistics/StatisticsView.swift,
+				UI/Tutorial/TutorialView.swift,
+				easter_egg.jpg,
+				speakertpyer.entitlements,
+			);
+			target = 80BF45090EF04DCBB6338D19 /* SaybitiOS */;
+		};
+		EA33911A46769F9490145204 /* Exceptions for "SaybitiOS" folder in "SaybitiOS" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+				SaybitiOS.entitlements,
+			);
+			target = 80BF45090EF04DCBB6338D19 /* SaybitiOS */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
+		5BFF62CC9CDF002431DDFF47 /* SaybitiOS */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				EA33911A46769F9490145204 /* Exceptions for "SaybitiOS" folder in "SaybitiOS" target */,
+			);
+			path = SaybitiOS;
+			sourceTree = "<group>";
+		};
+		7B8521E65A52442AC162FEC1 /* SaybitKeyboard */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				0921151F9AA8CB45B492451A /* Exceptions for "SaybitKeyboard" folder in "SaybitKeyboard" target */,
+			);
+			path = SaybitKeyboard;
+			sourceTree = "<group>";
+		};
 		A703DEC32F289E5200CAB3F9 /* speakertpyer */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				2192821F8774D05AB5454E4E /* Exceptions for "speakertpyer" folder in "SaybitiOS" target */,
+			);
 			path = speakertpyer;
 			sourceTree = "<group>";
 		};
 		A703DED62F289E5300CAB3F9 /* speakertpyerTests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+			);
 			path = speakertpyerTests;
 			sourceTree = "<group>";
 		};
 		A703DEE02F289E5300CAB3F9 /* speakertpyerUITests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+			);
 			path = speakertpyerUITests;
+			sourceTree = "<group>";
+		};
+		BF4EA727A411148690A1E60B /* SaybitShared */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+			);
+			path = SaybitShared;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
+		9166ED7A8386025D6C581566 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				E4AFB53FA98BD28261DE10B2 /* sherpa-onnx.xcframework in Frameworks */,
+				4E166BB2E46B7BF4A61C8D8A /* onnxruntime.xcframework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		A703DEBE2F289E5200CAB3F9 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -69,16 +196,37 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		D6637B72F7594FE4FFA794CF /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		31F19B8F527072D1DB797C5C /* Vendor */ = {
+			isa = PBXGroup;
+			children = (
+				DEF2D0F532589B204E1659EC /* sherpa-onnx.xcframework */,
+				A234486E49377FDD64709D18 /* onnxruntime.xcframework */,
+			);
+			name = Vendor;
+			path = "Vendor/sherpa-onnx";
+			sourceTree = "<group>";
+		};
 		A703DEB82F289E5200CAB3F9 = {
 			isa = PBXGroup;
 			children = (
 				A703DEC32F289E5200CAB3F9 /* speakertpyer */,
 				A703DED62F289E5300CAB3F9 /* speakertpyerTests */,
 				A703DEE02F289E5300CAB3F9 /* speakertpyerUITests */,
+				5BFF62CC9CDF002431DDFF47 /* SaybitiOS */,
+				7B8521E65A52442AC162FEC1 /* SaybitKeyboard */,
+				BF4EA727A411148690A1E60B /* SaybitShared */,
 				A703DEC22F289E5200CAB3F9 /* Products */,
+				31F19B8F527072D1DB797C5C /* Vendor */,
 			);
 			sourceTree = "<group>";
 		};
@@ -88,6 +236,8 @@
 				A703DEC12F289E5200CAB3F9 /* speakertpyer.app */,
 				A703DED32F289E5300CAB3F9 /* speakertpyerTests.xctest */,
 				A703DEDD2F289E5300CAB3F9 /* speakertpyerUITests.xctest */,
+				C929EFE91060899A95C42CA7 /* SaybitKeyboard.appex */,
+				815CCB851FA8FA338EED1D7B /* Saybit.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -95,6 +245,30 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		80BF45090EF04DCBB6338D19 /* SaybitiOS */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 20640C8BF3CD2A69FD066B01 /* Build configuration list for PBXNativeTarget "SaybitiOS" */;
+			buildPhases = (
+				D48EF94FE7E67D1F69AAF666 /* Sources */,
+				9166ED7A8386025D6C581566 /* Frameworks */,
+				0762D99A152CB3CDF4F73B9F /* Resources */,
+				E92111AF2846BE15AAB47058 /* Embed Foundation Extensions */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				2F61E5526E50A1867AB958A1 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				5BFF62CC9CDF002431DDFF47 /* SaybitiOS */,
+				BF4EA727A411148690A1E60B /* SaybitShared */,
+				A703DEC32F289E5200CAB3F9 /* speakertpyer */,
+			);
+			name = SaybitiOS;
+			productName = SaybitiOS;
+			productReference = 815CCB851FA8FA338EED1D7B /* Saybit.app */;
+			productType = "com.apple.product-type.application";
+		};
 		A703DEC02F289E5200CAB3F9 /* speakertpyer */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = A703DEE72F289E5300CAB3F9 /* Build configuration list for PBXNativeTarget "speakertpyer" */;
@@ -111,8 +285,6 @@
 				A703DEC32F289E5200CAB3F9 /* speakertpyer */,
 			);
 			name = speakertpyer;
-			packageProductDependencies = (
-			);
 			productName = speakertpyer;
 			productReference = A703DEC12F289E5200CAB3F9 /* speakertpyer.app */;
 			productType = "com.apple.product-type.application";
@@ -134,8 +306,6 @@
 				A703DED62F289E5300CAB3F9 /* speakertpyerTests */,
 			);
 			name = speakertpyerTests;
-			packageProductDependencies = (
-			);
 			productName = speakertpyerTests;
 			productReference = A703DED32F289E5300CAB3F9 /* speakertpyerTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
@@ -157,11 +327,30 @@
 				A703DEE02F289E5300CAB3F9 /* speakertpyerUITests */,
 			);
 			name = speakertpyerUITests;
-			packageProductDependencies = (
-			);
 			productName = speakertpyerUITests;
 			productReference = A703DEDD2F289E5300CAB3F9 /* speakertpyerUITests.xctest */;
 			productType = "com.apple.product-type.bundle.ui-testing";
+		};
+		BE5439DD5DBB498B9DEBD766 /* SaybitKeyboard */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 4FCB9333BCDD2786042CD10E /* Build configuration list for PBXNativeTarget "SaybitKeyboard" */;
+			buildPhases = (
+				2AE2F6992D7D10EDCD39EDDF /* Sources */,
+				D6637B72F7594FE4FFA794CF /* Frameworks */,
+				D6AE3D7467AC8FF460DBD271 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				7B8521E65A52442AC162FEC1 /* SaybitKeyboard */,
+				BF4EA727A411148690A1E60B /* SaybitShared */,
+			);
+			name = SaybitKeyboard;
+			productName = SaybitKeyboard;
+			productReference = C929EFE91060899A95C42CA7 /* SaybitKeyboard.appex */;
+			productType = "com.apple.product-type.app-extension";
 		};
 /* End PBXNativeTarget section */
 
@@ -173,6 +362,9 @@
 				LastSwiftUpdateCheck = 2620;
 				LastUpgradeCheck = 2620;
 				TargetAttributes = {
+					80BF45090EF04DCBB6338D19 = {
+						CreatedOnToolsVersion = 27.2;
+					};
 					A703DEC02F289E5200CAB3F9 = {
 						CreatedOnToolsVersion = 26.2;
 					};
@@ -183,6 +375,9 @@
 					A703DEDC2F289E5300CAB3F9 = {
 						CreatedOnToolsVersion = 26.2;
 						TestTargetID = A703DEC02F289E5200CAB3F9;
+					};
+					BE5439DD5DBB498B9DEBD766 = {
+						CreatedOnToolsVersion = 27.2;
 					};
 				};
 			};
@@ -203,11 +398,20 @@
 				A703DEC02F289E5200CAB3F9 /* speakertpyer */,
 				A703DED22F289E5300CAB3F9 /* speakertpyerTests */,
 				A703DEDC2F289E5300CAB3F9 /* speakertpyerUITests */,
+				BE5439DD5DBB498B9DEBD766 /* SaybitKeyboard */,
+				80BF45090EF04DCBB6338D19 /* SaybitiOS */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
+		0762D99A152CB3CDF4F73B9F /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		A703DEBF2F289E5200CAB3F9 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -229,9 +433,23 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		D6AE3D7467AC8FF460DBD271 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		2AE2F6992D7D10EDCD39EDDF /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		A703DEBD2F289E5200CAB3F9 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -253,9 +471,22 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		D48EF94FE7E67D1F69AAF666 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
+		2F61E5526E50A1867AB958A1 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			name = SaybitKeyboard;
+			target = BE5439DD5DBB498B9DEBD766 /* SaybitKeyboard */;
+			targetProxy = 135A6139AE1643B8ADA41B04 /* PBXContainerItemProxy */;
+		};
 		A703DED52F289E5300CAB3F9 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			target = A703DEC02F289E5200CAB3F9 /* speakertpyer */;
@@ -269,6 +500,148 @@
 /* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
+		150577B786057B83DCC8128C /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				CODE_SIGN_ENTITLEMENTS = SaybitKeyboard/SaybitKeyboard.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = A3VXSGZPQ2;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = SaybitKeyboard/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = Saybit;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.bashcat.speakertpyer.keyboard;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		25A79A32860DC01773D82AE3 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				CODE_SIGN_ENTITLEMENTS = SaybitiOS/SaybitiOS.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = A3VXSGZPQ2;
+				ENABLE_PREVIEWS = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				HEADER_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(PROJECT_DIR)/Vendor/sherpa-onnx/sherpa-onnx.xcframework/Headers",
+				);
+				INFOPLIST_FILE = SaybitiOS/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = Saybit;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
+				INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = "Saybit 需要行事曆權限來建立您用語音指定的行程。";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Saybit 需要麥克風來進行語音輸入。";
+				INFOPLIST_KEY_NSRemindersFullAccessUsageDescription = "Saybit 需要提醒事項權限來建立您用語音指定的提醒。";
+				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Saybit 使用語音辨識將您的語音轉換為文字。";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = UIInterfaceOrientationPortrait;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-lc++",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.bashcat.speakertpyer;
+				PRODUCT_MODULE_NAME = SaybitiOS;
+				PRODUCT_NAME = Saybit;
+				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_OBJC_BRIDGING_HEADER = "speakertpyer/Core/SpeechRecognition/Sherpa/Sherpa-Bridging-Header.h";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		5E860B9E47D3C89367E375B4 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				CODE_SIGN_ENTITLEMENTS = SaybitiOS/SaybitiOS.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = A3VXSGZPQ2;
+				ENABLE_PREVIEWS = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				HEADER_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(PROJECT_DIR)/Vendor/sherpa-onnx/sherpa-onnx.xcframework/Headers",
+				);
+				INFOPLIST_FILE = SaybitiOS/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = Saybit;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
+				INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = "Saybit 需要行事曆權限來建立您用語音指定的行程。";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Saybit 需要麥克風來進行語音輸入。";
+				INFOPLIST_KEY_NSRemindersFullAccessUsageDescription = "Saybit 需要提醒事項權限來建立您用語音指定的提醒。";
+				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Saybit 使用語音辨識將您的語音轉換為文字。";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = UIInterfaceOrientationPortrait;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-lc++",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.bashcat.speakertpyer;
+				PRODUCT_MODULE_NAME = SaybitiOS;
+				PRODUCT_NAME = Saybit;
+				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_OBJC_BRIDGING_HEADER = "speakertpyer/Core/SpeechRecognition/Sherpa/Sherpa-Bridging-Header.h";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
 		A703DEE52F289E5300CAB3F9 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -403,6 +776,11 @@
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				HEADER_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(PROJECT_DIR)/Vendor/sherpa-onnx/macos/include",
+				);
+				INFOPLIST_FILE = "Config/Saybit-macOS-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = Saybit;
 				INFOPLIST_KEY_CFBundleName = Saybit;
 				INFOPLIST_KEY_LSUIElement = YES;
@@ -419,7 +797,25 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
+				LIBRARY_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(PROJECT_DIR)/Vendor/sherpa-onnx/macos/lib",
+				);
 				MARKETING_VERSION = 1.5.0;
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-lsherpa-onnx-c-api",
+					"-lsherpa-onnx-core",
+					"-lsherpa-onnx-fstfar",
+					"-lsherpa-onnx-fst",
+					"-lsherpa-onnx-kaldifst-core",
+					"-lkaldi-decoder-core",
+					"-lkaldi-native-fbank-core",
+					"-lkissfft-float",
+					"-lssentencepiece_core",
+					"-lonnxruntime",
+					"-lc++",
+				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.bashcat.speakertpyer;
 				PRODUCT_NAME = Saybit;
 				REGISTER_APP_GROUPS = YES;
@@ -427,6 +823,7 @@
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_OBJC_BRIDGING_HEADER = "speakertpyer/Core/SpeechRecognition/Sherpa/Sherpa-Bridging-Header.h";
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
 			};
@@ -446,6 +843,11 @@
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				HEADER_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(PROJECT_DIR)/Vendor/sherpa-onnx/macos/include",
+				);
+				INFOPLIST_FILE = "Config/Saybit-macOS-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = Saybit;
 				INFOPLIST_KEY_CFBundleName = Saybit;
 				INFOPLIST_KEY_LSUIElement = YES;
@@ -462,7 +864,25 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
+				LIBRARY_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(PROJECT_DIR)/Vendor/sherpa-onnx/macos/lib",
+				);
 				MARKETING_VERSION = 1.5.0;
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-lsherpa-onnx-c-api",
+					"-lsherpa-onnx-core",
+					"-lsherpa-onnx-fstfar",
+					"-lsherpa-onnx-fst",
+					"-lsherpa-onnx-kaldifst-core",
+					"-lkaldi-decoder-core",
+					"-lkaldi-native-fbank-core",
+					"-lkissfft-float",
+					"-lssentencepiece_core",
+					"-lonnxruntime",
+					"-lc++",
+				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.bashcat.speakertpyer;
 				PRODUCT_NAME = Saybit;
 				REGISTER_APP_GROUPS = YES;
@@ -470,6 +890,7 @@
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_OBJC_BRIDGING_HEADER = "speakertpyer/Core/SpeechRecognition/Sherpa/Sherpa-Bridging-Header.h";
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
 			};
@@ -479,6 +900,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
+				HEADER_SEARCH_PATHS = "$(PROJECT_DIR)/Vendor/sherpa-onnx/macos/include";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 7;
 				DEVELOPMENT_TEAM = A3VXSGZPQ2;
@@ -500,6 +922,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
+				HEADER_SEARCH_PATHS = "$(PROJECT_DIR)/Vendor/sherpa-onnx/macos/include";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 7;
 				DEVELOPMENT_TEAM = A3VXSGZPQ2;
@@ -555,9 +978,61 @@
 			};
 			name = Release;
 		};
+		EEBA4AD1C9BFDE183F2EA439 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				CODE_SIGN_ENTITLEMENTS = SaybitKeyboard/SaybitKeyboard.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = A3VXSGZPQ2;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = SaybitKeyboard/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = Saybit;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.bashcat.speakertpyer.keyboard;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		20640C8BF3CD2A69FD066B01 /* Build configuration list for PBXNativeTarget "SaybitiOS" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				25A79A32860DC01773D82AE3 /* Release */,
+				5E860B9E47D3C89367E375B4 /* Debug */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		4FCB9333BCDD2786042CD10E /* Build configuration list for PBXNativeTarget "SaybitKeyboard" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				150577B786057B83DCC8128C /* Release */,
+				EEBA4AD1C9BFDE183F2EA439 /* Debug */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 		A703DEBC2F289E5200CAB3F9 /* Build configuration list for PBXProject "speakertpyer" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (

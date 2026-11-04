@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- 與 Xcode 產生的 Info.plist 合併（GENERATE_INFOPLIST_FILE = YES）。
+	     saybit://toggle|start|stop|cancel[?mode=名稱]，給 Raycast、捷徑、Stream Deck 觸發錄音。 -->
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>com.bashcat.speakertpyer</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>saybit</string>
+			</array>
+		</dict>
+	</array>
+	<key>NSScreenCaptureUsageDescription</key>
+	<string>Saybit 會在錄音時讀取前景視窗上的文字，讓 AI 拼對人名與專有名詞。截圖只在本機辨識；辨識出的文字會隨您的語音一起送到您設定的 AI 服務（使用 Apple 本機模型時不會離開這台 Mac）。</string>
+	<!-- 只放行本機 / 區網的 http（Ollama、LM Studio、自訂區網端點）；外部一律 https。
+	     OpenRouterClient 送出前另以 LLMProvider.validateBaseURL 擋掉外部 http。 -->
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
+</dict>
+</plist>

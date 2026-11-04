@@ -47,10 +47,11 @@ struct StatisticsView: View {
             case .all: return nil
             }
         }()
+        // 沒有時間戳的紀錄放不進任何一天，各範圍一律排除，彙總數字才會和圖表一致
         if let cutoff {
-            cachedRecords = allRecords.filter { ($0.timestamp ?? .distantPast) >= cutoff }
+            cachedRecords = allRecords.filter { $0.timestamp.map { $0 >= cutoff } ?? false }
         } else {
-            cachedRecords = Array(allRecords)
+            cachedRecords = allRecords.filter { $0.timestamp != nil }
         }
     }
 
@@ -179,15 +180,16 @@ struct StatisticsView: View {
 
                 Chart(dailyUsageData, id: \.date) { item in
                     BarMark(
-                        x: .value("日期", item.date, unit: .day),
-                        y: .value("次數", item.count)
+                        x: .value(L10n.Stats.chartDate,item.date, unit: .day),
+                        y: .value(L10n.Stats.chartCount,item.count)
                     )
                     .foregroundStyle(.blue.gradient)
                     .cornerRadius(3)
                 }
                 .chartXAxis {
-                    AxisMarks(values: .stride(by: .day)) { value in
-                        AxisValueLabel(format: .dateTime.month(.abbreviated).day())
+                    AxisMarks(values: .stride(by: axisStride)) { _ in
+                        AxisGridLine()
+                        AxisValueLabel(format: .dateTime.month(.defaultDigits).day())
                     }
                 }
                 .frame(height: 160)
@@ -238,22 +240,23 @@ struct StatisticsView: View {
 
                 Chart(dailyTokenData, id: \.date) { item in
                     LineMark(
-                        x: .value("日期", item.date, unit: .day),
+                        x: .value(L10n.Stats.chartDate,item.date, unit: .day),
                         y: .value("Tokens", item.tokens)
                     )
                     .foregroundStyle(.orange.gradient)
                     .interpolationMethod(.catmullRom)
 
                     AreaMark(
-                        x: .value("日期", item.date, unit: .day),
+                        x: .value(L10n.Stats.chartDate,item.date, unit: .day),
                         y: .value("Tokens", item.tokens)
                     )
                     .foregroundStyle(.orange.opacity(0.1))
                     .interpolationMethod(.catmullRom)
                 }
                 .chartXAxis {
-                    AxisMarks(values: .stride(by: .day)) { value in
-                        AxisValueLabel(format: .dateTime.month(.abbreviated).day())
+                    AxisMarks(values: .stride(by: axisStride)) { _ in
+                        AxisGridLine()
+                        AxisValueLabel(format: .dateTime.month(.defaultDigits).day())
                     }
                 }
                 .frame(height: 140)
@@ -276,11 +279,11 @@ struct StatisticsView: View {
                     HStack(spacing: 16) {
                         Chart(modeDistribution, id: \.mode) { item in
                             SectorMark(
-                                angle: .value("次數", item.count),
+                                angle: .value(L10n.Stats.chartCount,item.count),
                                 innerRadius: .ratio(0.5),
                                 angularInset: 1.5
                             )
-                            .foregroundStyle(by: .value("模式", item.displayName))
+                            .foregroundStyle(by: .value(L10n.Stats.chartMode,item.displayName))
                             .cornerRadius(4)
                         }
                         .frame(width: 120, height: 120)
@@ -318,23 +321,46 @@ struct StatisticsView: View {
         return cachedRecords.filter { ($0.timestamp ?? .distantPast) >= startOfDay }.count
     }
 
-    private var dailyUsageData: [DailyCount] {
-        let grouped = Dictionary(grouping: cachedRecords) { record -> Date in
-            Calendar.current.startOfDay(for: record.timestamp ?? Date())
+    /// 時間範圍內的每一天（沒用的日子也要有，圖表才看得出空白日；只有一天資料時長條也不會撐滿整張圖）
+    private var chartDays: [Date] {
+        let cal = Calendar.current
+        let today = cal.startOfDay(for: Date())
+        let start: Date
+        switch timeRange {
+        case .week: start = cal.date(byAdding: .day, value: -6, to: today) ?? today
+        case .month: start = cal.date(byAdding: .day, value: -29, to: today) ?? today
+        case .all:
+            // 不再截在 365 天：圖表範圍要涵蓋彙總卡片算進去的所有紀錄
+            start = cachedRecords.compactMap(\.timestamp).min().map { cal.startOfDay(for: $0) } ?? today
         }
-        return grouped.map { DailyCount(date: $0.key, count: $0.value.count) }
-            .sorted { $0.date < $1.date }
+        var days: [Date] = []
+        var d = start
+        while d <= today {
+            days.append(d)
+            guard let next = cal.date(byAdding: .day, value: 1, to: d) else { break }
+            d = next
+        }
+        return days
+    }
+
+    private var recordsByDay: [Date: [TranscriptionRecord]] {
+        Dictionary(grouping: cachedRecords) { Calendar.current.startOfDay(for: $0.timestamp ?? .distantPast) }
+    }
+
+    private var dailyUsageData: [DailyCount] {
+        let grouped = recordsByDay
+        return chartDays.map { DailyCount(date: $0, count: grouped[$0]?.count ?? 0) }
     }
 
     private var dailyTokenData: [DailyTokens] {
-        let grouped = Dictionary(grouping: cachedRecords) { record -> Date in
-            Calendar.current.startOfDay(for: record.timestamp ?? Date())
+        let grouped = recordsByDay
+        return chartDays.map { day in
+            DailyTokens(date: day, tokens: grouped[day]?.reduce(0) { $0 + Int($1.totalTokens) } ?? 0)
         }
-        return grouped.map { date, records in
-            DailyTokens(date: date, tokens: records.reduce(0) { $0 + Int($1.totalTokens) })
-        }
-        .sorted { $0.date < $1.date }
     }
+
+    /// X 軸標籤間隔：7 天每天標、30 天每週標、全部每月標
+    private var axisStride: Calendar.Component { timeRange == .week ? .day : (timeRange == .month ? .weekOfYear : .month) }
 
     private var topApps: [AppUsage] {
         let grouped = Dictionary(grouping: cachedRecords) { $0.appContext ?? "Unknown" }

@@ -11,6 +11,7 @@ import SwiftUI
 struct DictionarySettingsView: View {
     @Environment(\.managedObjectContext) private var viewContext
     @EnvironmentObject var searchState: SettingsSearchState
+    @EnvironmentObject var settingsStore: SettingsStore
 
     @FetchRequest(
         sortDescriptors: [NSSortDescriptor(keyPath: \PersonalDictionaryEntry.term, ascending: true)],
@@ -28,84 +29,116 @@ struct DictionarySettingsView: View {
     @State private var newPreferred = ""
     @State private var newTrigger = ""
     @State private var newSnippetContent = ""
+    @State private var dictFilter = ""
+
+    private static let dictKeys = ["字典", "dictionary", "詞彙", "词汇", "辞書", "新增", "add", "詞條", "列表", "list", "自動學習", "learn", "更正"]
+
+    private var filteredDictEntries: [PersonalDictionaryEntry] {
+        let q = dictFilter.trimmingCharacters(in: .whitespaces).lowercased()
+        guard !q.isEmpty else { return Array(dictEntries) }
+        return dictEntries.filter {
+            ($0.term ?? "").lowercased().contains(q) || ($0.preferred ?? "").lowercased().contains(q)
+        }
+    }
+
+    private var canAddDictionaryEntry: Bool {
+        !newTerm.trimmingCharacters(in: .whitespaces).isEmpty
+            && !newPreferred.trimmingCharacters(in: .whitespaces).isEmpty
+    }
+
+    private var isDuplicateTerm: Bool {
+        let t = newTerm.trimmingCharacters(in: .whitespaces).lowercased()
+        return !t.isEmpty && dictEntries.contains { ($0.term ?? "").lowercased() == t }
+    }
 
     var body: some View {
         ScrollView {
             VStack(spacing: 16) {
-                // MARK: - 新增詞條
-                if settingsMatchesSearch(["字典", "dictionary", "詞彙", "词汇", "辞書", "新增", "add", "詞條"], searchText: searchState.searchText) {
+                // MARK: - 個人字典（新增 + 自動學習 + 列表）
+                if settingsMatchesSearch(Self.dictKeys, searchText: searchState.searchText) {
                     GlassCard {
                         VStack(alignment: .leading, spacing: 10) {
-                            GlassSectionHeader(title: L10n.Dict.addEntry, icon: "plus.circle")
+                            HStack(alignment: .firstTextBaseline) {
+                                GlassSectionHeader(title: L10n.Dict.dictList, icon: "book")
+                                if !dictEntries.isEmpty {
+                                    Text("\(dictEntries.count)")
+                                        .font(.callout.monospacedDigit())
+                                        .foregroundStyle(.secondary)
+                                }
+                                Spacer()
+                            }
 
+                            // 新增
                             HStack(spacing: 8) {
                                 TextField(L10n.Dict.originalTerm, text: $newTerm)
                                     .textFieldStyle(.roundedBorder)
-
+                                    .onSubmit(addDictionaryEntryIfValid)
                                 Image(systemName: "arrow.right")
                                     .foregroundStyle(.secondary)
-
                                 TextField(L10n.Dict.preferredForm, text: $newPreferred)
                                     .textFieldStyle(.roundedBorder)
-
-                                Button(L10n.Common.add) {
-                                    addDictionaryEntry()
-                                }
-                                .buttonStyle(.borderedProminent)
-                                .controlSize(.small)
-                                .disabled(newTerm.isEmpty || newPreferred.isEmpty)
+                                    .onSubmit(addDictionaryEntryIfValid)
+                                Button(L10n.Common.add, action: addDictionaryEntryIfValid)
+                                    .buttonStyle(.borderedProminent)
+                                    .controlSize(.small)
+                                    .disabled(!canAddDictionaryEntry)
+                            }
+                            if isDuplicateTerm {
+                                Label(L10n.Dict.duplicateTerm(newTerm.trimmingCharacters(in: .whitespaces)), systemImage: "info.circle")
+                                    .font(.callout)
+                                    .foregroundStyle(.orange)
+                            } else {
+                                SettingDescription(L10n.Dict.dictDesc)
                             }
 
-                            Text(L10n.Dict.dictDesc)
-                                .font(.body)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                }
+                            SettingDivider()
 
-                // MARK: - 字典列表
-                if settingsMatchesSearch(["字典", "dictionary", "詞彙", "词汇", "辞書", "列表", "list"], searchText: searchState.searchText) {
-                    GlassCard {
-                        VStack(alignment: .leading, spacing: 8) {
-                            GlassSectionHeader(title: L10n.Dict.dictList, icon: "book")
+                            SettingToggle(
+                                title: L10n.Dict.autoLearn,
+                                description: L10n.Dict.autoLearnDesc,
+                                isOn: $settingsStore.enableAutoLearnDictionary
+                            )
 
-                            if dictEntries.isEmpty {
-                                HStack {
-                                    Spacer()
-                                    Text(L10n.Dict.emptyDict)
-                                        .font(.title3)
-                                        .foregroundStyle(.secondary)
-                                    Spacer()
+                            if !dictEntries.isEmpty {
+                                SettingDivider()
+
+                                if dictEntries.count > 8 {
+                                    HStack(spacing: 6) {
+                                        Image(systemName: "line.3.horizontal.decrease")
+                                            .foregroundStyle(.tertiary)
+                                        TextField(L10n.Dict.filterPlaceholder, text: $dictFilter)
+                                            .textFieldStyle(.plain)
+                                    }
+                                    .padding(6)
+                                    .background(RoundedRectangle(cornerRadius: 6).fill(Color.primary.opacity(0.05)))
                                 }
-                                .padding(.vertical, 12)
-                            } else {
-                                ForEach(dictEntries) { entry in
-                                    HStack {
-                                        Text(entry.term ?? "")
-                                            .font(.body)
-                                        Spacer()
-                                        Image(systemName: "arrow.right")
-                                            .font(.title3)
-                                            .foregroundStyle(.secondary)
-                                        Spacer()
-                                        Text(entry.preferred ?? "")
-                                            .fontWeight(.medium)
-                                        Button {
+
+                                VStack(spacing: 0) {
+                                    ForEach(filteredDictEntries) { entry in
+                                        DictionaryEntryRow(entry: entry) {
                                             viewContext.delete(entry)
                                             try? viewContext.save()
-                                        } label: {
-                                            Image(systemName: "trash")
-                                                .font(.title3)
-                                                .foregroundStyle(.red.opacity(0.7))
                                         }
-                                        .buttonStyle(.plain)
-                                    }
-                                    .padding(.vertical, 2)
-
-                                    if entry != dictEntries.last {
-                                        Divider().opacity(0.2)
+                                        if entry != filteredDictEntries.last {
+                                            Divider().opacity(0.15)
+                                        }
                                     }
                                 }
+                                if filteredDictEntries.isEmpty {
+                                    SettingDescription(L10n.Dict.noFilterMatch(dictFilter))
+                                        .frame(maxWidth: .infinity)
+                                        .padding(.vertical, 8)
+                                }
+                            } else {
+                                VStack(spacing: 6) {
+                                    Image(systemName: "character.book.closed")
+                                        .font(.title)
+                                        .foregroundStyle(.tertiary)
+                                    Text(L10n.Dict.emptyDict)
+                                        .foregroundStyle(.secondary)
+                                }
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 12)
                             }
                         }
                     }
@@ -131,7 +164,7 @@ struct DictionarySettingsView: View {
                             }
 
                             Text(L10n.Dict.promptInstruction)
-                                .font(.title3)
+                                .font(.callout)
                                 .foregroundStyle(.secondary)
 
                             TextEditor(text: $newSnippetContent)
@@ -172,7 +205,7 @@ struct DictionarySettingsView: View {
                                 HStack {
                                     Spacer()
                                     Text(L10n.Dict.emptySkills)
-                                        .font(.title3)
+                                        .font(.callout)
                                         .foregroundStyle(.secondary)
                                     Spacer()
                                 }
@@ -184,7 +217,7 @@ struct DictionarySettingsView: View {
                                             Text(entry.trigger ?? "")
                                                 .fontWeight(.medium)
                                             Text(entry.content ?? "")
-                                                .font(.title3)
+                                                .font(.callout)
                                                 .foregroundStyle(.secondary)
                                                 .lineLimit(2)
                                         }
@@ -194,10 +227,11 @@ struct DictionarySettingsView: View {
                                             try? viewContext.save()
                                         } label: {
                                             Image(systemName: "trash")
-                                                .font(.title3)
                                                 .foregroundStyle(.red.opacity(0.7))
                                         }
                                         .buttonStyle(.plain)
+                                        .help(L10n.Dict.deleteSkill)
+                                        .accessibilityLabel(L10n.Dict.deleteSkill)
                                     }
                                     .padding(.vertical, 2)
 
@@ -211,15 +245,11 @@ struct DictionarySettingsView: View {
                 }
 
                 if !searchState.searchText.isEmpty
-                    && !settingsMatchesSearch(["字典", "dictionary", "詞彙", "词汇", "辞書", "新增", "add", "詞條"], searchText: searchState.searchText)
-                    && !settingsMatchesSearch(["字典", "dictionary", "詞彙", "词汇", "辞書", "列表", "list"], searchText: searchState.searchText)
+                    && !settingsMatchesSearch(Self.dictKeys, searchText: searchState.searchText)
                     && !settingsMatchesSearch(["技能", "skill", "snippet", "觸發詞", "trigger", "觸發", "新增"], searchText: searchState.searchText)
                     && !settingsMatchesSearch(["技能", "skill", "snippet", "觸發詞", "trigger", "列表", "list"], searchText: searchState.searchText)
                 {
-                    Text(L10n.Common.noResults)
-                        .foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity)
-                        .padding(.top, 40)
+                    SettingsNoResults()
                 }
             }
             .padding(20)
@@ -228,11 +258,16 @@ struct DictionarySettingsView: View {
 
     // MARK: - Dictionary CRUD
 
-    private func addDictionaryEntry() {
-        let entry = PersonalDictionaryEntry(context: viewContext)
-        entry.id = UUID()
-        entry.term = newTerm
-        entry.preferred = newPreferred
+    private func addDictionaryEntryIfValid() {
+        guard canAddDictionaryEntry else { return }
+        let term = newTerm.trimmingCharacters(in: .whitespaces)
+        let preferred = newPreferred.trimmingCharacters(in: .whitespaces)
+        // 同一個原始詞只留一筆（覆蓋舊的寫法）
+        let existing = dictEntries.first { ($0.term ?? "").lowercased() == term.lowercased() }
+        let entry = existing ?? PersonalDictionaryEntry(context: viewContext)
+        if existing == nil { entry.id = UUID() }
+        entry.term = term
+        entry.preferred = preferred
         try? viewContext.save()
         newTerm = ""
         newPreferred = ""
@@ -248,5 +283,42 @@ struct DictionarySettingsView: View {
         try? viewContext.save()
         newTrigger = ""
         newSnippetContent = ""
+    }
+}
+
+// MARK: - 字典列
+
+private struct DictionaryEntryRow: View {
+    @ObservedObject var entry: PersonalDictionaryEntry
+    let onDelete: () -> Void
+    @State private var isHovered = false
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Text(entry.term ?? "")
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .frame(width: 180, alignment: .leading)
+            Image(systemName: "arrow.right")
+                .font(.caption)
+                .foregroundStyle(.tertiary)
+            Text(entry.preferred ?? "")
+                .fontWeight(.medium)
+                .lineLimit(1)
+            Spacer()
+            Button(action: onDelete) {
+                Image(systemName: "trash")
+                    .foregroundStyle(.red.opacity(0.8))
+            }
+            .buttonStyle(.borderless)
+            .opacity(isHovered ? 1 : 0)
+            .help(L10n.Common.delete)
+            .accessibilityLabel(L10n.Common.delete)
+        }
+        .padding(.vertical, 6)
+        .padding(.horizontal, 6)
+        .background(RoundedRectangle(cornerRadius: 6).fill(isHovered ? Color.primary.opacity(0.04) : .clear))
+        .contentShape(Rectangle())
+        .onHover { isHovered = $0 }
     }
 }

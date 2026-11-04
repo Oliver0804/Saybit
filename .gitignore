@@ -25,3 +25,6 @@ fastlane/report.xml
 fastlane/Preview.html
 fastlane/screenshots/**/*.png
 fastlane/test_output
+
+# sherpa-onnx 預編譯函式庫（scripts/fetch-sherpa-onnx.sh 下載）
+Vendor/

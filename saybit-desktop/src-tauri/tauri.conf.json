@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "saybit-desktop",
-  "version": "0.2.2",
+  "version": "0.3.0",
   "identifier": "com.oliver.saybit-desktop",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -10,6 +10,7 @@
     "frontendDist": "../dist"
   },
   "app": {
+    "macOSPrivateApi": true,
     "windows": [
       {
         "label": "main",
@@ -28,8 +29,10 @@
         "height": 90,
         "decorations": false,
         "transparent": true,
+        "shadow": false,
         "alwaysOnTop": true,
         "visible": false,
+        "visibleOnAllWorkspaces": true,
         "resizable": false,
         "skipTaskbar": true
       }
@@ -56,8 +59,10 @@
     }
   },
   "plugins": {
-    "global-shortcut": {},
-    "clipboard-manager": {},
-    "store": {}
+    "deep-link": {
+      "desktop": {
+        "schemes": ["saybit"]
+      }
+    }
   }
 }

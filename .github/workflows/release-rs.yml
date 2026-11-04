@@ -1,0 +1,101 @@
+name: Release (Saybit Rust)
+
+# 推 rs-v* tag 觸發：三平台 release build → cargo-packager 打包 → 附到 GitHub Release（草稿）。
+# macOS：.app / .dmg（Info.plist 合併 packaging/Info.plist：LSUIElement、麥克風／語音辨識／行事曆／提醒用途說明、saybit:// URL type）
+# Windows：.msi（WiX）／ NSIS .exe；Linux：.deb / .AppImage。目前未簽章、未公證。
+on:
+  push:
+    tags: ['rs-v*']
+  workflow_dispatch:
+
+defaults:
+  run:
+    working-directory: ./saybit-rs
+
+permissions:
+  contents: write
+
+jobs:
+  package:
+    name: Package (${{ matrix.platform }})
+    runs-on: ${{ matrix.platform }}
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macos-latest
+            formats: app,dmg
+          - platform: windows-latest
+            formats: wix,nsis
+          - platform: ubuntu-22.04
+            formats: deb,appimage
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@1.99
+
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libasound2-dev libxdo-dev libxkbcommon-dev libxcb1-dev \
+            libxcb-randr0-dev libxcb-shape0-dev libxcb-xfixes0-dev libwayland-dev \
+            libdbus-1-dev libgtk-3-dev cmake clang pkg-config libfuse2
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: './saybit-rs -> target'
+          # sherpa-rs-sys 把預編譯庫下載到使用者快取目錄，連結時以絕對路徑搜尋；
+          # 只快取 target/ 而不快取這裡，第二次跑會 "unable to find library -lsherpa-onnx-c-api"
+          cache-directories: |
+            ~/.cache/sherpa-rs
+            ~/Library/Caches/sherpa-rs
+            ~/AppData/Local/sherpa-rs
+
+      - name: Build
+        run: cargo build --release -p saybit-app
+
+      - name: Install cargo-packager
+        run: cargo install cargo-packager --locked
+
+      - name: Package
+        shell: bash
+        run: |
+          cfg=packaging/Packager.toml
+          if [[ "${{ runner.os }}" == "Linux" ]]; then
+            # Linux 要把 sherpa-onnx 的 .so 一起打包（見 crates/saybit-app/build.rs 的 rpath）
+            cat packaging/Packager.toml packaging/Packager.linux-extra.toml > /tmp/Packager.linux.toml
+            cfg=/tmp/Packager.linux.toml
+            ls -l target/release/*.so || echo "::warning::no sherpa .so found next to the binary"
+          elif [[ "${{ runner.os }}" == "Windows" ]]; then
+            # Windows 的 sherpa-onnx / onnxruntime 是 DLL，放到執行檔同目錄（Windows 先搜尋 exe 所在資料夾）
+            { cat packaging/Packager.toml; echo; echo "resources = ["; for f in target/release/*.dll; do n=$(basename "$f"); echo "  { src = \"$f\", target = \"$n\" },"; done; echo "]"; } > "$RUNNER_TEMP/Packager.windows.toml"
+            cfg="$RUNNER_TEMP/Packager.windows.toml"
+            ls -l target/release/*.dll || echo "::warning::no sherpa DLLs found next to the binary"
+          fi
+          cargo packager --release --config "$cfg" --formats ${{ matrix.formats }}
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: saybit-rs-${{ matrix.platform }}
+          path: |
+            saybit-rs/dist/*.dmg
+            saybit-rs/dist/*.msi
+            saybit-rs/dist/*-setup.exe
+            saybit-rs/dist/*.deb
+            saybit-rs/dist/*.AppImage
+          if-no-files-found: warn
+
+      - name: Attach to draft release
+        if: startsWith(github.ref, 'refs/tags/rs-v')
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          files: |
+            saybit-rs/dist/*.dmg
+            saybit-rs/dist/*.msi
+            saybit-rs/dist/*-setup.exe
+            saybit-rs/dist/*.deb
+            saybit-rs/dist/*.AppImage

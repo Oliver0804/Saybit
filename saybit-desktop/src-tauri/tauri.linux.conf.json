@@ -1,0 +1,24 @@
+{
+  "bundle": {
+    "linux": {
+      "deb": {
+        "files": {
+          "/usr/lib/saybit-desktop/libsherpa-onnx-c-api.so": "target/release/libsherpa-onnx-c-api.so",
+          "/usr/lib/saybit-desktop/libonnxruntime.so": "target/release/libonnxruntime.so"
+        }
+      },
+      "rpm": {
+        "files": {
+          "/usr/lib/saybit-desktop/libsherpa-onnx-c-api.so": "target/release/libsherpa-onnx-c-api.so",
+          "/usr/lib/saybit-desktop/libonnxruntime.so": "target/release/libonnxruntime.so"
+        }
+      },
+      "appimage": {
+        "files": {
+          "/usr/lib/saybit-desktop/libsherpa-onnx-c-api.so": "target/release/libsherpa-onnx-c-api.so",
+          "/usr/lib/saybit-desktop/libonnxruntime.so": "target/release/libonnxruntime.so"
+        }
+      }
+    }
+  }
+}

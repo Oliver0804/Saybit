@@ -6,13 +6,17 @@
 //
 
 import AVFoundation
+#if os(macOS)
 import CoreAudio
+#endif
 
+#if os(macOS)
 struct AudioInputDevice: Identifiable, Hashable {
     let id: AudioDeviceID
     let uid: String
     let name: String
 }
+#endif
 
 enum AudioSessionManager {
     static var isMicrophoneAuthorized: Bool {
@@ -27,7 +31,8 @@ enum AudioSessionManager {
         }
     }
 
-    // MARK: - Audio Input Devices
+    #if os(macOS)
+    // MARK: - Audio Input Devices（macOS only — iOS 由 AVAudioSession 管理路由）
 
     static func listInputDevices() -> [AudioInputDevice] {
         var address = AudioObjectPropertyAddress(
@@ -89,4 +94,5 @@ enum AudioSessionManager {
     static func deviceID(forUID targetUID: String) -> AudioDeviceID? {
         listInputDevices().first(where: { $0.uid == targetUID })?.id
     }
+    #endif
 }

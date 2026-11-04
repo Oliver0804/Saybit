@@ -5,15 +5,27 @@
 <h1 align="center">Saybit</h1>
 
 <p align="center">
-  <strong>macOS 選單列語音輸入工具</strong><br>
+  <strong>語音輸入工具</strong><br>
   按下快捷鍵說話，AI 即時潤稿後自動貼入任何應用程式。
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/platform-macOS%2015.2+-blue" alt="Platform">
+  <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-blue" alt="Platform">
   <img src="https://img.shields.io/badge/license-MIT-green" alt="License">
   <img src="https://img.shields.io/badge/swift-6.0-orange" alt="Swift">
+  <img src="https://img.shields.io/badge/tauri-2.0-24C8DB" alt="Tauri">
 </p>
+
+## 這個 repo 有兩個 app
+
+| | `speakertpyer/` | `saybit-desktop/` |
+|---|---|---|
+| 技術 | Swift 6 + SwiftUI + AppKit | Tauri 2.0（Rust + React 19） |
+| 平台 | macOS 15.2+ | macOS / Windows / Linux |
+| Bundle ID | `com.bashcat.speakertpyer` | `com.oliver.saybit-desktop` |
+| 定位 | 原生選單列 app，功能最完整 | 跨平台版，功能已對齊原生 |
+
+兩者是**各自獨立的實作，不共用程式碼**，只共用產品概念。本文件先描述原生 macOS 版，跨平台版見[下方章節](#跨平台桌面版-saybit-desktop)。
 
 ## 功能特色
 
@@ -120,14 +132,14 @@ supabase → Supabase
 - **切換語音輸入** — 開始/停止切換
 - **設定語氣風格** — 切換語調
 
-## 系統需求
+## 系統需求（原生 macOS 版）
 
 - macOS 15.2+
 - 麥克風權限
 - 語音辨識權限
 - 輔助使用權限（快捷鍵 + 文字注入）
 
-## 安裝與設定
+## 安裝與設定（原生 macOS 版）
 
 ### 1. 編譯
 
@@ -154,7 +166,7 @@ xcodebuild -scheme speakertpyer -configuration Debug build
 3. 等待 LLM 處理（浮動膠囊顯示進度）
 4. 文字自動貼入目前焦點的應用程式
 
-## 架構
+## 架構（原生 macOS 版）
 
 ```
 speakertpyer/
@@ -258,6 +270,98 @@ speakertpyer/
 ```
 
 格式為 JSONL，包含 timestamp、level、category、message。7 天自動清理。
+
+---
+
+## 跨平台桌面版 (saybit-desktop)
+
+Tauri 2.0 實作，可在 **macOS / Windows / Linux** 執行。功能已與原生 macOS 版對齊，兩處因平台限制有差異（見下方「與原生版的差異」）。
+
+### 語音辨識引擎
+
+| 引擎 | 平台 | 需要金鑰 | 特性 |
+|------|------|---------|------|
+| 串流辨識 | 全平台 | 是 | WebSocket 邊講邊出字，講完即有逐字稿。支援阿里雲百鍊（Fun-ASR / Qwen-ASR）與訊飛 RTASR |
+| Apple 語音辨識 | 僅 macOS | 否 | 系統內建，免下載模型，可強制離線（音訊不出機器） |
+| 本地 whisper.cpp | 全平台 | 否 | `large-v3-turbo` q5_0（約 574MB），完全離線 |
+| 雲端 Whisper API | 全平台 | 是 | OpenAI `whisper-1` 或 Groq `whisper-large-v3` |
+
+串流辨識的 WebSocket 跑在 Rust 端而非 webview —— 阿里雲的認證是 handshake 上的 `Authorization` header，瀏覽器的 WebSocket API 設不了自訂 header。連線失敗會自動退回雲端 Whisper，不會讓錄音整個失敗。
+
+> ⚠️ 阿里雲與訊飛的協定是依官方文件實作，尚未在真實帳號上驗證。設定畫面提供「測試連線」按鈕先行確認憑證與端點。
+
+### 文字注入
+
+| 模式 | 說明 |
+|------|------|
+| 貼上 | 寫剪貼簿 + Cmd/Ctrl+V，最快；0.5 秒後自動還原原本的剪貼簿內容 |
+| 逐字輸入 | 模擬鍵盤逐字打出，給不吃貼上的視窗 |
+| 取代選取 | 先送 Backspace 清掉選取內容再貼上 |
+
+### 音訊處理鏈
+
+```
+getUserMedia → 高通 80Hz → 低通 8kHz → analyser + AudioWorklet(PCM 擷取)
+                                          ↓
+                            預錄環形緩衝（保留按下快捷鍵之前的音訊）
+```
+
+`AudioContext` 直接開在 16kHz，由瀏覽器自己的重採樣器降頻，批次與串流兩條路都不必手動重採樣。帶通濾波的 Butterworth Q 值與原生版 `VoiceBandpassFilter` 一致。
+
+### 安全性
+
+API 金鑰存放於**系統金鑰庫**（macOS Keychain / Windows Credential Manager / Linux Secret Service），不寫進設定檔。舊版明文存在 localStorage 的金鑰會在首次啟動時自動搬遷並清除。
+
+### 開發
+
+```bash
+cd saybit-desktop
+npm install
+npx tauri dev              # 開發模式（HMR）
+
+npx tsc --noEmit           # 前端型別檢查
+cd src-tauri && cargo clippy --all-targets -- -D warnings
+
+npm run tauri build        # 產出 .app / .dmg / .msi / .AppImage
+```
+
+### 架構
+
+```
+saybit-desktop/
+├── src/
+│   ├── hooks/useVoicePipeline.ts   # 狀態機 + 音訊 + STT + LLM 協調
+│   ├── services/
+│   │   ├── audioChain.ts           # 麥克風擷取鏈（濾波 / 預錄 / PCM）
+│   │   ├── streamingStt.ts         # 串流辨識前端介面
+│   │   ├── systemPrompts.ts        # Prompt 全集（移植自原生 SystemPrompts.swift）
+│   │   ├── appContext.ts           # 前景 App 辨識與分類
+│   │   ├── contextRules.ts         # per-app 語氣規則
+│   │   ├── providers.ts            # LLM 服務商 + 模型清單查詢
+│   │   ├── pricing.ts              # Token 成本估算
+│   │   ├── sttArtifacts.ts         # 靜音閘 + whisper 幻覺過濾
+│   │   ├── settings.ts             # 設定模型 + 金鑰庫存取
+│   │   └── l10n.ts                 # 四語系（繁中/簡中/英/日）
+│   └── views/                      # 設定分頁、膠囊、導引、教學
+│
+└── src-tauri/src/
+    ├── platform.rs        # 前景視窗查詢、選取文字擷取
+    ├── injection.rs       # 三種文字注入模式
+    ├── streaming_stt.rs   # WebSocket 串流辨識（阿里雲 / 訊飛）
+    ├── secure_store.rs    # 系統金鑰庫
+    ├── apple_speech.rs    # SFSpeechRecognizer（macOS）
+    ├── eventkit.rs        # 行事曆 / 提醒（macOS）
+    └── local_stt.rs       # whisper.cpp
+```
+
+### 與原生版的差異
+
+兩處因平台限制無法完全對齊：
+
+1. **選取文字擷取**走剪貼簿而非 AX API（Tauri 沒有等價 API）。因此**終端機視窗會自動跳過**，避免沒有選取時 Ctrl+C 變成 SIGINT 中斷使用者正在跑的程式。
+2. **剪貼簿備份僅限文字**。Tauri 的剪貼簿外掛無法像原生 `ClipboardBackup.swift` 那樣快照所有 pasteboard 型別，因此在複製圖片後注入文字，圖片剪貼簿內容會遺失。
+
+---
 
 ## 授權
 

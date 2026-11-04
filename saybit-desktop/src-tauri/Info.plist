@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- 這些用途說明在 macOS 上是必要的：缺少對應的 key 時，第一次要求該權限
+	     不是跳出對話框，而是直接把程序 crash 掉。 -->
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Saybit 需要麥克風才能將你的語音轉成文字。</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Saybit 使用系統語音辨識，把你的語音轉成文字。開啟離線辨識時音訊不會離開這台機器。</string>
+	<key>NSCalendarsUsageDescription</key>
+	<string>Saybit 需要行事曆權限，才能把你口述的行程直接建立成事件。</string>
+	<key>NSRemindersUsageDescription</key>
+	<string>Saybit 需要提醒事項權限，才能把你口述的待辦直接建立成提醒。</string>
+	<!-- saybit:// URL scheme。plugins.deep-link.desktop.schemes 也會讓 bundler 產生這段，
+	     這裡明寫一份確保打包出的 Info.plist 一定有（兩者內容相同）。 -->
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>com.oliver.saybit-desktop</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>saybit</string>
+			</array>
+		</dict>
+	</array>
+	<key>NSAppleEventsUsageDescription</key>
+	<string>Saybit 需要控制其他應用程式，才能把文字貼進你正在使用的視窗。</string>
+</dict>
+</plist>

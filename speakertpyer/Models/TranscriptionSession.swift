@@ -42,6 +42,8 @@ class TranscriptionSession {
     var smartSendCancelled: Bool = false
     var lastErrorContext: ErrorContext?
     var modelName: String = ""
+    /// 這次錄音使用的語音模式名稱（膠囊上顯示）；一般錄音為 nil
+    var modeName: String?
     var promptTokens: Int = 0
     var completionTokens: Int = 0
     var totalTokens: Int = 0

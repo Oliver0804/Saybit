@@ -25,24 +25,39 @@ class WhisperSTTClient: AudioBufferConsumer {
         get { silenceDetector.silenceTimeoutDuration }
         set { silenceDetector.silenceTimeoutDuration = newValue }
     }
-    private let silenceDetector = SilenceDetector()
-    private let audioLevelThrottler = MainThreadThrottler(intervalMs: 50)
+    @ObservationIgnored private let silenceDetector = SilenceDetector()
+    @ObservationIgnored private let audioLevelThrottler = MainThreadThrottler(intervalMs: 50)
 
-    private var audioBuffers: [AVAudioPCMBuffer] = []
-    private var recordingFormat: AVAudioFormat?
     var micGain: Float = 2.0
 
-    private let log = AppLogger.shared
+    /// render thread 寫入的錄音資料（mono Float，裝置原生取樣率），由 captureLock 保護。
+    /// 開始錄音時在 main 預留容量，render thread 只做 memcpy（超過預留長度才會擴容）。
+    @ObservationIgnored private let captureLock = UnfairLock()
+    @ObservationIgnored private var capturedSamples: [Float] = []
+    @ObservationIgnored private var capturedSampleRate: Double = 0
+    @ObservationIgnored private var captureAccepting = false
+    @ObservationIgnored private var captureMicGain: Float = 2.0
+    /// 預留 60 秒（48kHz mono ≈ 11.5MB）；更長的錄音會在 render thread 擴容一次
+    private static let reservedSeconds: Double = 60
+
+    @ObservationIgnored private let log = AppLogger.shared
 
     // MARK: - Recording
 
     func startRecording() throws {
-        audioBuffers = []
         silenceDetector.start()
 
-        recordingFormat = SharedAudioEngine.shared.inputFormat
-
-        // 必須先設定 isRecording，否則 pre-buffer 回放時 handleAudioBuffer 會被 guard 擋掉
+        let rate = SharedAudioEngine.shared.inputFormat?.sampleRate ?? 48_000
+        var storage: [Float] = []
+        storage.reserveCapacity(Int(rate * Self.reservedSeconds))
+        let gain = micGain
+        // 必須先開放收音，否則 pre-buffer 回放時 handleAudioBuffer 會被 guard 擋掉
+        captureLock.withLock {
+            capturedSamples = storage
+            capturedSampleRate = 0
+            captureAccepting = true
+            captureMicGain = gain
+        }
         isRecording = true
         audioLevelThrottler.reset()
         SharedAudioEngine.shared.addConsumer(self, replayPreBuffer: true)
@@ -51,24 +66,51 @@ class WhisperSTTClient: AudioBufferConsumer {
 
     func stopRecording() -> Data? {
         SharedAudioEngine.shared.removeConsumer(self)
+        let (samples, rate): ([Float], Double) = captureLock.withLock {
+            captureAccepting = false
+            let taken = (capturedSamples, capturedSampleRate)
+            capturedSamples = []
+            return taken
+        }
         isRecording = false
         silenceDetector.reset()
         audioLevel = 0.0
-        log.info("WhisperSTTClient 停止錄音 (buffers=\(audioBuffers.count))", category: "STT")
+        log.info("WhisperSTTClient 停止錄音 (samples=\(samples.count), rate=\(Int(rate)))", category: "STT")
 
-        guard !audioBuffers.isEmpty, let format = recordingFormat else { return nil }
-        return convertToWAV(buffers: audioBuffers, format: format)
+        guard !samples.isEmpty, rate > 0 else { return nil }
+        return convertToWAV(samples: samples, sampleRate: rate)
     }
 
     // MARK: - AudioBufferConsumer
 
     func handleAudioBuffer(_ buffer: AVAudioPCMBuffer, time: AVAudioTime) {
-        guard isRecording else { return }
+        guard let channels = buffer.floatChannelData else { return }
+        let frames = Int(buffer.frameLength)
+        let channelCount = Int(buffer.format.channelCount)
+        guard frames > 0, channelCount > 0 else { return }
 
-        // 存儲 buffer 副本
-        if let copy = buffer.copy() as? AVAudioPCMBuffer {
-            audioBuffers.append(copy)
+        captureLock.lock()
+        guard captureAccepting else {
+            captureLock.unlock()
+            return
         }
+        let micGain = captureMicGain
+        if capturedSampleRate == 0 { capturedSampleRate = buffer.format.sampleRate }
+        // 下混成 mono 後 memcpy 進預留空間（不呼叫 buffer.copy()，不做 Obj-C 配置）
+        if channelCount == 1 {
+            capturedSamples.append(contentsOf: UnsafeBufferPointer(start: channels[0], count: frames))
+        } else {
+            let base = capturedSamples.count
+            capturedSamples.append(contentsOf: repeatElement(0, count: frames))
+            let scale = 1 / Float(channelCount)
+            capturedSamples.withUnsafeMutableBufferPointer { dst in
+                for ch in 0..<channelCount {
+                    let src = channels[ch]
+                    for i in 0..<frames { dst[base + i] += src[i] * scale }
+                }
+            }
+        }
+        captureLock.unlock()
 
         // RMS 計算
         guard let rms = AudioUtils.rms(from: buffer) else { return }
@@ -80,7 +122,7 @@ class WhisperSTTClient: AudioBufferConsumer {
             self?.audioLevel = displayLevel
         }
 
-        // 靜音偵測（內部 thread-safe）
+        // 靜音偵測（SilenceDetector 內部有鎖）
         silenceDetector.update(rawLevel: rawLevel)
     }
 
@@ -141,7 +183,7 @@ class WhisperSTTClient: AudioBufferConsumer {
         }
 
         let result = try JSONDecoder().decode(WhisperResponse.self, from: data)
-        log.info("Whisper API 轉錄結果: \(result.text.prefix(100))", category: "STT")
+        log.info("Whisper API 轉錄完成 (\(result.text.count) 字)", category: "STT")
         return result.text
     }
 
@@ -165,77 +207,51 @@ class WhisperSTTClient: AudioBufferConsumer {
 
     // MARK: - WAV Conversion
 
-    private func convertToWAV(buffers: [AVAudioPCMBuffer], format: AVAudioFormat) -> Data? {
+    private func convertToWAV(samples: [Float], sampleRate: Double) -> Data? {
         // Target: 16kHz mono 16-bit PCM WAV (optimal for Whisper)
         guard let targetFormat = AVAudioFormat(
             commonFormat: .pcmFormatInt16,
             sampleRate: 16000,
             channels: 1,
             interleaved: true
+        ), let sourceFormat = AVAudioFormat(
+            commonFormat: .pcmFormatFloat32,
+            sampleRate: sampleRate,
+            channels: 1,
+            interleaved: false
         ) else { return nil }
 
-        guard let converter = AVAudioConverter(from: format, to: targetFormat) else {
+        guard let converter = AVAudioConverter(from: sourceFormat, to: targetFormat) else {
             log.error("無法建立音訊格式轉換器", category: "STT")
             return nil
         }
 
-        // Calculate total frame count
-        let totalFrames = buffers.reduce(0) { $0 + Int($1.frameLength) }
-        let ratio = targetFormat.sampleRate / format.sampleRate
+        let totalFrames = samples.count
+        guard let inputBuffer = AVAudioPCMBuffer(pcmFormat: sourceFormat, frameCapacity: AVAudioFrameCount(totalFrames)),
+              let inputData = inputBuffer.floatChannelData?[0] else { return nil }
+        samples.withUnsafeBufferPointer { src in
+            if let base = src.baseAddress { inputData.update(from: base, count: totalFrames) }
+        }
+        inputBuffer.frameLength = AVAudioFrameCount(totalFrames)
+
+        let ratio = targetFormat.sampleRate / sourceFormat.sampleRate
         let estimatedOutputFrames = AVAudioFrameCount(Double(totalFrames) * ratio) + 1024
 
         guard let outputBuffer = AVAudioPCMBuffer(pcmFormat: targetFormat, frameCapacity: estimatedOutputFrames) else {
             return nil
         }
 
-        var bufferIndex = 0
-        var inputBufferOffset: AVAudioFramePosition = 0
+        var consumed = false
         var error: NSError?
 
-        converter.convert(to: outputBuffer, error: &error) { inNumPackets, outStatus in
-            guard bufferIndex < buffers.count else {
+        converter.convert(to: outputBuffer, error: &error) { _, outStatus in
+            if consumed {
                 outStatus.pointee = .endOfStream
                 return nil
             }
-
-            let currentBuffer = buffers[bufferIndex]
-            let remainingFrames = AVAudioFrameCount(Int(currentBuffer.frameLength) - Int(inputBufferOffset))
-
-            if remainingFrames > 0 {
-                outStatus.pointee = .haveData
-
-                let framesToCopy = min(inNumPackets, remainingFrames)
-                guard let slice = AVAudioPCMBuffer(pcmFormat: currentBuffer.format, frameCapacity: framesToCopy) else {
-                    outStatus.pointee = .endOfStream
-                    return nil
-                }
-                slice.frameLength = framesToCopy
-
-                if let srcData = currentBuffer.floatChannelData, let dstData = slice.floatChannelData {
-                    for ch in 0..<Int(currentBuffer.format.channelCount) {
-                        let src = srcData[ch].advanced(by: Int(inputBufferOffset))
-                        dstData[ch].update(from: src, count: Int(framesToCopy))
-                    }
-                }
-
-                inputBufferOffset += AVAudioFramePosition(framesToCopy)
-                if inputBufferOffset >= currentBuffer.frameLength {
-                    bufferIndex += 1
-                    inputBufferOffset = 0
-                }
-
-                return slice
-            } else {
-                bufferIndex += 1
-                inputBufferOffset = 0
-                if bufferIndex < buffers.count {
-                    outStatus.pointee = .haveData
-                    return nil
-                } else {
-                    outStatus.pointee = .endOfStream
-                    return nil
-                }
-            }
+            consumed = true
+            outStatus.pointee = .haveData
+            return inputBuffer
         }
 
         if let error {
