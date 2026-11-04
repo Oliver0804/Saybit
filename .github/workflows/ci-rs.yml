@@ -49,6 +49,12 @@ jobs:
       - uses: swatinem/rust-cache@v2
         with:
           workspaces: './saybit-rs -> target'
+          # sherpa-rs-sys 把預編譯庫下載到使用者快取目錄，連結時以絕對路徑搜尋；
+          # 只快取 target/ 而不快取這裡，第二次跑會 "unable to find library -lsherpa-onnx-c-api"
+          cache-directories: |
+            ~/.cache/sherpa-rs
+            ~/Library/Caches/sherpa-rs
+            ~/AppData/Local/sherpa-rs
 
       - name: cargo check
         run: cargo check --workspace --all-targets

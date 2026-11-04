@@ -50,6 +50,9 @@ apple-native-keyring-store = { version = "1", features = ["keychain"] }
 
 # C3（平台）Windows：前景視窗、音量、登錄檔、ShellExecute、PlaySound、金鑰庫
 [target.'cfg(target_os = "windows")'.dependencies]
+# C1（STT）SenseVoice：Windows 動態連結 sherpa-onnx-c-api.dll / onnxruntime.dll（sherpa-rs-sys 會複製到 target/<profile>/，
+# 打包時由 release-rs.yml 放到執行檔旁）。不用 static：預編譯靜態庫是 /MT，whisper.cpp 是 /MD，混用連結失敗。
+sherpa-rs = { version = "0.6.8", default-features = false, features = ["download-binaries"] }
 windows = { version = "0.61", features = [
     "Win32_Foundation",
     "Win32_UI_WindowsAndMessaging",
@@ -70,8 +73,8 @@ windows-native-keyring-store = "1.1"
 zbus-secret-service-keyring-store = { version = "1", features = ["crypto-rust"] }
 
 # C1（STT）SenseVoice：macOS / Windows 靜態連結 sherpa-onnx 預編譯庫（不需 cmake、不用打包 dylib/dll）。
-# Windows 預編譯庫是 /MT，需 +crt-static（見 .cargo/config.toml 說明）。
-[target.'cfg(any(target_os = "macos", target_os = "windows"))'.dependencies]
+# macOS 靜態連結。Windows 改走動態 DLL（見下方 windows 區段）：靜態庫是 /MT，與 whisper.cpp 的 /MD 會 LNK2038 衝突。
+[target.'cfg(any(target_os = "macos", target_os = "ios"))'.dependencies]
 sherpa-rs = { version = "0.6.8", default-features = false, features = ["download-binaries", "static"] }
 
 # C1（STT）SenseVoice：Linux 動態連結 .so（靜態庫非 PIC）；rpath 見 build.rs

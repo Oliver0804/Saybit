@@ -46,6 +46,12 @@ jobs:
       - uses: swatinem/rust-cache@v2
         with:
           workspaces: './saybit-rs -> target'
+          # sherpa-rs-sys 把預編譯庫下載到使用者快取目錄，連結時以絕對路徑搜尋；
+          # 只快取 target/ 而不快取這裡，第二次跑會 "unable to find library -lsherpa-onnx-c-api"
+          cache-directories: |
+            ~/.cache/sherpa-rs
+            ~/Library/Caches/sherpa-rs
+            ~/AppData/Local/sherpa-rs
 
       - name: Build
         run: cargo build --release -p saybit-app
@@ -62,6 +68,11 @@ jobs:
             cat packaging/Packager.toml packaging/Packager.linux-extra.toml > /tmp/Packager.linux.toml
             cfg=/tmp/Packager.linux.toml
             ls -l target/release/*.so || echo "::warning::no sherpa .so found next to the binary"
+          elif [[ "${{ runner.os }}" == "Windows" ]]; then
+            # Windows 的 sherpa-onnx / onnxruntime 是 DLL，放到執行檔同目錄（Windows 先搜尋 exe 所在資料夾）
+            { cat packaging/Packager.toml; echo; echo "resources = ["; for f in target/release/*.dll; do n=$(basename "$f"); echo "  { src = \"$f\", target = \"$n\" },"; done; echo "]"; } > "$RUNNER_TEMP/Packager.windows.toml"
+            cfg="$RUNNER_TEMP/Packager.windows.toml"
+            ls -l target/release/*.dll || echo "::warning::no sherpa DLLs found next to the binary"
           fi
           cargo packager --release --config "$cfg" --formats ${{ matrix.formats }}
 
