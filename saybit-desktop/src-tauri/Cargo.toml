@@ -1,6 +1,6 @@
 [package]
 name = "saybit-desktop"
-version = "0.2.2"
+version = "0.3.0"
 description = "A Tauri App"
 authors = ["you"]
 edition = "2021"
@@ -43,6 +43,27 @@ sha1 = "0.10"
 md-5 = "0.10"
 base64 = "0.22"
 uuid = { version = "1", features = ["v4"] }
+
+# saybit:// URL scheme。Windows/Linux 開 URL 會啟動新程序，single-instance 把 URL
+# 轉交給已開的實例（deep-link feature 讓它自動觸發 on_open_url）。
+tauri-plugin-deep-link = "2"
+tauri-plugin-single-instance = { version = "2", features = ["deep-link"] }
+
+# 檔案轉錄的音訊解碼（m4a / mp3 / wav / aiff / mp4·mov 音軌），純 Rust 不需系統 codec
+symphonia = { version = "0.5", default-features = false, features = [
+    "mp3",
+    "aac",
+    "alac",
+    "flac",
+    "pcm",
+    "wav",
+    "aiff",
+    "isomp4",
+] }
+
+# 開檔／存檔對話框（檔案轉錄選檔、逐字稿存檔）。刻意不加 fs plugin：寫檔只走
+# write_text_file，且只接受剛由 save_text_file_dialog 選出的路徑。
+tauri-plugin-dialog = "2"
 
 # 前景視窗查詢與系統金鑰庫：各平台走各自的原生 API
 # （見 src/platform.rs、src/secure_store.rs）
@@ -88,5 +109,24 @@ keyring = { version = "4", default-features = false, features = ["v1", "windows-
 
 [target.'cfg(target_os = "linux")'.dependencies]
 keyring = { version = "4", default-features = false, features = ["v1", "zbus-secret-service-keyring-store"] }
+# SenseVoice：Linux 走動態 .so（靜態庫非 PIC，跟 cdylib 輸出衝突）。sherpa-rs-sys 會把
+# libsherpa-onnx-c-api.so / libonnxruntime.so 複製到 target/<profile>/；打包見 tauri.linux.conf.json、rpath 見 build.rs
+sherpa-rs = { version = "0.6.8", default-features = false, features = ["download-binaries"] }
 
+# SenseVoice 離線辨識（src/sherpa_stt.rs、src/file_transcribe.rs）。
+# 用 sherpa-onnx 官方預編譯的靜態庫（download-binaries + static），不需 cmake、也不用另外打包 dylib/dll。
+# Linux 另見上方 cfg(target_os = "linux") 區段（動態庫）。
+# Windows 的預編譯庫是 /MT（靜態 CRT），所以 .cargo/config.toml 對 msvc 開 +crt-static 讓 whisper.cpp 一致。
+[target.'cfg(any(target_os = "macos", target_os = "windows"))'.dependencies]
+sherpa-rs = { version = "0.6.8", default-features = false, features = ["download-binaries", "static"] }
 
+# 錄音時降低系統音量（src/audio_duck.rs）：IAudioEndpointVolume
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_Media_Audio",
+    "Win32_Media_Audio_Endpoints",
+    "Win32_System_Com",
+    "Win32_System_Com_StructuredStorage",
+    "Win32_System_Variant",
+] }

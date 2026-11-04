@@ -1,0 +1,8 @@
+# sherpa-onnx 的 Windows 預編譯靜態庫（sherpa-rs `static` feature）以 /MT 編譯；
+# Rust 與 whisper.cpp 預設 /MD，混用會 LNK2038 RuntimeLibrary mismatch。
+# 開 crt-static 後 cmake / cc crate 也會改用 /MT，整個程式一致。
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]
+
+[target.aarch64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]
